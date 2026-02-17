@@ -1,0 +1,28 @@
+name: MeteoBot - Calcola SBCAPE
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 * * * *'  # 15 minuti dopo l'ora
+
+jobs:
+  run-sbcape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run calcola_SBCAPE.py
+        env:
+          TUYA_ACCESS_ID: ${{ secrets.TUYA_ACCESS_ID }}
+          TUYA_ACCESS_SECRET: ${{ secrets.TUYA_ACCESS_SECRET }}
+          TUYA_DEVICE_ID: ${{ secrets.TUYA_DEVICE_ID }}
+          TUYA_ENDPOINT: ${{ secrets.TUYA_ENDPOINT }}
+        run: |
+          python calcola_SBCAPE.py

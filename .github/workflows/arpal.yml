@@ -1,0 +1,26 @@
+name: MeteoBot - Monitor ARPAL
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '5 * * * *'  # 5 minuti dopo l'ora
+
+jobs:
+  run-arpal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run minitor_arpal.py
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+        run: |
+          python minitor_arpal.py
