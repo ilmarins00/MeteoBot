@@ -35,15 +35,28 @@ def get_wind_gust():
     try:
         token_url = "/v1.0/token?grant_type=1"
         r = requests.get(ENDPOINT + token_url, headers=get_auth_headers("GET", token_url)).json()
-        token = r['result']['access_token']
-        status_url = f"/v1.0/devices/{DEVICE_ID}/status"
-        res = requests.get(ENDPOINT + status_url, headers=get_auth_headers("GET", status_url, token)).json()
-        if not res.get("success"): return None
-        d = {item['code']: item['value'] for item in res.get("result", [])}
-        return d.get('windspeed_gust', 0) / 10
     except Exception as e:
-        print(f"Errore API: {e}")
+        print(f"Errore API Tuya (token): {e}")
         return None
+
+    if not r or not r.get("success") or "result" not in r or "access_token" not in r["result"]:
+        print(f"Errore Token Tuya: risposta non valida o credenziali errate. Dettaglio: {r}")
+        return None
+
+    token = r["result"]["access_token"]
+    status_url = f"/v1.0/devices/{DEVICE_ID}/status"
+    try:
+        res = requests.get(ENDPOINT + status_url, headers=get_auth_headers("GET", status_url, token)).json()
+    except Exception as e:
+        print(f"Errore API Tuya (status): {e}")
+        return None
+
+    if not res or not res.get("success") or "result" not in res:
+        print(f"Errore lettura device Tuya: risposta non valida. Dettaglio: {res}")
+        return None
+
+    d = {item['code']: item['value'] for item in res.get("result", [])}
+    return d.get('windspeed_gust', 0) / 10
 
 def update_json_max(gust):
     now = datetime.now()

@@ -395,29 +395,37 @@ def esegui_report():
     token_url = "/v1.0/token?grant_type=1"
     try:
         r = requests.get(ENDPOINT + token_url, headers=get_auth_headers("GET", token_url), timeout=10).json()
-        if not r.get("success"): 
-            print("Errore Token Tuya")
-            return
-        
-        token = r['result']['access_token']
-        status_url = f"/v1.0/devices/{DEVICE_ID}/status"
-        res = requests.get(ENDPOINT + status_url, headers=get_auth_headers("GET", status_url, token), timeout=10).json()
     except Exception as e:
-        print(f"Errore connessione Tuya: {e}")
+        print(f"Errore connessione Tuya (token): {e}")
         return
 
-    if res.get("success"):
-        d = {item['code']: item['value'] for item in res.get("result", [])}
+    if not r or not r.get("success") or "result" not in r or "access_token" not in r["result"]:
+        print(f"Errore Token Tuya: risposta non valida o credenziali errate. Dettaglio: {r}")
+        return
 
-        print("DATI GREZZI RICEVUTI:", json.dumps(d, indent=4))
-        
-        # --- ESTRAZIONE DATI TECNICI ---
-        temp_ext = d.get('temp_current_external', 0) / 10
-        umid_ext = d.get('humidity_outdoor', 0)
-        pressione_locale = estrai_pressione_hpa(d)
-        if pressione_locale is None:
-            print("Pressione non disponibile da Tuya, uso fallback 1013.0 hPa")
-            pressione_locale = 1013.0
+    token = r["result"]["access_token"]
+    status_url = f"/v1.0/devices/{DEVICE_ID}/status"
+    try:
+        res = requests.get(ENDPOINT + status_url, headers=get_auth_headers("GET", status_url, token), timeout=10).json()
+    except Exception as e:
+        print(f"Errore connessione Tuya (status): {e}")
+        return
+
+    if not res or not res.get("success") or "result" not in res:
+        print(f"Errore lettura device Tuya: risposta non valida. Dettaglio: {res}")
+        return
+
+    d = {item['code']: item['value'] for item in res.get("result", [])}
+
+    print("DATI GREZZI RICEVUTI:", json.dumps(d, indent=4))
+
+    # --- ESTRAZIONE DATI TECNICI ---
+    temp_ext = d.get('temp_current_external', 0) / 10
+    umid_ext = d.get('humidity_outdoor', 0)
+    pressione_locale = estrai_pressione_hpa(d)
+    if pressione_locale is None:
+        print("Pressione non disponibile da Tuya, uso fallback 1013.0 hPa")
+        pressione_locale = 1013.0
         # Riduzione pressione al livello del mare con formula ipsometrica
         # P0 = P * exp(g * h / (Rd * T))
         # h = 100 m (altitudine Foce), T = temp_ext + 273.15

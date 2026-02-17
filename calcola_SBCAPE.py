@@ -55,52 +55,59 @@ def fetch_station_data_with_retry(max_retries=3):
         try:
             token_url = "/v1.0/token?grant_type=1"
             r = requests.get(ENDPOINT + token_url, headers=get_auth_headers("GET", token_url), timeout=10).json()
-            if not r.get("success"):
-                if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)  # exponential backoff
-                    continue
-                print("✗ Errore Token Tuya")
-                return None
-            
-            token = r['result']['access_token']
-            status_url = f"/v1.0/devices/{DEVICE_ID}/status"
-            res = requests.get(ENDPOINT + status_url, headers=get_auth_headers("GET", status_url, token), timeout=10).json()
-            
-            if res.get("success"):
-                d = {item['code']: item['value'] for item in res.get("result", [])}
-                
-                # Estrai i parametri necessari
-                station_data = {
-                    'temperature': d.get('temp_current_external', 0) / 10,  # °C
-                    'dewpoint': d.get('dew_point_temp', 0) / 10,  # °C
-                    'pressure': extract_pressure_hpa(d) or 1013.0,  # hPa locale a 100m dalla stazione
-                    'humidity': d.get('humidity_outdoor', 0),  # %
-                    'wind_speed': d.get('windspeed_avg', 0) / 10,  # km/h
-                    'wind_gust': d.get('windspeed_gust', 0) / 10,  # km/h
-                }
-                
-                # Validazione fisica dei dati
-                if (station_data['temperature'] < -50 or station_data['temperature'] > 60 or
-                    station_data['humidity'] < 0 or station_data['humidity'] > 100 or
-                    station_data['pressure'] < 900 or station_data['pressure'] > 1050):
-                    print(f"⚠️  Dati stazione anomali (attempt {attempt+1})")
-                    if attempt < max_retries - 1:
-                        time.sleep(2 ** attempt)
-                        continue
-                    return None
-                
-                print(f"✓ Dati stazione Tuya ricevuti: T={station_data['temperature']:.1f}°C, Td={station_data['dewpoint']:.1f}°C, P={station_data['pressure']:.1f}hPa, RH={station_data['humidity']}%")
-                return station_data
-            else:
-                print(f"✗ Errore lettura device Tuya (attempt {attempt+1})")
-                if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
-                    
         except Exception as e:
-            print(f"✗ Errore connessione Tuya (attempt {attempt+1}): {e}")
+            print(f"✗ Errore connessione Tuya (token, attempt {attempt+1}): {e}")
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
-    
+            continue
+
+        if not r or not r.get("success") or "result" not in r or "access_token" not in r["result"]:
+            print(f"✗ Errore Token Tuya: risposta non valida o credenziali errate (attempt {attempt+1}). Dettaglio: {r}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            continue
+
+        token = r["result"]["access_token"]
+        status_url = f"/v1.0/devices/{DEVICE_ID}/status"
+        try:
+            res = requests.get(ENDPOINT + status_url, headers=get_auth_headers("GET", status_url, token), timeout=10).json()
+        except Exception as e:
+            print(f"✗ Errore connessione Tuya (status, attempt {attempt+1}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            continue
+
+        if not res or not res.get("success") or "result" not in res:
+            print(f"✗ Errore lettura device Tuya: risposta non valida (attempt {attempt+1}). Dettaglio: {res}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            continue
+
+        d = {item['code']: item['value'] for item in res.get("result", [])}
+
+        # Estrai i parametri necessari
+        station_data = {
+            'temperature': d.get('temp_current_external', 0) / 10,  # °C
+            'dewpoint': d.get('dew_point_temp', 0) / 10,  # °C
+            'pressure': extract_pressure_hpa(d) or 1013.0,  # hPa locale a 100m dalla stazione
+            'humidity': d.get('humidity_outdoor', 0),  # %
+            'wind_speed': d.get('windspeed_avg', 0) / 10,  # km/h
+            'wind_gust': d.get('windspeed_gust', 0) / 10,  # km/h
+        }
+
+        # Validazione fisica dei dati
+        if (station_data['temperature'] < -50 or station_data['temperature'] > 60 or
+            station_data['humidity'] < 0 or station_data['humidity'] > 100 or
+            station_data['pressure'] < 900 or station_data['pressure'] > 1050):
+            print(f"⚠️  Dati stazione anomali (attempt {attempt+1})")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+                continue
+            return None
+
+        print(f"✓ Dati stazione Tuya ricevuti: T={station_data['temperature']:.1f}°C, Td={station_data['dewpoint']:.1f}°C, P={station_data['pressure']:.1f}hPa, RH={station_data['humidity']}%")
+        return station_data
+
     return None
 
 def fetch_profile_cached():
