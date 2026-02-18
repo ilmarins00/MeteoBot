@@ -329,6 +329,18 @@ def main():
         print(f"Errore parsing ARPAL: {e}")
         return
 
+    # TEST TEMPORANEO ACTIONS: forza allerta per verificare invio Telegram
+    parsed["dettaglio"] = {
+        "Bacini Piccoli": "Giallo",
+        "Bacini Medi": "Verde",
+        "Bacini Grandi": "Verde",
+        "Comuni Costieri": "Verde",
+        "Comuni Interni": "Verde",
+    }
+    parsed["max_livello"] = "Giallo"
+    parsed["max_criterio"] = "Bacini Piccoli"
+    parsed["emoji"] = "🟡"
+
     state = load_state()
     prev_max = state.get("max_livello")
     prev_detail = state.get("dettaglio", {})
