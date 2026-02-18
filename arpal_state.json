@@ -1,14 +1,15 @@
 {
   "dettaglio": {
-    "Bacini Piccoli": "Verde",
+    "Bacini Piccoli": "Giallo",
     "Bacini Medi": "Verde",
     "Bacini Grandi": "Verde",
-    "Comuni Costieri": "Sconosciuto",
-    "Comuni Interni": "Sconosciuto"
+    "Comuni Costieri": "Verde",
+    "Comuni Interni": "Verde"
   },
-  "max_livello": "Verde",
-  "max_criterio": "",
-  "emoji": "🟢",
+  "max_livello": "Giallo",
+  "max_criterio": "Bacini Piccoli",
+  "emoji": "🟡",
   "bacini_piccoli_hours": [],
-  "ora": 19
+  "ora": 19,
+  "notifica_inviata": true
 }
