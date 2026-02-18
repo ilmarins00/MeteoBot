@@ -3,13 +3,12 @@
     "Bacini Piccoli": "Verde",
     "Bacini Medi": "Verde",
     "Bacini Grandi": "Verde",
-    "Comuni Costieri": "Verde",
-    "Comuni Interni": "Verde"
+    "Comuni Costieri": "Sconosciuto",
+    "Comuni Interni": "Sconosciuto"
   },
   "max_livello": "Verde",
   "max_criterio": "",
   "emoji": "🟢",
   "bacini_piccoli_hours": [],
-  "ora": 0,
-  "notifica_inviata": false
+  "ora": 19
 }
