@@ -38,15 +38,25 @@ jobs:
       - name: Commit JSON aggiornati
         if: always()
         run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
           git add raffica.json || true
           if git diff --cached --quiet; then
             echo "Nessuna modifica da committare"
           else
             git commit -m "Aggiorna raffica.json da GitHub Actions [skip ci]"
-            git pull --rebase
-            git push
+            for i in 1 2 3; do
+              if git pull --rebase origin main && git push; then
+                echo "Push completato"
+                exit 0
+              fi
+              echo "Retry push ($i/3) tra 3 secondi..."
+              sleep 3
+            done
+            echo "Push fallito dopo 3 tentativi"
+            exit 1
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

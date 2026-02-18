@@ -767,6 +767,7 @@ def esegui_report():
         mucape_value = 0
         cin_value = 0
         li_value = None
+        bulk_shear = 0
         severe_score = 0
         severe_warning = None
         try:
@@ -777,6 +778,7 @@ def esegui_report():
                     mucape_value = sbcape_data.get("mucape") or 0
                     cin_value = sbcape_data.get("cin") or 0
                     li_value = sbcape_data.get("lifted_index")
+                    bulk_shear = sbcape_data.get("bulk_shear") or 0
                     severe_score = sbcape_data.get("severe_score") or 0
                     severe_warning = sbcape_data.get("severe_warning")
         except Exception as e:
@@ -846,7 +848,12 @@ def esegui_report():
             avvisi.append("🌊 AVVISO: MAREGGIATE")
 
         # precipitazioni e API/suolo
-        if sat_visualizzato >= 180:
+        if pioggia_1h > 15:
+            avvisi.append("🌧️ AVVISO: PIOGGIA MOLTO FORTE")
+        elif pioggia_1h >= 6:
+            avvisi.append("🌧️ AVVISO: PIOGGIA FORTE")
+
+        if sat_visualizzato >= 170:
             avvisi.append("⛰️ AVVISO: SUOLO SATURO")
             if pioggia_24h > 30:
                 avvisi.append("🌧️ AVVISO: CUMULATE MOLTO ELEVATE")
@@ -865,11 +872,20 @@ def esegui_report():
         if severe_warning:
             avvisi.append(severe_warning)
         else:
-            # Fallback: monitora SBCAPE e MUCAPE separatamente
-            if sbcape_value > 1500:
+            # Fallback: logica multi-parametro (più realistica)
+            # Nota: bulk_shear è un proxy 10m-120m, quindi soglie conservative.
+            max_cape = max(sbcape_value, mucape_value)
+            cin_abs = abs(cin_value)
+            li_ok = li_value is not None and li_value <= -2
+            shear_ok = bulk_shear >= 8
+
+            if (
+                max_cape >= 1200
+                and cin_abs <= 125
+                and li_ok
+                and shear_ok
+            ):
                 avvisi.append("⚡ AVVISO: RISCHIO FORTI TEMPORALI")
-            elif mucape_value > 800:
-                avvisi.append("⚡ AVVISO: INSTABILITÀ IN QUOTA")
         # ---------------------------------------------------------
         
         # Costruisci stringa con parametri avanzati (evita duplicati con gli avvisi)
@@ -883,6 +899,8 @@ def esegui_report():
             sbcape_lines.append(f"CIN: {cin_value} J/kg")
         if li_value is not None and "lifted index" not in avvisi_lower:
             sbcape_lines.append(f"Lifted Index: {li_value:+.1f}°C")
+        if bulk_shear:
+            sbcape_lines.append(f"Bulk Shear: {bulk_shear:.1f} m/s")
         if severe_score > 0 and "severe score" not in avvisi_lower:
             sbcape_lines.append(f"Severe Score: {severe_score}/12")
         sbcape_str = "\n".join(sbcape_lines) + ("\n" if sbcape_lines else "")
@@ -1003,28 +1021,23 @@ def esegui_report():
         
         # Allerta ARPAL gestita separatamente (monitor_arpal.py)
         
-        # Suolo molto saturo
-        if sat_visualizzato > 185:
-            eventi_significativi.append(f"API elevato: {sat_visualizzato} mm")
-        
-        # Instabilità convettiva - SBCAPE
-        if sbcape_value > 800:
-            eventi_significativi.append(f"SBCAPE: {sbcape_value} J/kg")
-        
-        # MUCAPE elevato (instabilità in quota)
-        if mucape_value > 500:
-            eventi_significativi.append(f"MUCAPE: {mucape_value} J/kg")
-        
-        # CIN debole (poca inibizione convettiva → facile innesco temporali)
-        if cin_value > -50 and sbcape_value > 300:
-            eventi_significativi.append(f"CIN: {cin_value} J/kg (debole - facile innesco)")
-        
-        # Lifted Index negativo (instabilità)
-        if li_value is not None and li_value < -3:
-            if li_value < -6:
-                eventi_significativi.append(f"LI: {li_value:.1f}°C (molto instabile)")
-            else:
-                eventi_significativi.append(f"LI: {li_value:.1f}°C (instabile)")
+        # Instabilità convettiva: trigger unico multi-parametro (più realistico)
+        max_cape = max(sbcape_value, mucape_value)
+        cin_abs = abs(cin_value)
+        li_ok = li_value is not None and li_value <= -2
+        shear_ok = bulk_shear >= 8
+        rischio_forti_temporali = (
+            max_cape >= 1200
+            and cin_abs <= 125
+            and li_ok
+            and shear_ok
+        )
+
+        if rischio_forti_temporali:
+            eventi_significativi.append(
+                f"Rischio forti temporali (CAPE {max_cape:.0f} J/kg, CIN {cin_value:.0f} J/kg, "
+                f"LI {li_value:.1f}°C, Shear {bulk_shear:.1f} m/s)"
+            )
         
         # Severe Score elevato
         if severe_score >= 7:

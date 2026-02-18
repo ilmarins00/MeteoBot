@@ -31,17 +31,36 @@ def get_auth_headers(method, url, token=None, body=""):
         headers['access_token'] = token
     return headers
 
+
+def request_json(url, headers, label, retries=3, timeout=20, delay=2):
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(url, headers=headers, timeout=timeout)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Errore API Tuya ({label}) tentativo {attempt}/{retries}: {e}")
+        except ValueError as e:
+            print(f"Risposta JSON non valida ({label}) tentativo {attempt}/{retries}: {e}")
+
+        if attempt < retries:
+            time.sleep(delay)
+
+    return None
+
 def get_wind_gust():
     # Verifica che le credenziali Tuya siano configurate
     if not ACCESS_ID or not ACCESS_SECRET or not DEVICE_ID:
         print("✗ TUYA non configurato: verifica TUYA_ACCESS_ID / TUYA_ACCESS_SECRET / TUYA_DEVICE_ID")
         return None
 
-    try:
-        token_url = "/v1.0/token?grant_type=1"
-        r = requests.get(ENDPOINT + token_url, headers=get_auth_headers("GET", token_url)).json()
-    except Exception as e:
-        print(f"Errore API Tuya (token): {e}")
+    token_url = "/v1.0/token?grant_type=1"
+    r = request_json(
+        ENDPOINT + token_url,
+        get_auth_headers("GET", token_url),
+        "token"
+    )
+    if r is None:
         return None
 
     if not r or not r.get("success") or "result" not in r or "access_token" not in r["result"]:
@@ -50,18 +69,30 @@ def get_wind_gust():
 
     token = r["result"]["access_token"]
     status_url = f"/v1.0/devices/{DEVICE_ID}/status"
-    try:
-        res = requests.get(ENDPOINT + status_url, headers=get_auth_headers("GET", status_url, token)).json()
-    except Exception as e:
-        print(f"Errore API Tuya (status): {e}")
+    res = request_json(
+        ENDPOINT + status_url,
+        get_auth_headers("GET", status_url, token),
+        "status"
+    )
+    if res is None:
         return None
 
     if not res or not res.get("success") or "result" not in res:
         print(f"Errore lettura device Tuya: risposta non valida. Dettaglio: {res}")
         return None
 
-    d = {item['code']: item['value'] for item in res.get("result", [])}
-    return d.get('windspeed_gust', 0) / 10
+    d = {item.get('code'): item.get('value') for item in res.get("result", []) if isinstance(item, dict)}
+    gust_raw = d.get('windspeed_gust')
+
+    if gust_raw is None or gust_raw == "":
+        print("Valore 'windspeed_gust' non presente nella risposta Tuya")
+        return None
+
+    try:
+        return float(gust_raw) / 10
+    except (TypeError, ValueError):
+        print(f"Valore 'windspeed_gust' non numerico: {gust_raw}")
+        return None
 
 def update_json_max(gust):
     now = datetime.now()
