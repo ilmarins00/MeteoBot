@@ -1,0 +1,20 @@
+name: MeteoBot - Cleanup Old Runs
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # ogni 15 minuti
+  workflow_dispatch: {}
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Elimina run più vecchi di 1 ora
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/cleanup_old_runs.py
