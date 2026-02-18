@@ -62,78 +62,7 @@ jobs:
               echo "{}" > /tmp/raffica_remote.json
             fi
 
-            python - <<'PY'
-import json
-from datetime import datetime
-
-
-def load_json(path):
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except Exception:
-        return None
-
-
-def to_record(obj):
-    if isinstance(obj, dict):
-        gust = obj.get("gust")
-        timestamp = obj.get("timestamp")
-        try:
-            gust = float(gust)
-        except Exception:
-            return None
-        return {"timestamp": timestamp if isinstance(timestamp, str) else None, "gust": gust}
-    if isinstance(obj, (int, float)):
-        return {"timestamp": None, "gust": float(obj)}
-    return None
-
-
-def hour_key(ts):
-    if not isinstance(ts, str):
-        return None
-    try:
-        return datetime.fromisoformat(ts).strftime("%Y-%m-%d %H")
-    except Exception:
-        return ts[:13] if len(ts) >= 13 else None
-
-
-remote = to_record(load_json("/tmp/raffica_remote.json"))
-local = to_record(load_json("/tmp/raffica_local.json"))
-
-chosen = None
-if remote and local:
-    h_remote = hour_key(remote.get("timestamp"))
-    h_local = hour_key(local.get("timestamp"))
-
-    if h_remote and h_local:
-        if h_remote == h_local:
-            chosen = local if local["gust"] >= remote["gust"] else remote
-        else:
-            chosen = local if h_local > h_remote else remote
-    elif h_local and not h_remote:
-        chosen = local
-    elif h_remote and not h_local:
-        chosen = remote
-    else:
-        chosen = local if local["gust"] >= remote["gust"] else remote
-elif local:
-    chosen = local
-elif remote:
-    chosen = remote
-
-if chosen is None:
-    chosen = {"timestamp": datetime.now().isoformat(), "gust": 0.0}
-
-if not chosen.get("timestamp"):
-    chosen["timestamp"] = datetime.now().isoformat()
-
-gust = round(float(chosen["gust"]), 1)
-out = {"timestamp": chosen["timestamp"], "gust": gust}
-
-with open("raffica.json", "w") as f:
-    json.dump(out, f)
-PY
+            python scripts/merge_raffica_json.py /tmp/raffica_remote.json /tmp/raffica_local.json raffica.json
 
             git add raffica.json
 
