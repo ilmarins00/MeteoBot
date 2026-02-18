@@ -41,14 +41,13 @@ jobs:
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
           git add raffica.json || true
           if git diff --cached --quiet; then
             echo "Nessuna modifica da committare"
           else
             git commit -m "Aggiorna raffica.json da GitHub Actions [skip ci]"
             for i in 1 2 3; do
-              if git pull --rebase origin main && git push; then
+              if git pull --rebase --autostash origin main && git push; then
                 echo "Push completato"
                 exit 0
               fi

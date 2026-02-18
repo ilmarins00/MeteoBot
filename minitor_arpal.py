@@ -49,7 +49,10 @@ def fetch_html() -> Optional[str]:
 def parse_zone_c(html: str) -> Dict[str, Any]:
     """Estrae i livelli dai blocchi della Zona C.
 
-    Restituisce dict con 'dettaglio' mappa criterio->colore, 'bacini_piccoli_hours' lista di ore con colore non-Verde.
+    Restituisce dict con:
+    - 'dettaglio': mappa criterio->colore
+    - 'bacini_piccoli_hours': lista di ore con colore non-Verde
+    - 'bacini_piccoli_timeline': lista [{'ora': 'HH', 'livello': 'Giallo/Arancione/Rosso'}]
     """
     # Primo tentativo: usare BeautifulSoup se disponibile (più robusto)
     try:
@@ -65,6 +68,7 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
 
         dettaglio: Dict[str, str] = {}
         bacini_piccoli_hours: List[str] = []
+        bacini_piccoli_timeline: List[Dict[str, str]] = []
 
         # Cerca tabelle nelle candidate e parsale
         for cand in candidates:
@@ -123,11 +127,14 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
 
                             if criterio == "Bacini Piccoli" and ore and colors_raw:
                                 hours_non_verdi = []
+                                timeline_non_verde = []
                                 for i, c in enumerate(colors_raw):
                                     colore = COLOR_MAP.get(c, "Sconosciuto")
                                     if colore != "Verde" and i < len(ore):
                                         hours_non_verdi.append(ore[i])
+                                        timeline_non_verde.append({"ora": ore[i], "livello": colore})
                                 bacini_piccoli_hours = hours_non_verdi
+                                bacini_piccoli_timeline = timeline_non_verde
 
                             dettaglio[criterio] = color or "Sconosciuto"
 
@@ -149,6 +156,7 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
             "max_criterio": max_criterio,
             "emoji": EMOJI.get(max_livello, "⚪"),
             "bacini_piccoli_hours": bacini_piccoli_hours,
+            "bacini_piccoli_timeline": bacini_piccoli_timeline,
             "ora": datetime.now().hour,
         }
     except Exception as e:
@@ -160,6 +168,7 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
             img_match = re.findall(r'AREA_C_(\w)\.png', html)
             dettaglio = {c: "Sconosciuto" for c in CRITERI}
             bacini_piccoli_hours = []
+            bacini_piccoli_timeline = []
             if img_match:
                 colore = COLOR_MAP.get(img_match[0], "Sconosciuto")
                 dettaglio = {c: colore for c in CRITERI}
@@ -171,6 +180,7 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
                     "max_criterio": max_criterio,
                     "emoji": EMOJI.get(max_livello, "⚪"),
                     "bacini_piccoli_hours": bacini_piccoli_hours,
+                    "bacini_piccoli_timeline": bacini_piccoli_timeline,
                     "ora": datetime.now().hour,
                 }
 
@@ -180,6 +190,7 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
         tables = list(re.finditer(r"<table[^>]*>(.*?)</table>", window, re.DOTALL))
         dettaglio = {}
         bacini_piccoli_hours = []
+        bacini_piccoli_timeline = []
         for tmatch in tables:
             table_html = tmatch.group(1)
             trs = re.findall(r"<tr[^>]*>(.*?)</tr>", table_html, re.DOTALL)
@@ -220,11 +231,14 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
                             color = mapped_sorted[0] if mapped_sorted else "Sconosciuto"
                         if criterio == "Bacini Piccoli" and ore and colors:
                             hours_non_verdi = []
+                            timeline_non_verde = []
                             for i, c in enumerate(colors):
                                 colore = COLOR_MAP.get(c, "Sconosciuto")
                                 if colore != "Verde" and i < len(ore):
                                     hours_non_verdi.append(ore[i])
+                                    timeline_non_verde.append({"ora": ore[i], "livello": colore})
                             bacini_piccoli_hours = hours_non_verdi
+                            bacini_piccoli_timeline = timeline_non_verde
                         dettaglio[criterio] = color or "Sconosciuto"
 
         max_livello = "Verde"
@@ -240,6 +254,7 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
             "max_criterio": max_criterio,
             "emoji": EMOJI.get(max_livello, "⚪"),
             "bacini_piccoli_hours": bacini_piccoli_hours,
+            "bacini_piccoli_timeline": bacini_piccoli_timeline,
             "ora": datetime.now().hour,
         }
 
@@ -257,6 +272,7 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
         "max_criterio": max_criterio,
         "emoji": EMOJI.get(max_livello, "⚪"),
         "bacini_piccoli_hours": bacini_piccoli_hours,
+        "bacini_piccoli_timeline": [],
         "ora": datetime.now().hour,
     }
 
@@ -278,23 +294,26 @@ def save_state(state: Dict[str, Any]):
 
 def build_message(parsed: Dict[str, Any]) -> str:
     title = f"{parsed['emoji']} ALLERTA ARPAL - Zona C: {parsed['max_livello'].upper()}"
-    lines = [title, f"Criterio più grave: {parsed['max_criterio']}", ""]
-    # Mostra dettagli criteri
-    for crit, col in parsed.get("dettaglio", {}).items():
-        emoji = EMOJI.get(col, "⚪")
-        lines.append(f"{emoji} {crit}: {col}")
+    dettaglio = parsed.get("dettaglio", {})
+    criteri_line = ", ".join([f"{k}: {v}" for k, v in dettaglio.items()])
 
-    # Aggiungi informazioni ore per Bacini Piccoli
-    hours = parsed.get("bacini_piccoli_hours", [])
-    if hours:
-        hours_str = ", ".join(sorted(hours))
-        lines.append("")
-        lines.append(f"🕒 Ore allertamento (Bacini Piccoli): {hours_str}")
+    timeline = parsed.get("bacini_piccoli_timeline", [])
+    if timeline:
+        timeline_str = ", ".join([f"{item['ora']}:00 {item['livello']}" for item in timeline])
+        ore_line = f"Per i Bacini Piccoli, le ore di allertamento previste sono: {timeline_str}."
+    else:
+        ore_line = "Per i Bacini Piccoli non risultano ore di allertamento attive."
 
-    lines.append("")
-    lines.append(f"Fonte: {URL}")
-    lines.append(f"Orario rilevamento: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    return "\n".join(lines)
+    text = (
+        f"{title}\n"
+        f"Situazione attuale: livello massimo {parsed['max_livello']}"
+        f" (criterio più grave: {parsed['max_criterio']}).\n"
+        f"Dettaglio sintetico: {criteri_line}.\n"
+        f"{ore_line}\n"
+        f"Fonte: {URL}\n"
+        f"Orario rilevamento: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+    )
+    return text
 
 
 def send_telegram(text: str):
@@ -328,18 +347,6 @@ def main():
     except Exception as e:
         print(f"Errore parsing ARPAL: {e}")
         return
-
-    # TEST TEMPORANEO ACTIONS: forza allerta per verificare invio Telegram
-    parsed["dettaglio"] = {
-        "Bacini Piccoli": "Giallo",
-        "Bacini Medi": "Verde",
-        "Bacini Grandi": "Verde",
-        "Comuni Costieri": "Verde",
-        "Comuni Interni": "Verde",
-    }
-    parsed["max_livello"] = "Giallo"
-    parsed["max_criterio"] = "Bacini Piccoli"
-    parsed["emoji"] = "🟡"
 
     state = load_state()
     prev_max = state.get("max_livello")
