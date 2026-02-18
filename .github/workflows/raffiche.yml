@@ -7,7 +7,7 @@ on:
 
 concurrency:
   group: raffiche
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -38,24 +38,121 @@ jobs:
       - name: Commit JSON aggiornati
         if: always()
         run: |
-          set -e
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add raffica.json || true
-          if git diff --cached --quiet; then
-            echo "Nessuna modifica da committare"
-          else
-            git commit -m "Aggiorna raffica.json da GitHub Actions [skip ci]"
-            for i in 1 2 3; do
-              if git pull --rebase --autostash origin main && git push; then
-                echo "Push completato"
-                exit 0
-              fi
-              echo "Retry push ($i/3) tra 3 secondi..."
-              sleep 3
-            done
-            echo "Push fallito dopo 3 tentativi"
-            exit 1
+
+          if [ ! -f raffica.json ]; then
+            echo "raffica.json non trovato, nulla da committare"
+            exit 0
           fi
+
+          cp raffica.json /tmp/raffica_local.json
+
+          for i in 1 2 3; do
+            echo "Tentativo push $i/3..."
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            if git show origin/main:raffica.json > /tmp/raffica_remote.json 2>/dev/null; then
+              echo "Recuperato raffica.json remoto"
+            else
+              echo "{}" > /tmp/raffica_remote.json
+            fi
+
+            python - <<'PY'
+import json
+from datetime import datetime
+
+
+def load_json(path):
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def to_record(obj):
+    if isinstance(obj, dict):
+        gust = obj.get("gust")
+        timestamp = obj.get("timestamp")
+        try:
+            gust = float(gust)
+        except Exception:
+            return None
+        return {"timestamp": timestamp if isinstance(timestamp, str) else None, "gust": gust}
+    if isinstance(obj, (int, float)):
+        return {"timestamp": None, "gust": float(obj)}
+    return None
+
+
+def hour_key(ts):
+    if not isinstance(ts, str):
+        return None
+    try:
+        return datetime.fromisoformat(ts).strftime("%Y-%m-%d %H")
+    except Exception:
+        return ts[:13] if len(ts) >= 13 else None
+
+
+remote = to_record(load_json("/tmp/raffica_remote.json"))
+local = to_record(load_json("/tmp/raffica_local.json"))
+
+chosen = None
+if remote and local:
+    h_remote = hour_key(remote.get("timestamp"))
+    h_local = hour_key(local.get("timestamp"))
+
+    if h_remote and h_local:
+        if h_remote == h_local:
+            chosen = local if local["gust"] >= remote["gust"] else remote
+        else:
+            chosen = local if h_local > h_remote else remote
+    elif h_local and not h_remote:
+        chosen = local
+    elif h_remote and not h_local:
+        chosen = remote
+    else:
+        chosen = local if local["gust"] >= remote["gust"] else remote
+elif local:
+    chosen = local
+elif remote:
+    chosen = remote
+
+if chosen is None:
+    chosen = {"timestamp": datetime.now().isoformat(), "gust": 0.0}
+
+if not chosen.get("timestamp"):
+    chosen["timestamp"] = datetime.now().isoformat()
+
+gust = round(float(chosen["gust"]), 1)
+out = {"timestamp": chosen["timestamp"], "gust": gust}
+
+with open("raffica.json", "w") as f:
+    json.dump(out, f)
+PY
+
+            git add raffica.json
+
+            if git diff --cached --quiet; then
+              echo "Nessuna modifica da committare"
+              exit 0
+            fi
+
+            git commit -m "Aggiorna raffica.json da GitHub Actions [skip ci]"
+
+            if git push origin HEAD:main; then
+              echo "Push completato"
+              exit 0
+            fi
+
+            echo "Retry push ($i/3) tra 3 secondi..."
+            sleep 3
+          done
+
+          echo "Push fallito dopo 3 tentativi"
+          exit 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
