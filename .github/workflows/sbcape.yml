@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '15 * * * *'  # 15 minuti dopo l'ora
 
+concurrency:
+  group: sbcape
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -41,6 +45,7 @@ jobs:
             echo "Nessuna modifica da committare"
           else
             git commit -m "Aggiorna sbcape.json da GitHub Actions [skip ci]"
+            git pull --rebase
             git push
           fi
         env:

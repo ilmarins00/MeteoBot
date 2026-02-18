@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '0 * * * *'  # Ogni ora
 
+concurrency:
+  group: meteo
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -43,6 +47,7 @@ jobs:
             echo "Nessuna modifica da committare"
           else
             git commit -m "Aggiorna JSON da GitHub Actions [skip ci]"
+            git pull --rebase
             git push
           fi
         env:

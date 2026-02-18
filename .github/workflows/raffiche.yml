@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '10 * * * *'  # 10 minuti dopo l'ora
 
+concurrency:
+  group: raffiche
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -41,6 +45,7 @@ jobs:
             echo "Nessuna modifica da committare"
           else
             git commit -m "Aggiorna raffica.json da GitHub Actions [skip ci]"
+            git pull --rebase
             git push
           fi
         env:
