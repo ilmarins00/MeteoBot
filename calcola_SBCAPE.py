@@ -51,6 +51,10 @@ def get_auth_headers(method, url, token=None, body=""):
 
 def fetch_station_data_with_retry(max_retries=3):
     """Legge i dati reali dalla stazione meteo Tuya con retry logic"""
+    # Se le credenziali TUYA non sono impostate, esci in modo pulito
+    if not ACCESS_ID or not ACCESS_SECRET or not DEVICE_ID:
+        print("✗ TUYA non configurato: verifica TUYA_ACCESS_ID / TUYA_ACCESS_SECRET / TUYA_DEVICE_ID")
+        return None
     for attempt in range(max_retries):
         try:
             token_url = "/v1.0/token?grant_type=1"

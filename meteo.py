@@ -392,6 +392,11 @@ def get_auth_headers(method, url, token=None, body=""):
     return headers
 
 def esegui_report():
+    # Verifica che le credenziali Tuya siano configurate; se mancano, esci pulito
+    if not ACCESS_ID or not ACCESS_SECRET or not DEVICE_ID:
+        print("✗ TUYA non configurato: verifica TUYA_ACCESS_ID / TUYA_ACCESS_SECRET / TUYA_DEVICE_ID")
+        return
+
     token_url = "/v1.0/token?grant_type=1"
     try:
         r = requests.get(ENDPOINT + token_url, headers=get_auth_headers("GET", token_url), timeout=10).json()
