@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '5 * * * *'  # 5 minuti dopo l'ora
 
+concurrency:
+  group: arpal
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -39,6 +43,7 @@ jobs:
             echo "Nessuna modifica da committare"
           else
             git commit -m "Aggiorna arpal_state.json da GitHub Actions [skip ci]"
+            git pull --rebase
             git push
           fi
         env:
