@@ -3,7 +3,6 @@ name: MeteoBot - Monitor Raffiche
 on:
   workflow_dispatch: {}
   repository_dispatch:
-    types: [run-raffiche]
   schedule:
     - cron: '10 * * * *'  # 10 minuti dopo l'ora
 
