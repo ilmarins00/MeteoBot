@@ -428,9 +428,10 @@ def esegui_report():
     temp_ext = d.get('temp_current_external', 0) / 10
     umid_ext = d.get('humidity_outdoor', 0)
     pressione_locale = estrai_pressione_hpa(d)
-    if pressione_locale is None:
-        print("Pressione non disponibile da Tuya, uso fallback 1013.0 hPa")
-        pressione_locale = 1013.0
+    if True:
+        if pressione_locale is None:
+            print("Pressione non disponibile da Tuya, uso fallback 1013.0 hPa")
+            pressione_locale = 1013.0
         # Riduzione pressione al livello del mare con formula ipsometrica
         # P0 = P * exp(g * h / (Rd * T))
         # h = 100 m (altitudine Foce), T = temp_ext + 273.15
@@ -1059,8 +1060,17 @@ def esegui_report():
                 url_tg_photo = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
                 for chat_id in LISTA_CHAT:
                     try:
-                        requests.post(url_tg, data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'Markdown'}, timeout=10)
-                        print(f"✓ Messaggio inviato a {chat_id}")
+                        response = requests.post(
+                            url_tg,
+                            data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'Markdown'},
+                            timeout=10
+                        )
+                        response.raise_for_status()
+                        tg_payload = response.json()
+                        if tg_payload.get("ok"):
+                            print(f"✓ Messaggio inviato a {chat_id}")
+                        else:
+                            print(f"✗ Telegram API testo errore per {chat_id}: {tg_payload}")
                     except Exception as e:
                         print(f"✗ Errore Telegram testo: {e}")
             
@@ -1071,11 +1081,18 @@ def esegui_report():
                     for chat_id in LISTA_CHAT:
                         try:
                             grafico.seek(0)
-                            requests.post(url_tg_photo, 
+                            response = requests.post(
+                                url_tg_photo,
                                 data={'chat_id': chat_id},
                                 files={'photo': ('meteo_24h.png', grafico, 'image/png')},
-                                timeout=15)
-                            print(f"✓ Grafico inviato a {chat_id}")
+                                timeout=15
+                            )
+                            response.raise_for_status()
+                            tg_payload = response.json()
+                            if tg_payload.get("ok"):
+                                print(f"✓ Grafico inviato a {chat_id}")
+                            else:
+                                print(f"✗ Telegram API grafico errore per {chat_id}: {tg_payload}")
                         except Exception as e:
                             print(f"✗ Errore Telegram grafico: {e}")
                 else:

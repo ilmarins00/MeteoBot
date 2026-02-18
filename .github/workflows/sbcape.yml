@@ -5,11 +5,16 @@ on:
   schedule:
     - cron: '15 * * * *'  # 15 minuti dopo l'ora
 
+permissions:
+  contents: write
+
 jobs:
   run-sbcape:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -32,7 +37,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add sbcape.json || true
-          git commit -m "Aggiorna sbcape.json da GitHub Actions [skip ci]" || echo "Nessuna modifica da committare"
-          git push || echo "Push fallito"
+          if git diff --cached --quiet; then
+            echo "Nessuna modifica da committare"
+          else
+            git commit -m "Aggiorna sbcape.json da GitHub Actions [skip ci]"
+            git push
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

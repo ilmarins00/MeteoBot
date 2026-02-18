@@ -304,8 +304,17 @@ def send_telegram(text: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     for chat_id in LISTA_CHAT:
         try:
-            requests.post(url, data={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}, timeout=10)
-            print(f"Messaggio inviato a {chat_id}")
+            response = requests.post(
+                url,
+                data={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("ok"):
+                print(f"Messaggio inviato a {chat_id}")
+            else:
+                print(f"Errore Telegram API per {chat_id}: {payload}")
         except Exception as e:
             print(f"Errore invio Telegram a {chat_id}: {e}")
 
