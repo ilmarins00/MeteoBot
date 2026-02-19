@@ -301,20 +301,57 @@ def parse_vigilanza(html: str) -> Optional[str]:
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(html, "html.parser")
 
-        # Cerca div/section con parole chiave dell'avviso di vigilanza
-        keywords = [
-            "vigilanza", "avviso meteo", "avviso meteorologico",
-            "bollettino di vigilanza", "previsione",
-        ]
-        for tag in soup.find_all(["div", "section", "p", "span"]):
-            text = tag.get_text(strip=True)
-            text_lower = text.lower()
-            if any(kw in text_lower for kw in keywords):
-                # Deve essere un blocco significativo (non solo nav/footer)
-                if 30 < len(text) < 2000:
-                    # Pulisci spazi multipli
-                    cleaned = re.sub(r'\s+', ' ', text).strip()
-                    return cleaned
+        keyword_re = re.compile(
+            r"vigilanza|avviso\s+meteo(?:rologico)?|bollettino\s+di\s+vigilanza",
+            re.IGNORECASE,
+        )
+        nav_noise_re = re.compile(
+            r"\b(menu|homepage|messaggi|social\s+network|dati\s+in\s+tempo\s+reale|"
+            r"guida\s+all'?allerta|link\s+utili|contatti)\b",
+            re.IGNORECASE,
+        )
+
+        def normalize(text: str) -> str:
+            return re.sub(r"\s+", " ", text).strip()
+
+        def is_nav_like(text: str) -> bool:
+            lowered = text.lower()
+            if nav_noise_re.search(lowered):
+                return True
+            # testo tipico del menu: molte voci concatenate e quasi nessuna punteggiatura
+            if len(text) > 120 and text.count(".") == 0 and text.count(":") <= 1:
+                nav_hits = len(re.findall(r"homepage|messaggi|guida|contatti|social", lowered))
+                if nav_hits >= 2:
+                    return True
+            return False
+
+        candidates: List[tuple[int, str]] = []
+        for tag in soup.find_all(["div", "section", "article", "p"]):
+            text = normalize(tag.get_text(" ", strip=True))
+            if not text or len(text) < 35 or len(text) > 1200:
+                continue
+            if not keyword_re.search(text):
+                continue
+            if is_nav_like(text):
+                continue
+
+            score = 1
+            low = text.lower()
+            if "data emissione" in low:
+                score += 3
+            if "consulta il bollettino" in low:
+                score += 2
+            if "scarica il pdf" in low:
+                score += 1
+
+            cleaned = re.sub(r"(scarica\s+il\s+pdf\s*\([^\)]*\)\s*)+", "", text, flags=re.IGNORECASE)
+            cleaned = normalize(cleaned)
+            if cleaned:
+                candidates.append((score, cleaned))
+
+        if candidates:
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            return candidates[0][1]
     except Exception:
         pass
 
@@ -328,7 +365,10 @@ def parse_vigilanza(html: str) -> Optional[str]:
         if m:
             text = re.sub(r'<[^>]+>', '', m.group(0))
             text = re.sub(r'\s+', ' ', text).strip()
-            if 30 < len(text) < 1000:
+            if (
+                30 < len(text) < 1000
+                and not re.search(r"homepage|messaggi|social network|guida all'allerta", text, re.IGNORECASE)
+            ):
                 return text
     return None
 
@@ -387,10 +427,12 @@ def build_message(parsed: Dict[str, Any], vigilanza: Optional[str] = None) -> st
         vig_trunc = vigilanza[:400] + "..." if len(vigilanza) > 400 else vigilanza
         vig_str = f"\n📋 *Vigilanza meteorologica:*\n{vig_trunc}\n"
 
+    criterio_max = parsed.get('max_criterio') or 'n/d'
+
     text = (
         f"{title}\n"
         f"Livello massimo: {parsed['max_livello']}"
-        f" (criterio più grave: {parsed.get('max_criterio', 'n/d')})\n\n"
+        f" (criterio più grave: {criterio_max})\n\n"
         f"📊 *Dettaglio criteri:*\n{criteri_block}\n"
         f"{sotto_str}\n"
         f"{ore_line}\n"

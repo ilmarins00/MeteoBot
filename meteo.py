@@ -1255,6 +1255,7 @@ def esegui_report():
         # Calcola pioggia 24h reale sommando i pioggia_1h dallo storico
         # Il sensore resetta il contatore rain_24h ogni giorno, quindi non è affidabile
         # Sommiamo i campioni orari delle ultime 24h dallo storico + il valore corrente
+        now_it = datetime.now(TZ_ROME)
         _storico_tmp = carica_storico()
         _cutoff_24h = now_it - timedelta(hours=24)
         _pioggia_24h_somma = 0.0
@@ -1303,7 +1304,6 @@ def esegui_report():
         # Parametri specifici per La Spezia - Foce (suolo costiero/urbano)
         # Usa FILE_MEMORIA importato da config, non sovrascrivere
         
-        now_it = datetime.now(TZ_ROME)
         mese_corrente = now_it.month
         oggi_str = now_it.strftime("%Y-%m-%d")
         giorno_anno = now_it.timetuple().tm_yday
@@ -1962,11 +1962,11 @@ def esegui_report():
         
         # Invia solo se necessario
         if devo_inviare:
+            url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+            url_tg_photo = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
             if not TELEGRAM_TOKEN or not LISTA_CHAT:
                 print("✗ Telegram non configurato (manca token o lista chat); salto invio")
             else:
-                url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                url_tg_photo = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
                 for chat_id in LISTA_CHAT:
                     try:
                         response = requests.post(
@@ -1984,7 +1984,7 @@ def esegui_report():
                         print(f"✗ Errore Telegram testo: {e}")
             
             # Genera e invia grafico 24h alle 11:58/59 e 23:58/59
-            if e_orario_grafico:
+            if e_orario_grafico and TELEGRAM_TOKEN and LISTA_CHAT:
                 try:
                     grafico = genera_grafico_24h(storico)
                     if grafico:
