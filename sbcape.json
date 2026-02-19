@@ -1,14 +1,14 @@
 {
     "sbcape": 0.0,
-    "mucape": 2.78,
-    "mu_level": 843.0,
+    "mucape": 139.08,
+    "mu_level": 893.0,
     "cin": 0.0,
-    "lifted_index": 6.31,
-    "lcl_pressure": 990.2,
+    "lifted_index": 5.5,
+    "lcl_pressure": 996.2,
     "lfc_pressure": null,
     "el_pressure": null,
-    "bulk_shear": 8.0,
-    "timestamp": "2026-02-19T02:55:30.156529",
+    "bulk_shear": 10.4,
+    "timestamp": "2026-02-19T03:55:28.404055",
     "location": "La Spezia (44.124444, 9.798167) - 100m",
     "unit": "J/kg",
     "calculation_method": "Advanced thermodynamic integration v2.0",
@@ -16,12 +16,17 @@
     "profile_model": "AROME France (2.5km)",
     "parameters": {
         "temperature_surface": 10.8,
-        "dewpoint_surface": 9.3,
-        "rh_surface": 91.0,
+        "dewpoint_surface": 9.7,
+        "rh_surface": 93.0,
         "pressure_surface": 1013.0,
-        "mixing_ratio_surface": 7.27,
+        "mixing_ratio_surface": 7.47,
         "profile_levels": 52,
         "interpolated": true
     },
-    "severe_score": 2
+    "severe_score": 4,
+    "severe_warning": "\u26a1 AVVISO: TEMPORALI FORTI POSSIBILI",
+    "severe_reasons": [
+        "CAP debole/assente",
+        "Shear moderato (10.4 m/s)"
+    ]
 }
