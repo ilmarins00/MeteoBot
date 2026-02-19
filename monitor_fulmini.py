@@ -21,6 +21,7 @@ import json
 import os
 import sys
 import io
+import re
 import math
 import time
 import requests
@@ -120,7 +121,23 @@ def collect_strikes_websocket(
                         raw = ws.recv()
                         if not raw:
                             continue
-                        data = json.loads(raw)
+
+                        # Blitzortung può inviare dati con timestamp in formato
+                        # non-JSON standard (es. 1234567890123456789 senza virgolette).
+                        # Tentiamo parsing JSON; se fallisce, proviamo un fix.
+                        try:
+                            data = json.loads(raw)
+                        except json.JSONDecodeError:
+                            # Log solo i primi messaggi malformati per debug
+                            if total_received == 0:
+                                print(f"  Raw non-JSON (primo msg): {raw[:120]}")
+                            # Prova a sistemare numeri grandi non quotati
+                            fixed = re.sub(r':\s*(\d{16,})\s*([,}])', r':"\1"\2', raw)
+                            try:
+                                data = json.loads(fixed)
+                            except json.JSONDecodeError:
+                                continue  # Messaggio irrecuperabile, skip
+
                         total_received += 1
 
                         lat = data.get("lat")
@@ -161,8 +178,11 @@ def collect_strikes_websocket(
                         print(f"Connessione persa ({type(e).__name__})")
                         connected = False
                         break
+                    except (ValueError, KeyError, TypeError) as e:
+                        # Errori di parsing dati — non fatali, continua
+                        continue
                     except Exception as e:
-                        print(f"Errore recv imprevisto: {e}")
+                        print(f"Errore recv imprevisto: {type(e).__name__}: {e}")
                         connected = False
                         break
 
