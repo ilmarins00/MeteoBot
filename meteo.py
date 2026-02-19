@@ -132,120 +132,160 @@ def calcola_tendenza_barometrica(storico, pressione_attuale):
  
 
 def genera_grafico_24h(storico):
-    """Genera un grafico con temperatura, pressione, pioggia e indici delle ultime 24h.
-    Restituisce un buffer BytesIO con l'immagine PNG."""
+    """Genera un grafico a 2 riquadri delle ultime 24h.
+    Riquadro 1 (base): Temperatura, Umidità, Punto di rugiada, Pioggia 1h, Pioggia 24h, Raffica.
+    Riquadro 2 (tecnico): Pressione MSL, API, SBCAPE, MUCAPE, Bulk Shear.
+    Restituisce un buffer BytesIO con l'immagine PNG, oppure None."""
     if len(storico) < 3:
         return None
-    
+
     try:
         timestamps = []
         temperature = []
-        pressioni = []
-        piogge = []
         umidita = []
+        dew_points = []
+        piogge_1h = []
+        piogge_24h = []
+        raffiche = []
+        pressioni = []
         api_values = []
         sbcape_values = []
         mucape_values = []
-        theta_e_values = []
-        
+        shear_values = []
+
         for s in storico:
             try:
                 ts = datetime.fromisoformat(s["ts"])
                 timestamps.append(ts)
-                temperature.append(s.get("temp", None))
-                pressioni.append(s.get("pressione", None))
-                piogge.append(s.get("pioggia_1h", 0))
-                umidita.append(s.get("umidita", None))
-                api_values.append(s.get("api", None))
-                sbcape_values.append(s.get("sbcape", None))
-                mucape_values.append(s.get("mucape", None))
-                theta_e_values.append(s.get("theta_e", None))
-            except:
+                temperature.append(s.get("temp"))
+                umidita.append(s.get("umidita"))
+                dew_points.append(s.get("dew_point"))
+                piogge_1h.append(s.get("pioggia_1h", 0))
+                piogge_24h.append(s.get("pioggia_24h", 0))
+                raffiche.append(s.get("raffica"))
+                pressioni.append(s.get("pressione"))
+                api_values.append(s.get("api"))
+                sbcape_values.append(s.get("sbcape"))
+                mucape_values.append(s.get("mucape"))
+                shear_values.append(s.get("bulk_shear"))
+            except Exception:
                 continue
-        
+
         if len(timestamps) < 3:
             return None
-        
-        fig, axes = plt.subplots(4, 1, figsize=(11, 11), sharex=True)
-        fig.suptitle('Stazione Meteo La Spezia - Foce (24h)', fontsize=14, fontweight='bold')
-        
-        # --- Temperatura ---
-        ax1 = axes[0]
-        temp_valide = [(t, v) for t, v in zip(timestamps, temperature) if v is not None]
-        if temp_valide:
-            t_ts, t_vals = zip(*temp_valide)
-            ax1.plot(t_ts, t_vals, color='#e74c3c', linewidth=2, marker='.', markersize=4)
-            ax1.fill_between(t_ts, t_vals, alpha=0.15, color='#e74c3c')
-        ax1.set_ylabel('Temperatura (°C)', fontsize=10)
-        ax1.grid(True, alpha=0.3)
-        ax1.tick_params(labelsize=8)
-        
-        # --- Pressione MSL ---
-        ax2 = axes[1]
-        pres_valide = [(t, v) for t, v in zip(timestamps, pressioni) if v is not None]
-        if pres_valide:
-            p_ts, p_vals = zip(*pres_valide)
-            ax2.plot(p_ts, p_vals, color='#3498db', linewidth=2, marker='.', markersize=4)
-            ax2.fill_between(p_ts, p_vals, alpha=0.15, color='#3498db')
-        ax2.set_ylabel('Pressione MSL (hPa)', fontsize=10)
-        ax2.grid(True, alpha=0.3)
-        ax2.tick_params(labelsize=8)
-        
-        # --- Pioggia + Umidità ---
-        ax3 = axes[2]
-        ax3.bar(timestamps, piogge, width=0.03, color='#2ecc71', alpha=0.7, label='Pioggia 1h (mm)')
-        ax3.set_ylabel('Pioggia (mm)', fontsize=10, color='#2ecc71')
-        ax3.tick_params(axis='y', labelcolor='#2ecc71', labelsize=8)
-        ax3.grid(True, alpha=0.3)
-        
-        ax3b = ax3.twinx()
-        umid_valide = [(t, v) for t, v in zip(timestamps, umidita) if v is not None]
-        if umid_valide:
-            u_ts, u_vals = zip(*umid_valide)
-            ax3b.plot(u_ts, u_vals, color='#9b59b6', linewidth=1.5, alpha=0.7, label='Umidità %')
-        ax3b.set_ylabel('Umidità (%)', fontsize=10, color='#9b59b6')
-        ax3b.tick_params(axis='y', labelcolor='#9b59b6', labelsize=8)
-        ax3b.set_ylim(0, 105)
 
-        # --- API + SBCAPE + MUCAPE + Theta-e ---
-        ax4 = axes[3]
-        api_valide = [(t, v) for t, v in zip(timestamps, api_values) if isinstance(v, (int, float))]
-        if api_valide:
-            a_ts, a_vals = zip(*api_valide)
-            ax4.plot(a_ts, a_vals, color='#16a085', linewidth=2, marker='.', markersize=3)
-        ax4.set_ylabel('API (mm)', fontsize=9, color='#16a085')
-        ax4.tick_params(axis='y', labelcolor='#16a085', labelsize=8)
-        ax4.grid(True, alpha=0.3)
+        # Helper: filtra coppie (ts, val) non-None
+        def _filt(ts_list, val_list):
+            return list(zip(*[(t, v) for t, v in zip(ts_list, val_list) if isinstance(v, (int, float))])) or ([], [])
 
-        ax4b = ax4.twinx()
-        sb_valide = [(t, v) for t, v in zip(timestamps, sbcape_values) if isinstance(v, (int, float))]
-        mu_valide = [(t, v) for t, v in zip(timestamps, mucape_values) if isinstance(v, (int, float))]
-        if sb_valide:
-            sb_ts, sb_vals = zip(*sb_valide)
-            ax4b.plot(sb_ts, sb_vals, color='#f39c12', linewidth=1.5, alpha=0.85)
-        if mu_valide:
-            mu_ts, mu_vals = zip(*mu_valide)
-            ax4b.plot(mu_ts, mu_vals, color='#c0392b', linewidth=1.5, alpha=0.85, linestyle='--')
-        ax4b.set_ylabel('CAPE (J/kg)', fontsize=9, color='#f39c12')
-        ax4b.tick_params(axis='y', labelcolor='#f39c12', labelsize=8)
+        fig, (ax_base, ax_tech) = plt.subplots(2, 1, figsize=(11, 8), sharex=True)
+        fig.suptitle('Stazione Meteo La Spezia — Foce (24h)', fontsize=14, fontweight='bold')
 
-        ax4c = ax4.twinx()
-        ax4c.spines['right'].set_position(('axes', 1.1))
-        th_valide = [(t, v) for t, v in zip(timestamps, theta_e_values) if isinstance(v, (int, float))]
-        if th_valide:
-            th_ts, th_vals = zip(*th_valide)
-            ax4c.plot(th_ts, th_vals, color='#8e44ad', linewidth=1.3, alpha=0.8)
-        ax4c.set_ylabel('Theta-e (°C)', fontsize=9, color='#8e44ad')
-        ax4c.tick_params(axis='y', labelcolor='#8e44ad', labelsize=8)
-        
+        # ==================== RIQUADRO 1 — DATI BASE ====================
+        # Asse sinistro: Temperatura (°C), Punto di rugiada (°C)
+        ts_t, vals_t = _filt(timestamps, temperature)
+        ts_d, vals_d = _filt(timestamps, dew_points)
+        if ts_t:
+            ax_base.plot(ts_t, vals_t, color='#e74c3c', linewidth=2, marker='.', markersize=4, label='Temperatura (°C)')
+        if ts_d:
+            ax_base.plot(ts_d, vals_d, color='#1abc9c', linewidth=1.5, linestyle='--', marker='.', markersize=3, label='Punto rugiada (°C)')
+        ax_base.set_ylabel('°C', fontsize=10)
+        ax_base.grid(True, alpha=0.3)
+        ax_base.tick_params(labelsize=8)
+
+        # Asse destro 1: Umidità (%)
+        ax_base_rh = ax_base.twinx()
+        ts_u, vals_u = _filt(timestamps, umidita)
+        if ts_u:
+            ax_base_rh.plot(ts_u, vals_u, color='#9b59b6', linewidth=1.3, alpha=0.7, label='Umidità (%)')
+        ax_base_rh.set_ylabel('Umidità (%)', fontsize=9, color='#9b59b6')
+        ax_base_rh.tick_params(axis='y', labelcolor='#9b59b6', labelsize=8)
+        ax_base_rh.set_ylim(0, 105)
+
+        # Barre pioggia (1h e 24h) sovrapposte
+        ax_base_rain = ax_base.twinx()
+        ax_base_rain.spines['right'].set_position(('axes', 1.10))
+        ax_base_rain.bar(timestamps, piogge_24h, width=0.035, color='#2980b9', alpha=0.3, label='Pioggia 24h (mm)')
+        ax_base_rain.bar(timestamps, piogge_1h, width=0.025, color='#2ecc71', alpha=0.7, label='Pioggia 1h (mm)')
+        ax_base_rain.set_ylabel('Pioggia (mm)', fontsize=9, color='#2ecc71')
+        ax_base_rain.tick_params(axis='y', labelcolor='#2ecc71', labelsize=8)
+
+        # Raffiche (km/h) come scatter
+        ax_base_wind = ax_base.twinx()
+        ax_base_wind.spines['right'].set_position(('axes', 1.20))
+        ts_r, vals_r = _filt(timestamps, raffiche)
+        if ts_r:
+            ax_base_wind.scatter(ts_r, vals_r, color='#e67e22', s=14, marker='^', alpha=0.8, label='Raffica (km/h)', zorder=5)
+            ax_base_wind.plot(ts_r, vals_r, color='#e67e22', linewidth=1, alpha=0.4)
+        ax_base_wind.set_ylabel('Raffica (km/h)', fontsize=9, color='#e67e22')
+        ax_base_wind.tick_params(axis='y', labelcolor='#e67e22', labelsize=8)
+
+        # Legenda riquadro 1
+        lines_1 = []
+        labels_1 = []
+        for ax_tmp in [ax_base, ax_base_rh, ax_base_rain, ax_base_wind]:
+            h, l = ax_tmp.get_legend_handles_labels()
+            lines_1.extend(h)
+            labels_1.extend(l)
+        if lines_1:
+            ax_base.legend(lines_1, labels_1, loc='upper left', fontsize=7, ncol=3, framealpha=0.7)
+
+        # ==================== RIQUADRO 2 — DATI TECNICI ====================
+        # Asse sinistro: Pressione MSL (hPa)
+        ts_p, vals_p = _filt(timestamps, pressioni)
+        if ts_p:
+            ax_tech.plot(ts_p, vals_p, color='#3498db', linewidth=2, marker='.', markersize=4, label='Pressione MSL (hPa)')
+        ax_tech.set_ylabel('Pressione (hPa)', fontsize=10, color='#3498db')
+        ax_tech.tick_params(axis='y', labelcolor='#3498db', labelsize=8)
+        ax_tech.grid(True, alpha=0.3)
+
+        # Asse destro 1: API (mm)
+        ax_tech_api = ax_tech.twinx()
+        ts_a, vals_a = _filt(timestamps, api_values)
+        if ts_a:
+            ax_tech_api.plot(ts_a, vals_a, color='#16a085', linewidth=1.8, marker='.', markersize=3, label='API (mm)')
+        ax_tech_api.set_ylabel('API (mm)', fontsize=9, color='#16a085')
+        ax_tech_api.tick_params(axis='y', labelcolor='#16a085', labelsize=8)
+
+        # Asse destro 2: SBCAPE + MUCAPE (J/kg)
+        ax_tech_cape = ax_tech.twinx()
+        ax_tech_cape.spines['right'].set_position(('axes', 1.10))
+        ts_sb, vals_sb = _filt(timestamps, sbcape_values)
+        ts_mu, vals_mu = _filt(timestamps, mucape_values)
+        if ts_sb:
+            ax_tech_cape.plot(ts_sb, vals_sb, color='#f39c12', linewidth=1.5, alpha=0.85, label='SBCAPE (J/kg)')
+        if ts_mu:
+            ax_tech_cape.plot(ts_mu, vals_mu, color='#c0392b', linewidth=1.5, alpha=0.85, linestyle='--', label='MUCAPE (J/kg)')
+        ax_tech_cape.set_ylabel('CAPE (J/kg)', fontsize=9, color='#f39c12')
+        ax_tech_cape.tick_params(axis='y', labelcolor='#f39c12', labelsize=8)
+
+        # Asse destro 3: Bulk Shear (m/s)
+        ax_tech_shear = ax_tech.twinx()
+        ax_tech_shear.spines['right'].set_position(('axes', 1.20))
+        ts_sh, vals_sh = _filt(timestamps, shear_values)
+        if ts_sh:
+            ax_tech_shear.plot(ts_sh, vals_sh, color='#8e44ad', linewidth=1.3, alpha=0.8, label='Shear (m/s)')
+        ax_tech_shear.set_ylabel('Shear (m/s)', fontsize=9, color='#8e44ad')
+        ax_tech_shear.tick_params(axis='y', labelcolor='#8e44ad', labelsize=8)
+
+        # Legenda riquadro 2
+        lines_2 = []
+        labels_2 = []
+        for ax_tmp in [ax_tech, ax_tech_api, ax_tech_cape, ax_tech_shear]:
+            h, l = ax_tmp.get_legend_handles_labels()
+            lines_2.extend(h)
+            labels_2.extend(l)
+        if lines_2:
+            ax_tech.legend(lines_2, labels_2, loc='upper left', fontsize=7, ncol=3, framealpha=0.7)
+
         # Formattazione asse X
-        ax4.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M', tz=TZ_ROME))
-        ax4.xaxis.set_major_locator(mdates.HourLocator(interval=3))
-        ax4.set_xlabel('Ora', fontsize=10)
+        ax_tech.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M', tz=TZ_ROME))
+        ax_tech.xaxis.set_major_locator(mdates.HourLocator(interval=3))
+        ax_tech.set_xlabel('Ora', fontsize=10)
         plt.xticks(rotation=45)
-        
+
         fig.tight_layout()
-        
+
         buf = io.BytesIO()
         fig.savefig(buf, format='png', dpi=120, bbox_inches='tight')
         buf.seek(0)
@@ -1635,6 +1675,7 @@ def esegui_report():
             "api": sat_visualizzato,
             "sbcape": sbcape_value,
             "mucape": mucape_value,
+            "bulk_shear": bulk_shear,
             "theta_e": classifica_massa_aria(temp_ext, dew_point, pressione_msl, mese_corrente).get("theta_e")
         })
         salva_storico(storico)
@@ -1812,7 +1853,7 @@ def esegui_report():
         orari_report = [5, 11, 17, 23]
         minuti_report = [58, 59]
         e_orario_programmato = ora_corrente in orari_report and minuto_corrente in minuti_report
-        e_orario_grafico = ora_corrente == 23 and minuto_corrente in minuti_report
+        e_orario_grafico = ora_corrente in [11, 23] and minuto_corrente in minuti_report
         
         # 2. Eventi meteo significativi
         eventi_significativi = []
@@ -1903,29 +1944,32 @@ def esegui_report():
                     except Exception as e:
                         print(f"✗ Errore Telegram testo: {e}")
             
-            # Genera e invia grafico 24h solo alle 23:58/23:59
+            # Genera e invia grafico 24h alle 11:58/59 e 23:58/59
             if e_orario_grafico:
-                grafico = genera_grafico_24h(storico)
-                if grafico:
-                    for chat_id in LISTA_CHAT:
-                        try:
-                            grafico.seek(0)
-                            response = requests.post(
-                                url_tg_photo,
-                                data={'chat_id': chat_id},
-                                files={'photo': ('meteo_24h.png', grafico, 'image/png')},
-                                timeout=15
-                            )
-                            response.raise_for_status()
-                            tg_payload = response.json()
-                            if tg_payload.get("ok"):
-                                print(f"✓ Grafico inviato a {chat_id}")
-                            else:
-                                print(f"✗ Telegram API grafico errore per {chat_id}: {tg_payload}")
-                        except Exception as e:
-                            print(f"✗ Errore Telegram grafico: {e}")
-                else:
-                    print("⏭️  Grafico non generato (dati insufficienti)")
+                try:
+                    grafico = genera_grafico_24h(storico)
+                    if grafico:
+                        for chat_id in LISTA_CHAT:
+                            try:
+                                grafico.seek(0)
+                                response = requests.post(
+                                    url_tg_photo,
+                                    data={'chat_id': chat_id},
+                                    files={'photo': ('meteo_24h.png', grafico, 'image/png')},
+                                    timeout=15
+                                )
+                                response.raise_for_status()
+                                tg_payload = response.json()
+                                if tg_payload.get("ok"):
+                                    print(f"✓ Grafico inviato a {chat_id}")
+                                else:
+                                    print(f"✗ Telegram API grafico errore per {chat_id}: {tg_payload}")
+                            except Exception as e:
+                                print(f"✗ Errore Telegram grafico: {e}")
+                    else:
+                        print("⏭️  Grafico non generato (dati insufficienti)")
+                except Exception as e_graf:
+                    print(f"⚠️  Errore grafico (non bloccante): {e_graf}")
 
 if __name__ == "__main__":
     import sys
