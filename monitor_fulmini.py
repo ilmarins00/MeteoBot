@@ -131,12 +131,26 @@ def collect_strikes_websocket(
                             f"ore {strike_dt.strftime('%H:%M:%S')}"
                         )
                 except websocket.WebSocketTimeoutException:
+                    # Nessun dato in 5s, normale — continua ad attendere
                     continue
+                except (
+                    websocket.WebSocketConnectionClosedException,
+                    websocket.WebSocketException,
+                    OSError,
+                    ConnectionResetError,
+                ) as e:
+                    # Connessione persa → esci dal loop, prova server successivo
+                    print(f"Connessione persa ({type(e).__name__}), cambio server")
+                    break
                 except Exception as e:
-                    print(f"Errore recv: {e}")
-                    continue
+                    # Qualsiasi altra eccezione imprevista: esci per sicurezza
+                    print(f"Errore imprevisto recv: {e}")
+                    break
 
-            ws.close()
+            try:
+                ws.close()
+            except Exception:
+                pass
             print(
                 f"Sessione completata: {total_received} scariche totali, "
                 f"{len(strikes_nearby)} entro {radius_km} km"
