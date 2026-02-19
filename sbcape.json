@@ -1,32 +1,27 @@
 {
-    "sbcape": 0.0,
-    "mucape": 139.08,
-    "mu_level": 893.0,
-    "cin": 0.0,
-    "lifted_index": 5.5,
-    "lcl_pressure": 996.2,
-    "lfc_pressure": null,
-    "el_pressure": null,
-    "bulk_shear": 10.4,
-    "timestamp": "2026-02-19T03:55:28.404055",
+    "sbcape": 0.21,
+    "mucape": 205.14,
+    "mu_level": 903.0,
+    "cin": -73.09,
+    "lifted_index": 3.28,
+    "lcl_pressure": 997.8,
+    "lfc_pressure": 773.0,
+    "el_pressure": 733.0,
+    "bulk_shear": 9.0,
+    "timestamp": "2026-02-19T04:55:27.726879",
     "location": "La Spezia (44.124444, 9.798167) - 100m",
     "unit": "J/kg",
     "calculation_method": "Advanced thermodynamic integration v2.0",
     "data_source": "Stazione Tuya (reale)",
     "profile_model": "AROME France (2.5km)",
     "parameters": {
-        "temperature_surface": 10.8,
-        "dewpoint_surface": 9.7,
-        "rh_surface": 93.0,
+        "temperature_surface": 11.6,
+        "dewpoint_surface": 10.6,
+        "rh_surface": 94.0,
         "pressure_surface": 1013.0,
-        "mixing_ratio_surface": 7.47,
+        "mixing_ratio_surface": 7.94,
         "profile_levels": 52,
         "interpolated": true
     },
-    "severe_score": 4,
-    "severe_warning": "\u26a1 AVVISO: TEMPORALI FORTI POSSIBILI",
-    "severe_reasons": [
-        "CAP debole/assente",
-        "Shear moderato (10.4 m/s)"
-    ]
+    "severe_score": 1
 }
