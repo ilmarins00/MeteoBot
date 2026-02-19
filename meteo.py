@@ -1199,7 +1199,15 @@ def get_auth_headers(method, url, token=None, body=""):
     if token: headers['access_token'] = token
     return headers
 
-def esegui_report():
+def esegui_report(force_send=False, target_chat_id=None):
+    """Genera e invia il report meteo.
+
+    Args:
+        force_send: Se True, invia sempre ignorando la logica smart.
+        target_chat_id: Se fornito, invia solo a questa chat.
+    """
+    _send_to = [str(target_chat_id)] if target_chat_id else LISTA_CHAT
+
     # Verifica che le credenziali Tuya siano configurate; se mancano, esci pulito
     if not ACCESS_ID or not ACCESS_SECRET or not DEVICE_ID:
         print("✗ TUYA non configurato: verifica TUYA_ACCESS_ID / TUYA_ACCESS_SECRET / TUYA_DEVICE_ID")
@@ -1947,7 +1955,7 @@ def esegui_report():
             eventi_significativi.append(f"Nuovi avvisi: {len(nuovi_avvisi)}")
         
         # 3. Decide se inviare
-        devo_inviare = e_orario_programmato or len(eventi_significativi) > 0
+        devo_inviare = force_send or e_orario_programmato or len(eventi_significativi) > 0
         
         # Debug
         if devo_inviare:
@@ -1964,10 +1972,10 @@ def esegui_report():
         if devo_inviare:
             url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
             url_tg_photo = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-            if not TELEGRAM_TOKEN or not LISTA_CHAT:
+            if not TELEGRAM_TOKEN or not _send_to:
                 print("✗ Telegram non configurato (manca token o lista chat); salto invio")
             else:
-                for chat_id in LISTA_CHAT:
+                for chat_id in _send_to:
                     try:
                         response = requests.post(
                             url_tg,
@@ -1984,11 +1992,11 @@ def esegui_report():
                         print(f"✗ Errore Telegram testo: {e}")
             
             # Genera e invia grafico 24h alle 11:58/59 e 23:58/59
-            if e_orario_grafico and TELEGRAM_TOKEN and LISTA_CHAT:
+            if (e_orario_grafico or force_send) and TELEGRAM_TOKEN and _send_to:
                 try:
                     grafico = genera_grafico_24h(storico)
                     if grafico:
-                        for chat_id in LISTA_CHAT:
+                        for chat_id in _send_to:
                             try:
                                 grafico.seek(0)
                                 response = requests.post(
@@ -2015,5 +2023,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--sbcape":
         # Modalità standalone: calcola solo SBCAPE e salva su JSON
         calcola_e_salva_sbcape()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--force":
+        esegui_report(force_send=True)
     else:
         esegui_report()
