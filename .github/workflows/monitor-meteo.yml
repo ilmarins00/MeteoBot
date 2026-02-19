@@ -1,13 +1,14 @@
-name: MeteoBot - Monitor OMIRL Radar
+name: MeteoBot - Monitor Meteo (OMIRL + Fulmini)
 
-# Trigger manuale via API (cronjob.org) o schedule di fallback.
+# Workflow unificato per i monitor OMIRL radar e Fulmini.
+# Trigger manuale via API (cronjob.org) — un solo cron per entrambi.
 #
 # ── Configurazione cronjob.org ─────────────────────────────────────────────
 # Method : POST
-# URL    : https://api.github.com/repos/ilmarins00/MeteoBot/actions/workflows/monitor-omirl.yml/dispatches
+# URL    : https://api.github.com/repos/ilmarins00/MeteoBot/actions/workflows/monitor-meteo.yml/dispatches
 # Headers:
 #   Accept        : application/vnd.github+json
-#   Authorization : Bearer <GITHUB_PAT>        ← Personal Access Token (scope: repo)
+#   Authorization : Bearer <GITHUB_PAT>
 #   X-GitHub-Api-Version: 2022-11-28
 # Body (JSON):
 #   {"ref": "main"}
@@ -18,14 +19,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: omirl
+  group: monitor-meteo
   cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  run-omirl:
+  run-monitors:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,16 +50,23 @@ jobs:
         run: |
           python monitor_omirl.py
 
+      - name: Run monitor_fulmini.py
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+        run: |
+          python monitor_fulmini.py
+
       - name: Commit stato aggiornato
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add omirl_state.json || true
+          git add omirl_state.json fulmini_state.json || true
           if git diff --cached --quiet; then
             echo "Nessuna modifica da committare"
           else
-            git commit -m "Aggiorna omirl_state.json [skip ci]"
+            git commit -m "Aggiorna stato monitor meteo [skip ci]"
             git pull --rebase
             git push
           fi

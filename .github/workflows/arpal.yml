@@ -27,12 +27,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run minitor_arpal.py
+      - name: Run monitor_arpal.py
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
         run: |
-          python minitor_arpal.py
+          python monitor_arpal.py
       - name: Commit JSON aggiornati
         if: always()
         run: |
