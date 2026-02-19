@@ -87,8 +87,9 @@ def find_exceeding_stations(
     return exceeding
 
 
-def fetch_rainviewer_image() -> Optional[bytes]:
-    """Scarica l'immagine radar composita più recente da RainViewer centrata su La Spezia."""
+def fetch_rainviewer_image() -> Tuple[Optional[bytes], Optional[str]]:
+    """Scarica l'immagine radar composita più recente da RainViewer centrata su La Spezia.
+    Restituisce (image_bytes, radar_time_str) o (None, None)."""
     try:
         r = requests.get(RAINVIEWER_API, timeout=10)
         r.raise_for_status()
@@ -96,12 +97,14 @@ def fetch_rainviewer_image() -> Optional[bytes]:
         radar_list = data.get("radar", {}).get("past", [])
         if not radar_list:
             print("Nessun frame radar disponibile da RainViewer")
-            return None
+            return None, None
         # Prendi il frame più recente
         latest = radar_list[-1]
         ts = latest.get("time", 0)
+        # Timestamp radar in ora locale
+        radar_dt = datetime.fromtimestamp(ts, tz=TZ_ROME)
+        radar_time_str = radar_dt.strftime("%d/%m/%Y %H:%M")
         # Tile zoom 7 centrato su La Spezia (~44.12, 9.80)
-        # Tile coordinates for z=7: x=floor((lon+180)/360*2^7), y=...
         import math
         z = 7
         n = 2 ** z
@@ -113,13 +116,12 @@ def fetch_rainviewer_image() -> Optional[bytes]:
         img_resp = requests.get(tile_url, timeout=15)
         img_resp.raise_for_status()
         if len(img_resp.content) < 500:
-            # Immagine troppo piccola, probabilmente vuota
             print(f"Immagine radar troppo piccola ({len(img_resp.content)} bytes), skip")
-            return None
-        return img_resp.content
+            return None, radar_time_str
+        return img_resp.content, radar_time_str
     except Exception as e:
         print(f"Errore fetch radar RainViewer: {e}")
-        return None
+        return None, None
 
 
 def arpal_level(value_mm: float) -> Tuple[str, str]:
@@ -134,7 +136,7 @@ def arpal_level(value_mm: float) -> Tuple[str, str]:
         return "Verde", "🟢"
 
 
-def build_message(exceeding: List[Dict], all_sp: List[Dict]) -> str:
+def build_message(exceeding: List[Dict], all_sp: List[Dict], radar_time: Optional[str] = None) -> str:
     """Costruisce il messaggio Telegram con dettaglio stazioni."""
     now_str = datetime.now(TZ_ROME).strftime("%d/%m/%Y %H:%M")
     max_station = exceeding[0]
@@ -161,10 +163,11 @@ def build_message(exceeding: List[Dict], all_sp: List[Dict]) -> str:
     n_totale = len(all_sp)
     n_pioggia = sum(1 for s in all_sp if float(s.get("last", 0) or 0) > 0)
 
+    radar_label = f"RainViewer · {radar_time}" if radar_time else "RainViewer"
     footer = (
         f"\n📊 Stazioni SP: {n_pioggia}/{n_totale} con pioggia"
         f"\n🔗 Fonte: OMIRL – Regione Liguria"
-        f"\n📡 Radar: RainViewer (composito europeo)"
+        f"\n📡 Radar: {radar_label}"
     )
 
     return header + "\n".join(lines) + footer
@@ -236,27 +239,24 @@ def send_telegram(text: str, image: Optional[bytes] = None):
             print(f"✗ Errore invio OMIRL a {chat_id}: {e}")
 
 
-def main():
-    force = "--force" in sys.argv
-
-    # 1. Fetch dati OMIRL
+def run_analysis(force: bool = False) -> Optional[Dict[str, Any]]:
+    """Esegue l'analisi OMIRL completa.
+    Ritorna un dict con {message, image, radar_time, exceeding} se c'è un'allerta,
+    oppure None se non c'è nulla da inviare."""
     rows = fetch_omirl_rain()
     if rows is None:
         print("Impossibile ottenere dati OMIRL, esco")
-        return
+        return None
 
-    # 2. Filtra distretto SP
     sp_stations = filter_sp_stations(rows)
     if not sp_stations:
         print("Nessuna stazione SP trovata nei dati OMIRL")
-        return
+        return None
     print(f"Stazioni SP trovate: {len(sp_stations)}")
 
-    # 3. Trova stazioni che superano la soglia
     soglia = thresholds.OMIRL_RAIN_TRIGGER
     exceeding = find_exceeding_stations(sp_stations, soglia)
 
-    # 4. Salva sempre lo stato corrente (utile per debug)
     state = load_state()
     state["last_check_ts"] = datetime.now(TZ_ROME).isoformat()
     state["n_stations_sp"] = len(sp_stations)
@@ -268,31 +268,46 @@ def main():
         print(f"Nessuna stazione SP supera {soglia} mm/h — tutto OK")
         state["status"] = "ok"
         save_state(state)
-        return
+        return None
 
     print(f"⚠️  {len(exceeding)} stazioni superano {soglia} mm/h:")
     for s in exceeding:
         print(f"  {s['name']} ({s['code']}): {s['last']:.1f} mm/h")
 
-    # 5. Controlla se dobbiamo inviare
     if not should_send(state, exceeding, force):
         save_state(state)
-        return
+        return None
 
-    # 6. Scarica immagine radar
-    radar_img = fetch_rainviewer_image()
+    radar_img, radar_time = fetch_rainviewer_image()
+    msg = build_message(exceeding, sp_stations, radar_time)
+    save_state(state)
 
-    # 7. Costruisci e invia messaggio
-    msg = build_message(exceeding, sp_stations)
-    send_telegram(msg, radar_img)
+    return {
+        "message": msg,
+        "image": radar_img,
+        "radar_time": radar_time,
+        "exceeding": exceeding,
+    }
 
-    # 8. Aggiorna stato
+
+def mark_sent(result: Dict[str, Any]):
+    """Aggiorna lo stato dopo un invio Telegram riuscito."""
+    state = load_state()
     state["status"] = "alert"
     state["last_send_ts"] = datetime.now(TZ_ROME).isoformat()
-    state["max_rain_mm"] = exceeding[0]["last"]
-    state["exceeding_stations"] = [s["code"] for s in exceeding]
+    state["max_rain_mm"] = result["exceeding"][0]["last"]
+    state["exceeding_stations"] = [s["code"] for s in result["exceeding"]]
     save_state(state)
-    print("Stato salvato")
+    print("OMIRL: stato aggiornato")
+
+
+def main():
+    force = "--force" in sys.argv
+    result = run_analysis(force)
+    if result is None:
+        return
+    send_telegram(result["message"], result.get("image"))
+    mark_sent(result)
 
 
 if __name__ == "__main__":

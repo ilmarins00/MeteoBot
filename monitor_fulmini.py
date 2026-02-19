@@ -307,17 +307,21 @@ def collect_strikes_from_state() -> List[Dict[str, Any]]:
     return valid
 
 
-def fetch_rainviewer_image() -> Optional[bytes]:
-    """Scarica l'immagine radar composita più recente centrata su La Spezia."""
+def fetch_rainviewer_image() -> Tuple[Optional[bytes], Optional[str]]:
+    """Scarica l'immagine radar composita più recente centrata su La Spezia.
+    Restituisce (image_bytes, radar_time_str) o (None, None)."""
     try:
         r = requests.get(RAINVIEWER_API, timeout=10)
         r.raise_for_status()
         data = r.json()
         radar_list = data.get("radar", {}).get("past", [])
         if not radar_list:
-            return None
+            return None, None
         latest = radar_list[-1]
         ts = latest.get("time", 0)
+        # Timestamp radar in ora locale
+        radar_dt = datetime.fromtimestamp(ts, tz=TZ_ROME)
+        radar_time_str = radar_dt.strftime("%d/%m/%Y %H:%M")
         z = 7
         n = 2 ** z
         x_tile = int((LONGITUDE + 180.0) / 360.0 * n)
@@ -333,15 +337,15 @@ def fetch_rainviewer_image() -> Optional[bytes]:
         img_resp = requests.get(tile_url, timeout=15)
         img_resp.raise_for_status()
         if len(img_resp.content) < 500:
-            return None
-        return img_resp.content
+            return None, radar_time_str
+        return img_resp.content, radar_time_str
     except Exception as e:
         print(f"Errore fetch radar: {e}")
-        return None
+        return None, None
 
 
 def build_message(
-    strikes: List[Dict], window_minutes: int
+    strikes: List[Dict], window_minutes: int, radar_time: Optional[str] = None
 ) -> str:
     """Costruisce il messaggio Telegram per allerta fulmini."""
     now_str = datetime.now(TZ_ROME).strftime("%d/%m/%Y %H:%M")
@@ -394,8 +398,9 @@ def build_message(
     else:
         msg += f"📡 Fonte: Blitzortung.org (rete europea)\n\n"
 
+    radar_label = f"RainViewer · {radar_time}" if radar_time else "RainViewer"
     msg += f"🗺️ [Mappa fulmini in tempo reale]({LIGHTNINGMAPS_URL})\n"
-    msg += f"📡 Radar: RainViewer"
+    msg += f"📡 Radar: {radar_label}"
     return msg
 
 
@@ -469,17 +474,13 @@ def send_telegram(text: str, image: Optional[bytes] = None):
             print(f"✗ Errore invio fulmini a {chat_id}: {e}")
 
 
-def main():
-    force = "--force" in sys.argv
-    listen_mode = "--listen" in sys.argv
-
+def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dict[str, Any]]:
+    """Esegue l'analisi fulmini completa.
+    Ritorna un dict con {message, image, radar_time, strikes, n} se c'è un'allerta,
+    oppure None se non c'è nulla da inviare."""
     radius = thresholds.LIGHTNING_RADIUS_KM
     threshold_count = thresholds.LIGHTNING_STRIKE_THRESHOLD
     window_min = thresholds.LIGHTNING_WINDOW_MINUTES
-
-    # Durata ascolto WebSocket: in modalità standard è 2 minuti,
-    # in modalità listen è la finestra completa
-    listen_seconds = window_min * 60 if listen_mode else 120
 
     print(
         f"Monitor fulmini: raggio {radius} km, "
@@ -499,7 +500,7 @@ def main():
         print("WebSocket senza dati → provo fallback Open-Meteo...")
         new_strikes = collect_strikes_openmeteo(radius_km=radius)
 
-    # 2. Combina con scariche recenti dallo stato (per copertura finestra completa)
+    # 3. Combina con scariche recenti dallo stato (per copertura finestra completa)
     state = load_state()
     old_strikes = collect_strikes_from_state()
 
@@ -512,7 +513,7 @@ def main():
             seen.add(key)
             all_strikes.append(s)
 
-    # 3. Aggiorna stato con scariche recenti
+    # 4. Aggiorna stato con scariche recenti
     cutoff = datetime.now(TZ_ROME) - timedelta(minutes=window_min)
     recent_valid = []
     for s in all_strikes:
@@ -521,10 +522,10 @@ def main():
             if t >= cutoff:
                 recent_valid.append(s)
         except Exception:
-            recent_valid.append(s)  # conserva se non parsabile
+            recent_valid.append(s)
 
     state["last_check_ts"] = datetime.now(TZ_ROME).isoformat()
-    state["recent_strikes"] = recent_valid[-200:]  # limita dimensione
+    state["recent_strikes"] = recent_valid[-200:]
     state["total_in_window"] = len(recent_valid)
 
     n = len(recent_valid)
@@ -534,28 +535,49 @@ def main():
         print("Sotto soglia, nessuna notifica")
         state["status"] = "ok"
         save_state(state)
-        return
+        return None
 
-    # 4. Soglia superata!
     print(f"⚡ SOGLIA SUPERATA: {n} scariche entro {radius} km!")
 
     if not should_send(state, n, force):
         save_state(state)
-        return
+        return None
 
-    # 5. Scarica immagine radar
-    radar_img = fetch_rainviewer_image()
+    radar_img, radar_time = fetch_rainviewer_image()
+    msg = build_message(recent_valid, window_min, radar_time)
+    save_state(state)
 
-    # 6. Costruisci e invia messaggio
-    msg = build_message(recent_valid, window_min)
-    send_telegram(msg, radar_img)
+    return {
+        "message": msg,
+        "image": radar_img,
+        "radar_time": radar_time,
+        "strikes": recent_valid,
+        "n": n,
+    }
 
-    # 7. Aggiorna stato
+
+def mark_sent(result: Dict[str, Any]):
+    """Aggiorna lo stato dopo un invio Telegram riuscito."""
+    state = load_state()
     state["status"] = "alert"
     state["last_send_ts"] = datetime.now(TZ_ROME).isoformat()
-    state["last_strike_count"] = n
+    state["last_strike_count"] = result["n"]
     save_state(state)
-    print("Stato salvato")
+    print("Fulmini: stato aggiornato")
+
+
+def main():
+    force = "--force" in sys.argv
+    listen_mode = "--listen" in sys.argv
+
+    window_min = thresholds.LIGHTNING_WINDOW_MINUTES
+    listen_seconds = window_min * 60 if listen_mode else 120
+
+    result = run_analysis(force=force, listen_seconds=listen_seconds)
+    if result is None:
+        return
+    send_telegram(result["message"], result.get("image"))
+    mark_sent(result)
 
 
 if __name__ == "__main__":

@@ -43,19 +43,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run monitor_omirl.py
+      - name: Run monitor meteo unificato
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
         run: |
-          python monitor_omirl.py
-
-      - name: Run monitor_fulmini.py
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
-        run: |
-          python monitor_fulmini.py
+          python send_monitors.py
 
       - name: Commit stato aggiornato
         if: always()
