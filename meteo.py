@@ -1249,8 +1249,34 @@ def esegui_report():
         T_k = temp_ext + 273.15 if temp_ext > -50 and temp_ext < 60 else 288.15
         pressione_msl = round(pressione_locale * math.exp(g * h / (Rd * T_k)), 1)
         v_medio = d.get('windspeed_avg', 0) / 10
-        pioggia_24h = d.get('rain_24h', 0) / 10
+        pioggia_24h_sensore = d.get('rain_24h', 0) / 10  # Dato grezzo dal sensore (resetta ogni 24h)
         pioggia_1h = d.get('rain_1h', 0) / 10  # Intensità pioggia ultima ora
+        
+        # Calcola pioggia 24h reale sommando i pioggia_1h dallo storico
+        # Il sensore resetta il contatore rain_24h ogni giorno, quindi non è affidabile
+        # Sommiamo i campioni orari delle ultime 24h dallo storico + il valore corrente
+        _storico_tmp = carica_storico()
+        _cutoff_24h = now_it - timedelta(hours=24)
+        _pioggia_24h_somma = 0.0
+        _ts_precedente = None
+        for _s in sorted(_storico_tmp, key=lambda x: x.get("ts", "")):
+            _ts_str = _s.get("ts")
+            if not _ts_str:
+                continue
+            try:
+                _ts_dt = datetime.fromisoformat(_ts_str)
+                if _ts_dt.tzinfo is None:
+                    _ts_dt = _ts_dt.replace(tzinfo=TZ_ROME)
+                if _ts_dt >= _cutoff_24h:
+                    _p1h = _s.get("pioggia_1h", 0) or 0
+                    if isinstance(_p1h, (int, float)) and _p1h > 0:
+                        _pioggia_24h_somma += _p1h
+            except Exception:
+                continue
+        # Aggiungi il campione corrente (non ancora nello storico)
+        _pioggia_24h_somma += max(pioggia_1h, 0)
+        pioggia_24h = round(_pioggia_24h_somma, 1)
+        print(f"  Pioggia 24h calcolata: {pioggia_24h} mm (sensore: {pioggia_24h_sensore} mm, somma storico+attuale)")
         
         # estrai raffica di vento da file locale (ora + valore)
         raffica = 0
@@ -1684,7 +1710,7 @@ def esegui_report():
         arpal_str = ""
         arpal_livello = "Verde"
         
-        # --- LOGICA AVVISI ---
+        # --- LOGICA AVVISI (soglie ARPAL Protezione Civile Liguria – Zona C) ---
         avvisi = []
         
         # ARPAL handled separately by monitor_arpal.py
@@ -1693,53 +1719,66 @@ def esegui_report():
         diff_temp_dew = temp_ext - dew_point
         if umid_ext >= 99 and diff_temp_dew <= 0.5:
             if v_medio < 5:
-                avvisi.append("🌫️ AVVISO: NEBBIA")
+                avvisi.append("🌫️ AVVISO: NEBBIA (T-Td ≤0.5°C, U≥99%)")
             else:
-                avvisi.append("🌫️ AVVISO: FOSCHIA")
+                avvisi.append("🌫️ AVVISO: FOSCHIA (T-Td ≤0.5°C, U≥99%)")
         
-        # vento: soglie crescenti
-        if raffica > 80:
-            avvisi.append("⚠️ AVVISO: BURRASCA FORTE")
-        elif raffica > 60:
-            avvisi.append("⚠️ AVVISO: BURRASCA")
-        elif raffica > 40:
-            avvisi.append("⚠️ AVVISO: VENTO FORTE")
+        # ── VENTO — soglie ARPAL raffiche ──
+        if raffica >= thresholds.ARPAL_WIND_ROSSO:
+            avvisi.append(f"🔴⚠️ AVVISO: BURRASCA FORTE — raffica {raffica} km/h (soglia ARPAL 🔴 ≥{thresholds.ARPAL_WIND_ROSSO:.0f} km/h)")
+        elif raffica >= thresholds.ARPAL_WIND_ARANCIONE:
+            avvisi.append(f"🟠⚠️ AVVISO: BURRASCA — raffica {raffica} km/h (soglia ARPAL 🟠 ≥{thresholds.ARPAL_WIND_ARANCIONE:.0f} km/h)")
+        elif raffica >= thresholds.ARPAL_WIND_GIALLO:
+            avvisi.append(f"🟡⚠️ AVVISO: VENTO FORTE — raffica {raffica} km/h (soglia ARPAL 🟡 ≥{thresholds.ARPAL_WIND_GIALLO:.0f} km/h)")
 
-        # temperatura
-        if temp_ext > 35:
-            avvisi.append("🔥 AVVISO: CALDO INTENSO")
-        elif temp_ext <= 0:
-            avvisi.append("❄️ AVVISO: GELO")
+        # ── TEMPERATURA — soglie ARPAL ondata di calore / gelo ──
+        if temp_ext >= thresholds.ARPAL_HEAT_ROSSO:
+            avvisi.append(f"🔴🔥 AVVISO: CALDO ESTREMO — {temp_ext}°C (soglia ARPAL 🔴 ≥{thresholds.ARPAL_HEAT_ROSSO:.0f}°C)")
+        elif temp_ext >= thresholds.ARPAL_HEAT_ARANCIONE:
+            avvisi.append(f"🟠🔥 AVVISO: CALDO MOLTO INTENSO — {temp_ext}°C (soglia ARPAL 🟠 ≥{thresholds.ARPAL_HEAT_ARANCIONE:.0f}°C)")
+        elif temp_ext >= thresholds.ARPAL_HEAT_GIALLO:
+            avvisi.append(f"🟡🔥 AVVISO: CALDO INTENSO — {temp_ext}°C (soglia ARPAL 🟡 ≥{thresholds.ARPAL_HEAT_GIALLO:.0f}°C)")
+        elif temp_ext <= thresholds.ARPAL_FROST_ROSSO:
+            avvisi.append(f"🔴❄️ AVVISO: GELO ESTREMO — {temp_ext}°C (soglia ARPAL 🔴 ≤{thresholds.ARPAL_FROST_ROSSO:.0f}°C)")
+        elif temp_ext <= thresholds.ARPAL_FROST_ARANCIONE:
+            avvisi.append(f"🟠❄️ AVVISO: GELO INTENSO — {temp_ext}°C (soglia ARPAL 🟠 ≤{thresholds.ARPAL_FROST_ARANCIONE:.0f}°C)")
+        elif temp_ext <= thresholds.ARPAL_FROST_GIALLO:
+            avvisi.append(f"🟡❄️ AVVISO: GELO — {temp_ext}°C (soglia ARPAL 🟡 ≤{thresholds.ARPAL_FROST_GIALLO:.0f}°C)")
 
-        # afa invariata
+        # Afa (non è soglia ARPAL diretta, indicazione di disagio bioclimatico)
         if temp_ext > 25 and umid_ext > 60:
             avvisi.append("🥵 AVVISO: AFA")
 
-        # pressione invariata (usa MSL per confronti standard)
-        if pressione_msl < 990:
-            avvisi.append("🌊 AVVISO: MAREGGIATE GRAVI")
-        elif pressione_msl < 995:
-            avvisi.append("🌊 AVVISO: MAREGGIATE")
+        # ── MAREGGIATE — pressione MSL indicativa ──
+        if pressione_msl < thresholds.ARPAL_STORM_SURGE_ROSSO:
+            avvisi.append(f"🔴🌊 AVVISO: MAREGGIATE GRAVI — {pressione_msl} hPa (soglia ARPAL 🔴 <{thresholds.ARPAL_STORM_SURGE_ROSSO:.0f} hPa)")
+        elif pressione_msl < thresholds.ARPAL_STORM_SURGE_ARANCIONE:
+            avvisi.append(f"🟠🌊 AVVISO: MAREGGIATE — {pressione_msl} hPa (soglia ARPAL 🟠 <{thresholds.ARPAL_STORM_SURGE_ARANCIONE:.0f} hPa)")
+        elif pressione_msl < thresholds.ARPAL_STORM_SURGE_GIALLO:
+            avvisi.append(f"🟡🌊 AVVISO: ATTENZIONE MARE — {pressione_msl} hPa (soglia ARPAL 🟡 <{thresholds.ARPAL_STORM_SURGE_GIALLO:.0f} hPa)")
 
-        # precipitazioni e API/suolo
-        if pioggia_1h > 15:
-            avvisi.append("🌧️ AVVISO: PIOGGIA MOLTO FORTE")
+        # ── PRECIPITAZIONI orarie — soglie ARPAL Bacini Piccoli ──
+        if pioggia_1h >= thresholds.ARPAL_RAIN_1H_ROSSO:
+            avvisi.append(f"🔴🌧️ AVVISO: NUBIFRAGIO — {pioggia_1h} mm/h (soglia ARPAL 🔴 ≥{thresholds.ARPAL_RAIN_1H_ROSSO:.0f} mm/h)")
+        elif pioggia_1h >= thresholds.ARPAL_RAIN_1H_ARANCIONE:
+            avvisi.append(f"🟠🌧️ AVVISO: PIOGGIA MOLTO FORTE — {pioggia_1h} mm/h (soglia ARPAL 🟠 ≥{thresholds.ARPAL_RAIN_1H_ARANCIONE:.0f} mm/h)")
+        elif pioggia_1h >= thresholds.ARPAL_RAIN_1H_GIALLO:
+            avvisi.append(f"🟡🌧️ AVVISO: PIOGGIA FORTE — {pioggia_1h} mm/h (soglia ARPAL 🟡 ≥{thresholds.ARPAL_RAIN_1H_GIALLO:.0f} mm/h)")
         elif pioggia_1h >= 6:
-            avvisi.append("🌧️ AVVISO: PIOGGIA FORTE")
+            avvisi.append(f"🌧️ AVVISO: PIOGGIA MODERATA — {pioggia_1h} mm/h")
 
+        # ── CUMULATE 24h — soglie ARPAL Bacini Grandi + suolo ──
         if sat_visualizzato >= 170:
             avvisi.append("⛰️ AVVISO: SUOLO SATURO")
-            if pioggia_24h > 30:
-                avvisi.append("🌧️ AVVISO: CUMULATE MOLTO ELEVATE")
-            elif pioggia_24h > 15:
-                avvisi.append("🌧️ AVVISO: CUMULATE ELEVATE")
-        else:
-            if pioggia_24h > 100:
-                avvisi.append("🌧️ AVVISO: CUMULATE MOLTO ELEVATE")
-            elif pioggia_24h > 80:
-                avvisi.append("🌧️ AVVISO: CUMULATE ELEVATE")
-            elif pioggia_24h > 50:
-                avvisi.append("🌧️ AVVISO: CUMULATE SIGNIFICATIVE")
+
+        if pioggia_24h >= thresholds.ARPAL_RAIN_24H_ROSSO:
+            avvisi.append(f"🔴🌧️ AVVISO: CUMULATE ECCEZIONALI — {pioggia_24h} mm/24h (soglia ARPAL 🔴 ≥{thresholds.ARPAL_RAIN_24H_ROSSO:.0f} mm)")
+        elif pioggia_24h >= thresholds.ARPAL_RAIN_24H_ARANCIONE:
+            avvisi.append(f"🟠🌧️ AVVISO: CUMULATE MOLTO ELEVATE — {pioggia_24h} mm/24h (soglia ARPAL 🟠 ≥{thresholds.ARPAL_RAIN_24H_ARANCIONE:.0f} mm)")
+        elif pioggia_24h >= thresholds.ARPAL_RAIN_24H_GIALLO:
+            avvisi.append(f"🟡🌧️ AVVISO: CUMULATE ELEVATE — {pioggia_24h} mm/24h (soglia ARPAL 🟡 ≥{thresholds.ARPAL_RAIN_24H_GIALLO:.0f} mm)")
+        elif pioggia_24h >= 50:
+            avvisi.append(f"🌧️ AVVISO: CUMULATE SIGNIFICATIVE — {pioggia_24h} mm/24h")
         
         # --- AVVISO INSTABILITÀ CONVETTIVA (Severe Weather Score) ---
         # Usa il nuovo severe weather score se disponibile

@@ -6,6 +6,12 @@ Scarica la pagina https://allertaliguria.regione.liguria.it/, estrae i livelli
 per i criteri richiesti, salva lo stato e invia notifiche Telegram se si
 verifica un cambiamento e il livello generale è >= Giallo.
 
+Novità rispetto alla versione base:
+- Parsing robusto dei Bacini Piccoli con timeline oraria completa
+- Parsing dell'avviso di vigilanza meteorologica (testo in homepage)
+- Supporto sotto-zone C / C+ / C- (quando presenti)
+- Logica notifica migliorata: re-invia se livello peggiora, non solo cambia
+
 Esegue salvataggio dello stato in `arpal_state.json` nella cartella di lavoro.
 """
 import requests
@@ -18,6 +24,7 @@ from typing import Dict, Any, List, Optional
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_IDS as LISTA_CHAT
 
 URL = "https://allertaliguria.regione.liguria.it/"
+URL_VIGILANZA = "https://allertaliguria.regione.liguria.it/"
 STATE_FILE = "arpal_state.json"
 
 COLOR_MAP = {"V": "Verde", "G": "Giallo", "A": "Arancione", "R": "Rosso"}
@@ -31,6 +38,9 @@ CRITERI = [
     "Comuni Costieri",
     "Comuni Interni",
 ]
+
+# Sotto-zone della Zona C (usate quando ARPAL differenzia ulteriormente)
+SOTTO_ZONE_C = ["C", "C+", "C-"]
 
 
 def fetch_html() -> Optional[str]:
@@ -53,6 +63,7 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
     - 'dettaglio': mappa criterio->colore
     - 'bacini_piccoli_hours': lista di ore con colore non-Verde
     - 'bacini_piccoli_timeline': lista [{'ora': 'HH', 'livello': 'Giallo/Arancione/Rosso'}]
+    - 'sotto_zone': dict delle eventuali sotto-zone C, C+, C-
     """
     # Primo tentativo: usare BeautifulSoup se disponibile (più robusto)
     try:
@@ -69,6 +80,7 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
         dettaglio: Dict[str, str] = {}
         bacini_piccoli_hours: List[str] = []
         bacini_piccoli_timeline: List[Dict[str, str]] = []
+        sotto_zone: Dict[str, str] = {}
 
         # Cerca tabelle nelle candidate e parsale
         for cand in candidates:
@@ -88,7 +100,6 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
                     for tr in trs:
                         if criterio in tr.get_text():
                             # cerca elementi con class like allertaX
-                            cells = tr.find_all(True)
                             colors_raw = []
                             for el in tr.find_all(True):
                                 cls = el.get("class")
@@ -111,7 +122,7 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
                                     elif "ROSSA" in txt or "ROSSO" in txt:
                                         colors_raw.append("R")
 
-                            # determina colore
+                            # determina colore ora corrente o max
                             ora_corrente = datetime.now().hour
                             color = None
                             if ore and colors_raw:
@@ -125,18 +136,33 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
                                 mapped_sorted = sorted(mapped, key=lambda x: ORDER.get(x, 0), reverse=True)
                                 color = mapped_sorted[0] if mapped_sorted else "Sconosciuto"
 
+                            # Timeline completa per Bacini Piccoli
                             if criterio == "Bacini Piccoli" and ore and colors_raw:
                                 hours_non_verdi = []
-                                timeline_non_verde = []
+                                timeline_completa = []
                                 for i, c in enumerate(colors_raw):
                                     colore = COLOR_MAP.get(c, "Sconosciuto")
-                                    if colore != "Verde" and i < len(ore):
-                                        hours_non_verdi.append(ore[i])
-                                        timeline_non_verde.append({"ora": ore[i], "livello": colore})
+                                    ora_label = ore[i] if i < len(ore) else f"h{i}"
+                                    timeline_completa.append({"ora": ora_label, "livello": colore})
+                                    if colore != "Verde":
+                                        hours_non_verdi.append(ora_label)
                                 bacini_piccoli_hours = hours_non_verdi
-                                bacini_piccoli_timeline = timeline_non_verde
+                                bacini_piccoli_timeline = timeline_completa
 
                             dettaglio[criterio] = color or "Sconosciuto"
+
+            # Cerca sotto-zone C, C+, C- nella tabella
+            text_block = cand.get_text()
+            for sz in SOTTO_ZONE_C:
+                pattern = rf"Zona\s+{re.escape(sz)}\s*[:\-–]\s*(Verde|Giallo|Gialla|Arancione|Rossa|Rosso)"
+                match = re.search(pattern, text_block, re.IGNORECASE)
+                if match:
+                    raw = match.group(1).strip().capitalize()
+                    if raw == "Gialla":
+                        raw = "Giallo"
+                    if raw == "Rossa":
+                        raw = "Rosso"
+                    sotto_zone[sz] = raw
 
         # Se non abbiamo trovato nulla con BS4, caduta nel parsing regex
         if not dettaglio:
@@ -157,108 +183,94 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
             "emoji": EMOJI.get(max_livello, "⚪"),
             "bacini_piccoli_hours": bacini_piccoli_hours,
             "bacini_piccoli_timeline": bacini_piccoli_timeline,
+            "sotto_zone": sotto_zone,
             "ora": datetime.now().hour,
         }
     except Exception as e:
         # Fallback al parsing regex precedente
         print(f"BS4 non disponibile o parsing fallito ({e}), uso fallback regex")
-        sections = list(re.finditer(r"accordion-zone-elem-C", html))
-        if not sections:
-            # fallback immagini
-            img_match = re.findall(r'AREA_C_(\w)\.png', html)
-            dettaglio = {c: "Sconosciuto" for c in CRITERI}
-            bacini_piccoli_hours = []
-            bacini_piccoli_timeline = []
-            if img_match:
-                colore = COLOR_MAP.get(img_match[0], "Sconosciuto")
-                dettaglio = {c: colore for c in CRITERI}
-                max_livello = colore
-                max_criterio = "Generale"
-                return {
-                    "dettaglio": dettaglio,
-                    "max_livello": max_livello,
-                    "max_criterio": max_criterio,
-                    "emoji": EMOJI.get(max_livello, "⚪"),
-                    "bacini_piccoli_hours": bacini_piccoli_hours,
-                    "bacini_piccoli_timeline": bacini_piccoli_timeline,
-                    "ora": datetime.now().hour,
-                }
+        return _parse_zone_c_regex(html)
 
-        # Se arriva qui, usa il parsing regex originale su una finestra
-        last_pos = sections[-1].start()
-        window = html[last_pos:last_pos + 30000]
-        tables = list(re.finditer(r"<table[^>]*>(.*?)</table>", window, re.DOTALL))
-        dettaglio = {}
-        bacini_piccoli_hours = []
-        bacini_piccoli_timeline = []
-        for tmatch in tables:
-            table_html = tmatch.group(1)
-            trs = re.findall(r"<tr[^>]*>(.*?)</tr>", table_html, re.DOTALL)
-            ore = []
+
+def _parse_zone_c_regex(html: str) -> Dict[str, Any]:
+    """Fallback regex per parsing Zona C (usato se BS4 non è disponibile)."""
+    sections = list(re.finditer(r"accordion-zone-elem-C", html))
+    dettaglio: Dict[str, str] = {}
+    bacini_piccoli_hours: List[str] = []
+    bacini_piccoli_timeline: List[Dict[str, str]] = []
+
+    if not sections:
+        # fallback immagini
+        img_match = re.findall(r'AREA_C_(\w)\.png', html)
+        if img_match:
+            colore = COLOR_MAP.get(img_match[0], "Sconosciuto")
+            dettaglio = {c: colore for c in CRITERI}
+            return {
+                "dettaglio": dettaglio,
+                "max_livello": colore,
+                "max_criterio": "Generale",
+                "emoji": EMOJI.get(colore, "⚪"),
+                "bacini_piccoli_hours": [],
+                "bacini_piccoli_timeline": [],
+                "sotto_zone": {},
+                "ora": datetime.now().hour,
+            }
+
+    last_pos = sections[-1].start()
+    window = html[last_pos:last_pos + 30000]
+    tables = list(re.finditer(r"<table[^>]*>(.*?)</table>", window, re.DOTALL))
+
+    for tmatch in tables:
+        table_html = tmatch.group(1)
+        trs = re.findall(r"<tr[^>]*>(.*?)</tr>", table_html, re.DOTALL)
+        ore: List[str] = []
+        for tr in trs:
+            if 'Ore Locali' in tr or 'Ore' in tr:
+                ore = re.findall(r"<td>(\d{2})</td>", tr)
+                break
+        ora_corrente = datetime.now().hour
+        for criterio in CRITERI:
             for tr in trs:
-                if 'Ore Locali' in tr:
-                    ore = re.findall(r"<td>(\d{2})</td>", tr)
-                    break
-            ora_corrente = datetime.now().hour
-            for criterio in CRITERI:
-                for tr in trs:
-                    if criterio in tr:
-                        colors = re.findall(r'class="allerta(\w+)"', tr)
-                        if not colors:
-                            text_cells = re.findall(r"<td[^>]*>([^<]+)</td>", tr)
-                            mapped = []
-                            for txt in text_cells:
-                                t = txt.strip().upper()
-                                if "VERDE" in t:
-                                    mapped.append("V")
-                                elif "GIALLA" in t or "GIALLO" in t:
-                                    mapped.append("G")
-                                elif "ARANCIONE" in t:
-                                    mapped.append("A")
-                                elif "ROSSA" in t or "ROSSO" in t:
-                                    mapped.append("R")
-                            colors = mapped
-                        color = None
-                        if ore and colors:
-                            ora_str = f"{ora_corrente:02d}"
-                            if ora_str in ore:
-                                idx = ore.index(ora_str)
-                                if idx < len(colors):
-                                    color = COLOR_MAP.get(colors[idx], "Sconosciuto")
-                        if not color and colors:
-                            mapped = [COLOR_MAP.get(c, "Sconosciuto") for c in colors]
-                            mapped_sorted = sorted(mapped, key=lambda x: ORDER.get(x, 0), reverse=True)
-                            color = mapped_sorted[0] if mapped_sorted else "Sconosciuto"
-                        if criterio == "Bacini Piccoli" and ore and colors:
-                            hours_non_verdi = []
-                            timeline_non_verde = []
-                            for i, c in enumerate(colors):
-                                colore = COLOR_MAP.get(c, "Sconosciuto")
-                                if colore != "Verde" and i < len(ore):
-                                    hours_non_verdi.append(ore[i])
-                                    timeline_non_verde.append({"ora": ore[i], "livello": colore})
-                            bacini_piccoli_hours = hours_non_verdi
-                            bacini_piccoli_timeline = timeline_non_verde
-                        dettaglio[criterio] = color or "Sconosciuto"
+                if criterio in tr:
+                    colors = re.findall(r'class="allerta(\w+)"', tr)
+                    if not colors:
+                        text_cells = re.findall(r"<td[^>]*>([^<]+)</td>", tr)
+                        mapped = []
+                        for txt in text_cells:
+                            t = txt.strip().upper()
+                            if "VERDE" in t:
+                                mapped.append("V")
+                            elif "GIALLA" in t or "GIALLO" in t:
+                                mapped.append("G")
+                            elif "ARANCIONE" in t:
+                                mapped.append("A")
+                            elif "ROSSA" in t or "ROSSO" in t:
+                                mapped.append("R")
+                        colors = mapped
+                    color = None
+                    if ore and colors:
+                        ora_str = f"{ora_corrente:02d}"
+                        if ora_str in ore:
+                            idx = ore.index(ora_str)
+                            if idx < len(colors):
+                                color = COLOR_MAP.get(colors[idx], "Sconosciuto")
+                    if not color and colors:
+                        mapped_colors = [COLOR_MAP.get(c, "Sconosciuto") for c in colors]
+                        mapped_sorted = sorted(
+                            mapped_colors, key=lambda x: ORDER.get(x, 0), reverse=True
+                        )
+                        color = mapped_sorted[0] if mapped_sorted else "Sconosciuto"
+                    if criterio == "Bacini Piccoli" and ore and colors:
+                        for i, c in enumerate(colors):
+                            colore = COLOR_MAP.get(c, "Sconosciuto")
+                            ora_label = ore[i] if i < len(ore) else f"h{i}"
+                            bacini_piccoli_timeline.append(
+                                {"ora": ora_label, "livello": colore}
+                            )
+                            if colore != "Verde":
+                                bacini_piccoli_hours.append(ora_label)
+                    dettaglio[criterio] = color or "Sconosciuto"
 
-        max_livello = "Verde"
-        max_criterio = ""
-        for k, v in dettaglio.items():
-            if ORDER.get(v, 0) > ORDER.get(max_livello, 0):
-                max_livello = v
-                max_criterio = k
-
-        return {
-            "dettaglio": dettaglio,
-            "max_livello": max_livello,
-            "max_criterio": max_criterio,
-            "emoji": EMOJI.get(max_livello, "⚪"),
-            "bacini_piccoli_hours": bacini_piccoli_hours,
-            "bacini_piccoli_timeline": bacini_piccoli_timeline,
-            "ora": datetime.now().hour,
-        }
-
-    # Determina livello massimo
     max_livello = "Verde"
     max_criterio = ""
     for k, v in dettaglio.items():
@@ -272,9 +284,53 @@ def parse_zone_c(html: str) -> Dict[str, Any]:
         "max_criterio": max_criterio,
         "emoji": EMOJI.get(max_livello, "⚪"),
         "bacini_piccoli_hours": bacini_piccoli_hours,
-        "bacini_piccoli_timeline": [],
+        "bacini_piccoli_timeline": bacini_piccoli_timeline,
+        "sotto_zone": {},
         "ora": datetime.now().hour,
     }
+
+
+def parse_vigilanza(html: str) -> Optional[str]:
+    """Estrae l'avviso di vigilanza meteorologica dalla homepage ARPAL.
+
+    Cerca il banner/box testuale che annuncia la vigilanza meteo,
+    tipicamente presente prima dell'emissione dell'allerta formale.
+    Restituisce il testo estratto o None se non presente.
+    """
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Cerca div/section con parole chiave dell'avviso di vigilanza
+        keywords = [
+            "vigilanza", "avviso meteo", "avviso meteorologico",
+            "bollettino di vigilanza", "previsione",
+        ]
+        for tag in soup.find_all(["div", "section", "p", "span"]):
+            text = tag.get_text(strip=True)
+            text_lower = text.lower()
+            if any(kw in text_lower for kw in keywords):
+                # Deve essere un blocco significativo (non solo nav/footer)
+                if 30 < len(text) < 2000:
+                    # Pulisci spazi multipli
+                    cleaned = re.sub(r'\s+', ' ', text).strip()
+                    return cleaned
+    except Exception:
+        pass
+
+    # Fallback regex
+    patterns = [
+        r'(?:vigilanza|avviso\s+meteo(?:rologico)?)[^<]{20,500}',
+        r'bollettino\s+di\s+vigilanza[^<]{20,500}',
+    ]
+    for pat in patterns:
+        m = re.search(pat, html, re.IGNORECASE | re.DOTALL)
+        if m:
+            text = re.sub(r'<[^>]+>', '', m.group(0))
+            text = re.sub(r'\s+', ' ', text).strip()
+            if 30 < len(text) < 1000:
+                return text
+    return None
 
 
 def load_state() -> Dict[str, Any]:
@@ -292,26 +348,55 @@ def save_state(state: Dict[str, Any]):
         json.dump(state, f, indent=2, ensure_ascii=False)
 
 
-def build_message(parsed: Dict[str, Any]) -> str:
-    title = f"{parsed['emoji']} ALLERTA ARPAL - Zona C: {parsed['max_livello'].upper()}"
+def build_message(parsed: Dict[str, Any], vigilanza: Optional[str] = None) -> str:
+    """Costruisce il messaggio Telegram con dettaglio completo Zona C."""
+    title = f"{parsed['emoji']} ALLERTA ARPAL — Zona C: {parsed['max_livello'].upper()}"
     dettaglio = parsed.get("dettaglio", {})
-    criteri_line = ", ".join([f"{k}: {v}" for k, v in dettaglio.items()])
 
+    # Dettaglio criteri con emoji per livello
+    criteri_lines = []
+    for k, v in dettaglio.items():
+        em = EMOJI.get(v, "⚪")
+        criteri_lines.append(f"  {em} {k}: {v}")
+    criteri_block = "\n".join(criteri_lines)
+
+    # Sotto-zone (se presenti)
+    sotto_zone = parsed.get("sotto_zone", {})
+    sotto_str = ""
+    if sotto_zone:
+        sz_items = [f"  {EMOJI.get(v, '⚪')} Zona {k}: {v}" for k, v in sotto_zone.items()]
+        sotto_str = "\nSotto-zone:\n" + "\n".join(sz_items) + "\n"
+
+    # Timeline Bacini Piccoli (focus)
     timeline = parsed.get("bacini_piccoli_timeline", [])
-    if timeline:
-        timeline_str = ", ".join([f"{item['ora']}:00 {item['livello']}" for item in timeline])
-        ore_line = f"Per i Bacini Piccoli, le ore di allertamento previste sono: {timeline_str}."
+    timeline_non_verde = [t for t in timeline if t.get("livello", "Verde") != "Verde"]
+    if timeline_non_verde:
+        timeline_str = ", ".join(
+            [f"{EMOJI.get(t['livello'], '⚪')}{t['ora']}:00" for t in timeline_non_verde]
+        )
+        ore_line = f"🕐 Bacini Piccoli – ore di allertamento: {timeline_str}"
+    elif timeline:
+        ore_line = "🕐 Bacini Piccoli: tutto in Verde per le ore previste."
     else:
-        ore_line = "Per i Bacini Piccoli non risultano ore di allertamento attive."
+        ore_line = "🕐 Bacini Piccoli: nessun dato orario disponibile."
+
+    # Vigilanza meteorologica
+    vig_str = ""
+    if vigilanza:
+        # Tronca se troppo lungo per Telegram
+        vig_trunc = vigilanza[:400] + "..." if len(vigilanza) > 400 else vigilanza
+        vig_str = f"\n📋 *Vigilanza meteorologica:*\n{vig_trunc}\n"
 
     text = (
         f"{title}\n"
-        f"Situazione attuale: livello massimo {parsed['max_livello']}"
-        f" (criterio più grave: {parsed['max_criterio']}).\n"
-        f"Dettaglio sintetico: {criteri_line}.\n"
+        f"Livello massimo: {parsed['max_livello']}"
+        f" (criterio più grave: {parsed.get('max_criterio', 'n/d')})\n\n"
+        f"📊 *Dettaglio criteri:*\n{criteri_block}\n"
+        f"{sotto_str}\n"
         f"{ore_line}\n"
-        f"Fonte: {URL}\n"
-        f"Orario rilevamento: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+        f"{vig_str}\n"
+        f"🔗 Fonte: {URL}\n"
+        f"🕒 Rilevamento: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
     )
     return text
 
@@ -348,30 +433,73 @@ def main():
         print(f"Errore parsing ARPAL: {e}")
         return
 
+    # Parsing avviso di vigilanza
+    vigilanza = parse_vigilanza(html)
+    if vigilanza:
+        print(f"Avviso di vigilanza trovato: {vigilanza[:120]}...")
+    else:
+        print("Nessun avviso di vigilanza presente")
+
     state = load_state()
-    prev_max = state.get("max_livello")
+    prev_max = state.get("max_livello", "Verde")
     prev_detail = state.get("dettaglio", {})
+    prev_vigilanza = state.get("vigilanza")
     notifica_inviata = state.get("notifica_inviata", False)
 
-    # Decide se inviare: invia solo se max_livello è >= Giallo, se è cambiato e se non già inviato
+    # ── Logica invio migliorata ──
+    # Invia se:
+    # 1. Livello >= Giallo E (livello peggiorato rispetto a prima O dettaglio cambiato)
+    # 2. Nuovo avviso di vigilanza significativo
+    # 3. Livello tornato a Verde dopo un'allerta (messaggio di cessazione)
     send = False
-    if not notifica_inviata and ORDER.get(parsed["max_livello"], 0) >= ORDER.get("Giallo", 1):
-        if parsed["max_livello"] != prev_max or parsed.get("dettaglio") != prev_detail:
+    motivo = ""
+
+    livello_attuale = parsed.get("max_livello", "Verde")
+    livello_num = ORDER.get(livello_attuale, 0)
+    livello_prev_num = ORDER.get(prev_max, 0)
+
+    if livello_num >= ORDER.get("Giallo", 1):
+        if not notifica_inviata:
+            # Prima notifica di questa allerta
             send = True
+            motivo = "Nuova allerta"
+        elif livello_num > livello_prev_num:
+            # Livello peggiorato (es. Giallo → Arancione)
+            send = True
+            motivo = f"Peggioramento: {prev_max} → {livello_attuale}"
+        elif parsed.get("dettaglio") != prev_detail:
+            # Dettaglio cambiato (nuovi criteri coinvolti)
+            send = True
+            motivo = "Dettaglio criteri aggiornato"
+
+    # Cessazione allerta: era >= Giallo, ora è Verde
+    if livello_prev_num >= ORDER.get("Giallo", 1) and livello_num == 0:
+        if notifica_inviata:
+            send = True
+            motivo = f"Cessazione allerta (era {prev_max})"
+
+    # Nuovo avviso di vigilanza (significativamente diverso)
+    if vigilanza and vigilanza != prev_vigilanza:
+        if not send:
+            # Invia solo vigilanza se non stiamo già inviando per allerta
+            send = True
+            motivo = "Nuovo avviso di vigilanza"
 
     if send:
-        # Costruisci messaggio usando livello più grave come titolo
-        msg = build_message(parsed)
+        print(f"📤 Invio notifica ARPAL: {motivo}")
+        msg = build_message(parsed, vigilanza)
         send_telegram(msg)
-        # Segna che la notifica è stata inviata
         parsed["notifica_inviata"] = True
     else:
-        print("Nessun cambiamento significativo, livello sotto Giallo o notifica già inviata - nessun invio")
-        # Mantieni il flag se già presente
+        reason = "livello sotto Giallo" if livello_num < 1 else "nessun cambiamento"
         if notifica_inviata:
+            reason += ", notifica già inviata"
+        print(f"Nessun invio: {reason}")
+        if notifica_inviata and livello_num >= 1:
             parsed["notifica_inviata"] = True
 
-    # Salva sempre lo stato aggiornato
+    # Salva stato con vigilanza
+    parsed["vigilanza"] = vigilanza
     save_state(parsed)
 
 
