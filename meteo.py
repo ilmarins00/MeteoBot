@@ -7,8 +7,11 @@ import os
 import math
 import io
 import re
+import traceback
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+import numpy as np
+from scipy.interpolate import interp1d
 import matplotlib
 matplotlib.use('Agg')  # Backend non-interattivo per server
 import matplotlib.pyplot as plt
@@ -46,11 +49,14 @@ from config import (
     TELEGRAM_CHAT_IDS as LISTA_CHAT,
     FILE_STORICO,
     FILE_MEMORIA,
+    FILE_SBCAPE,
     thresholds,
     LATITUDE,
     LONGITUDE,
+    ELEVATION,
     TIMEZONE
 )
+from utils import extract_pressure_hpa
 # NOTE: pressure extraction implemented here as `estrai_pressione_hpa`
 
 def carica_storico():
@@ -378,6 +384,768 @@ def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
         "anomalia": round(anomalia, 1),
         "spread": round(spread, 1)
     }
+
+
+def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, severe_score=0):
+    """Valutazione ingredient-based del rischio convettivo su scala 0-12."""
+    sbcape_f = float(sbcape or 0)
+    mucape_f = float(mucape or 0)
+    max_cape = max(sbcape_f, mucape_f)
+    cin_abs = abs(float(cin or 0))
+    shear = float(bulk_shear or 0)
+    li = li_value if isinstance(li_value, (int, float)) else None
+
+    if max_cape < 300:
+        cape_score = 0.0
+    elif max_cape < 800:
+        cape_score = 1.0
+    elif max_cape < 1500:
+        cape_score = 2.0
+    elif max_cape < 2500:
+        cape_score = 3.0
+    else:
+        cape_score = 4.0
+
+    if mucape_f >= 1200 and mucape_f >= 0.9 * max_cape:
+        cape_score += 0.5
+
+    if cin_abs > 250:
+        cin_score = 0.0
+    elif cin_abs > 175:
+        cin_score = 0.5
+    elif cin_abs >= 25:
+        cin_score = 1.5
+    else:
+        cin_score = 1.0
+
+    if li is None:
+        li_score = 0.0
+    elif li <= -8:
+        li_score = 3.0
+    elif li <= -6:
+        li_score = 2.2
+    elif li <= -4:
+        li_score = 1.5
+    elif li <= -2:
+        li_score = 0.8
+    else:
+        li_score = 0.0
+
+    if shear < 8:
+        shear_score = 0.0
+    elif shear < 12:
+        shear_score = 1.0
+    elif shear < 18:
+        shear_score = 2.0
+    elif shear < 25:
+        shear_score = 3.0
+    else:
+        shear_score = 3.5
+
+    synergy_score = 0.0
+    if max_cape >= 1500 and shear >= 15:
+        synergy_score += 1.0
+    if li is not None and li <= -5 and cin_abs <= 150:
+        synergy_score += 0.8
+    if max_cape >= 2500 and shear >= 20 and li is not None and li <= -6:
+        synergy_score += 1.2
+
+    score = cape_score + cin_score + li_score + shear_score + synergy_score
+    if severe_score:
+        score = max(score, min(float(severe_score), 12.0))
+    score = round(min(score, 12.0), 1)
+
+    warning = None
+    level = "basso"
+    event_label = "Instabilità convettiva"
+
+    if score >= 10.5:
+        warning = "⚠️⚡ AVVISO: TEMPORALI SEVERI"
+        level = "molto_alto"
+        event_label = "Temporali severi"
+    elif score >= 8.0:
+        warning = "⚡ AVVISO: RISCHIO FORTI TEMPORALI"
+        level = "alto"
+        event_label = "Rischio forti temporali"
+    elif score >= 5.5:
+        warning = "⛈️ AVVISO: INSTABILITÀ CONVETTIVA MARCATA"
+        level = "moderato"
+        event_label = "Instabilità convettiva marcata"
+
+    return {
+        "score": score,
+        "level": level,
+        "warning": warning,
+        "event_label": event_label,
+        "event_trigger": score >= 8.0,
+        "max_cape": max_cape,
+        "cin_abs": cin_abs,
+        "li": li,
+        "shear": shear,
+    }
+
+
+# ============================================================================
+# MODULO SBCAPE/MUCAPE — integrato da calcola_SBCAPE.py
+# ============================================================================
+
+# Costanti fisiche (termodinamica atmosferica)
+_RD = 287.05      # J/(kg·K) - costante gas per aria secca
+_RV = 461.5       # J/(kg·K) - costante gas per vapore acqueo
+_CP = 1005.0      # J/(kg·K) - calore specifico aria a pressione costante
+_LV = 2.5e6       # J/kg     - calore latente di vaporizzazione
+_G  = 9.80665     # m/s²     - accelerazione di gravità
+_EPSILON = 0.622  # Rd/Rv
+
+# Cache globale per API Open-Meteo
+_API_CACHE = {}
+_CACHE_DURATION = 600  # 10 minuti
+
+
+def fetch_station_data_with_retry(max_retries=3):
+    """Legge i dati reali dalla stazione meteo Tuya con retry logic."""
+    if not ACCESS_ID or not ACCESS_SECRET or not DEVICE_ID:
+        print("✗ TUYA non configurato: verifica TUYA_ACCESS_ID / TUYA_ACCESS_SECRET / TUYA_DEVICE_ID")
+        return None
+    for attempt in range(max_retries):
+        try:
+            token_url = "/v1.0/token?grant_type=1"
+            r = requests.get(ENDPOINT + token_url,
+                             headers=get_auth_headers("GET", token_url), timeout=10).json()
+        except Exception as e:
+            print(f"✗ Errore connessione Tuya (token, attempt {attempt+1}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            continue
+
+        if not r or not r.get("success") or "result" not in r or "access_token" not in r["result"]:
+            print(f"✗ Errore Token Tuya (attempt {attempt+1}): {r}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            continue
+
+        token = r["result"]["access_token"]
+        status_url = f"/v1.0/devices/{DEVICE_ID}/status"
+        try:
+            res = requests.get(ENDPOINT + status_url,
+                               headers=get_auth_headers("GET", status_url, token), timeout=10).json()
+        except Exception as e:
+            print(f"✗ Errore connessione Tuya (status, attempt {attempt+1}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            continue
+
+        if not res or not res.get("success") or "result" not in res:
+            print(f"✗ Errore lettura device Tuya (attempt {attempt+1}): {res}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            continue
+
+        d = {item['code']: item['value'] for item in res.get("result", [])}
+        station_data = {
+            'temperature': d.get('temp_current_external', 0) / 10,
+            'dewpoint': d.get('dew_point_temp', 0) / 10,
+            'pressure': extract_pressure_hpa(d) or 1013.0,
+            'humidity': d.get('humidity_outdoor', 0),
+            'wind_speed': d.get('windspeed_avg', 0) / 10,
+            'wind_gust': d.get('windspeed_gust', 0) / 10,
+        }
+
+        if (station_data['temperature'] < -50 or station_data['temperature'] > 60 or
+                station_data['humidity'] < 0 or station_data['humidity'] > 100 or
+                station_data['pressure'] < 900 or station_data['pressure'] > 1050):
+            print(f"⚠️  Dati stazione anomali (attempt {attempt+1})")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+                continue
+            return None
+
+        print(f"✓ Dati stazione Tuya ricevuti: T={station_data['temperature']:.1f}°C, "
+              f"Td={station_data['dewpoint']:.1f}°C, P={station_data['pressure']:.1f}hPa, "
+              f"RH={station_data['humidity']}%")
+        return station_data
+    return None
+
+
+def fetch_profile_cached():
+    """Scarica profilo verticale da Open-Meteo con cache.
+    Usa AROME France (Météo-France, 2.5 km) con fallback best_match."""
+    global _API_CACHE
+
+    now = time.time()
+    if 'open_meteo' in _API_CACHE and now - _API_CACHE['open_meteo_time'] < _CACHE_DURATION:
+        print(f"✓ Usando cache Open-Meteo (età: {int(now - _API_CACHE['open_meteo_time'])}s)")
+        return _API_CACHE['open_meteo']
+
+    url = "https://api.open-meteo.com/v1/forecast"
+
+    pressure_levels_temp = [
+        "temperature_1000hPa", "temperature_950hPa", "temperature_925hPa",
+        "temperature_900hPa", "temperature_850hPa", "temperature_800hPa",
+        "temperature_750hPa", "temperature_700hPa", "temperature_650hPa",
+        "temperature_600hPa", "temperature_550hPa", "temperature_500hPa",
+        "temperature_400hPa", "temperature_300hPa", "temperature_200hPa"
+    ]
+    pressure_levels_rh = [
+        "relative_humidity_1000hPa", "relative_humidity_950hPa", "relative_humidity_925hPa",
+        "relative_humidity_900hPa", "relative_humidity_850hPa", "relative_humidity_800hPa",
+        "relative_humidity_750hPa", "relative_humidity_700hPa", "relative_humidity_650hPa",
+        "relative_humidity_600hPa", "relative_humidity_550hPa", "relative_humidity_500hPa"
+    ]
+    pressure_levels_wind = ["windspeed_10m", "windspeed_80m", "windspeed_120m"]
+
+    hourly_vars = ",".join(pressure_levels_temp + pressure_levels_rh + pressure_levels_wind) + ",dew_point_2m,relative_humidity_2m"
+
+    base_params = {
+        "latitude": LATITUDE,
+        "longitude": LONGITUDE,
+        "current": "temperature_2m,relative_humidity_2m,pressure_msl,dew_point_2m,windspeed_10m,winddirection_10m",
+        "hourly": hourly_vars,
+        "timezone": "UTC"
+    }
+
+    # 1. AROME France (Météo-France, 2.5 km, ottimo per Mediterraneo)
+    try:
+        params_arome = {**base_params, "models": "meteofrance_arome_france"}
+        r = requests.get(url, params=params_arome, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        hourly = data.get("hourly", {})
+        test_key = "temperature_850hPa"
+        if test_key in hourly and any(v is not None for v in hourly[test_key]):
+            data['_model_used'] = 'AROME France (2.5km)'
+            _API_CACHE['open_meteo'] = data
+            _API_CACHE['open_meteo_time'] = now
+            print("✓ Fetch Open-Meteo riuscito - modello AROME France (2.5km)")
+            return data
+        else:
+            print("⚠️  AROME France ha restituito dati vuoti, passo al fallback")
+    except Exception as e:
+        print(f"⚠️  AROME France non disponibile ({e}), passo al fallback")
+
+    # 2. Fallback best_match
+    try:
+        r = requests.get(url, params=base_params, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        data['_model_used'] = 'best_match (fallback)'
+        _API_CACHE['open_meteo'] = data
+        _API_CACHE['open_meteo_time'] = now
+        print("✓ Fetch Open-Meteo riuscito - modello default (best_match)")
+        return data
+    except Exception as e:
+        print(f"Errore fetch Open-Meteo: {e}")
+        return None
+
+
+# --- Funzioni termodinamiche ---
+
+def vapor_pressure(T_celsius):
+    """Pressione di vapore saturo (hPa) — Bolton (1980)."""
+    return 6.112 * np.exp(17.67 * T_celsius / (T_celsius + 243.5))
+
+
+def mixing_ratio(e, p):
+    """Rapporto di miscelanza (kg/kg) da pressione di vapore e pressione totale."""
+    return _EPSILON * e / (p - e)
+
+
+def virtual_temperature(T_kelvin, q):
+    """Temperatura virtuale (K) da temperatura e rapporto di miscelanza."""
+    return T_kelvin * (1 + q / _EPSILON) / (1 + q)
+
+
+def dewpoint_to_mixing_ratio(Td_celsius, p_hPa):
+    """Rapporto di miscelanza dal punto di rugiada."""
+    es = vapor_pressure(Td_celsius)
+    return mixing_ratio(es, p_hPa)
+
+
+def lcl_pressure(T_kelvin, Td_kelvin, p_hPa):
+    """Pressione al LCL (hPa) — approssimazione di Bolton."""
+    Tl = 1 / (1 / (Td_kelvin - 56) + np.log(T_kelvin / Td_kelvin) / 800) + 56
+    theta = T_kelvin * (1000 / p_hPa) ** (_RD / _CP)
+    return 1000 * (Tl / theta) ** (_CP / _RD)
+
+
+def moist_adiabatic_lapse_rate(T_kelvin, p_hPa):
+    """Lapse rate adiabatico saturo (K/Pa)."""
+    es = vapor_pressure(T_kelvin - 273.15)
+    ws = mixing_ratio(es, p_hPa)
+    numerator = 1 + _LV * ws / (_RD * T_kelvin)
+    denominator = 1 + _EPSILON * _LV * _LV * ws / (_CP * _RD * T_kelvin * T_kelvin)
+    return (_RD * T_kelvin / (_CP * p_hPa)) * (numerator / denominator)
+
+
+def lift_parcel(T_start_K, p_start_hPa, q_start, p_levels_hPa):
+    """Solleva una particella (secca fino al LCL, satura oltre).
+    Restituisce (T_parcel[], p_lcl)."""
+    T_parcel = np.zeros(len(p_levels_hPa))
+    T_parcel[0] = T_start_K
+
+    es_start = vapor_pressure(T_start_K - 273.15)
+    e_start = q_start * p_start_hPa / (_EPSILON + q_start)
+    e_start = min(e_start, es_start)
+
+    if e_start > 0:
+        Td_start = 243.5 * np.log(e_start / 6.112) / (17.67 - np.log(e_start / 6.112))
+        p_lcl = lcl_pressure(T_start_K, Td_start + 273.15, p_start_hPa)
+    else:
+        p_lcl = p_start_hPa / 2
+
+    for i in range(1, len(p_levels_hPa)):
+        p_lower = p_levels_hPa[i - 1]
+        p_upper = p_levels_hPa[i]
+
+        if p_lower >= p_lcl and p_upper >= p_lcl:
+            T_parcel[i] = T_parcel[i - 1] * (p_upper / p_lower) ** (_RD / _CP)
+        elif p_lower >= p_lcl and p_upper < p_lcl:
+            T_at_lcl = T_parcel[i - 1] * (p_lcl / p_lower) ** (_RD / _CP)
+            n_steps = 10
+            p_range = np.linspace(p_lcl, p_upper, n_steps)
+            T_temp = T_at_lcl
+            for j in range(1, n_steps):
+                dp = p_range[j] - p_range[j - 1]
+                dT_dp = moist_adiabatic_lapse_rate(T_temp, p_range[j - 1])
+                T_temp = T_temp + dT_dp * dp
+            T_parcel[i] = T_temp
+        else:
+            n_steps = 5
+            p_range = np.linspace(p_lower, p_upper, n_steps)
+            T_temp = T_parcel[i - 1]
+            for j in range(1, n_steps):
+                dp = p_range[j] - p_range[j - 1]
+                dT_dp = moist_adiabatic_lapse_rate(T_temp, p_range[j - 1])
+                T_temp = T_temp + dT_dp * dp
+            T_parcel[i] = T_temp
+
+    return T_parcel, p_lcl
+
+
+def calcola_cape_from_profile(T_parcel, p_env, T_env, RH_env, q_parcel_surface, p_lcl):
+    """Calcola CAPE e CIN da profili di temperatura e umidità."""
+    Tv_env = np.zeros(len(p_env))
+    Tv_parcel = np.zeros(len(p_env))
+
+    for i in range(len(p_env)):
+        es_env = vapor_pressure(T_env[i] - 273.15)
+        e_env = es_env * RH_env[i]
+        q_env = mixing_ratio(e_env, p_env[i])
+        Tv_env[i] = virtual_temperature(T_env[i], q_env)
+
+        if p_env[i] <= p_lcl:
+            es_parcel = vapor_pressure(T_parcel[i] - 273.15)
+            q_parcel = mixing_ratio(es_parcel, p_env[i])
+        else:
+            q_parcel = q_parcel_surface
+        Tv_parcel[i] = virtual_temperature(T_parcel[i], q_parcel)
+
+    buoyancy = Tv_parcel - Tv_env
+
+    lcl_idx = 0
+    for i in range(len(p_env)):
+        if p_env[i] <= p_lcl:
+            lcl_idx = i
+            break
+
+    lfc_idx = None
+    for i in range(max(1, lcl_idx), len(buoyancy)):
+        if buoyancy[i] > 0 and buoyancy[i - 1] <= 0:
+            lfc_idx = i
+            break
+
+    el_idx = None
+    if lfc_idx is not None:
+        for i in range(lfc_idx + 1, len(buoyancy)):
+            if buoyancy[i] < 0:
+                el_idx = i
+                break
+        if el_idx is None:
+            el_idx = len(buoyancy) - 1
+
+    cin = 0.0
+    cape = 0.0
+    if lfc_idx is not None:
+        for i in range(1, lfc_idx):
+            if buoyancy[i] < 0:
+                Tv_avg = (Tv_env[i] + Tv_env[i - 1]) / 2
+                dz = (_RD * Tv_avg / _G) * np.log(p_env[i - 1] / p_env[i])
+                buoy_avg = (buoyancy[i] + buoyancy[i - 1]) / 2
+                cin += _G * (buoy_avg / Tv_avg) * dz
+
+        for i in range(lfc_idx + 1, el_idx + 1):
+            if buoyancy[i] > 0 or buoyancy[i - 1] > 0:
+                Tv_avg = (Tv_env[i] + Tv_env[i - 1]) / 2
+                dz = (_RD * Tv_avg / _G) * np.log(p_env[i - 1] / p_env[i])
+                buoy_avg = (buoyancy[i] + buoyancy[i - 1]) / 2
+                if buoy_avg > 0:
+                    cape += _G * (buoy_avg / Tv_avg) * dz
+
+    return {
+        'sbcape': cape,
+        'cin': cin,
+        'lfc_idx': lfc_idx,
+        'el_idx': el_idx,
+        'lfc_pressure': p_env[lfc_idx] if lfc_idx is not None else None,
+        'el_pressure': p_env[el_idx] if el_idx is not None else None,
+        'buoyancy': buoyancy
+    }
+
+
+def calcola_mucape(data, station_data, T_env, p_env, RH_env):
+    """Calcola Most Unstable CAPE (MUCAPE) cercando la particella più instabile
+    nei primi 300 hPa dalla superficie."""
+    if station_data is None:
+        return None
+
+    p_surface = station_data['pressure']
+    max_cape = 0
+    mu_result = None
+
+    for p_idx in range(len(p_env)):
+        if p_env[p_idx] < p_surface - 300:
+            break
+
+        T_test = T_env[p_idx]
+        RH_test = RH_env[p_idx]
+        p_test = p_env[p_idx]
+
+        es_test = vapor_pressure(T_test - 273.15)
+        e_test = es_test * RH_test
+        q_test = mixing_ratio(e_test, p_test)
+
+        p_levels_above = p_env[p_idx:]
+        T_levels_above = T_env[p_idx:]
+        RH_levels_above = RH_env[p_idx:]
+
+        T_parcel_mu, p_lcl_mu = lift_parcel(T_test, p_test, q_test, p_levels_above)
+        result_mu = calcola_cape_from_profile(T_parcel_mu, p_levels_above, T_levels_above, RH_levels_above, q_test, p_lcl_mu)
+
+        if result_mu['sbcape'] > max_cape:
+            max_cape = result_mu['sbcape']
+            mu_result = result_mu
+            mu_result['mu_level'] = p_test
+
+    return mu_result
+
+
+def calcola_wind_shear(data, current_hour_idx, station_data):
+    """Proxy wind shear 0-6 km (10 m → 120 m). Fortemente sottostimato."""
+    try:
+        hourly = data.get("hourly", {})
+        if station_data and 'wind_speed' in station_data:
+            u_surface = station_data['wind_speed'] / 3.6
+        else:
+            u_surface = hourly.get('windspeed_10m', [0])[current_hour_idx] / 3.6 if 'windspeed_10m' in hourly else 0
+        u_120m = hourly.get('windspeed_120m', [0])[current_hour_idx] / 3.6 if 'windspeed_120m' in hourly else 0
+        shear = abs(u_120m - u_surface)
+        return {'surface_wind': u_surface, 'upper_wind': u_120m, 'bulk_shear': shear}
+    except Exception:
+        return None
+
+
+def _validate_sbcape_results(results, T_surface_C):
+    """Validazione fisica dei risultati SBCAPE."""
+    warnings = []
+    if results['sbcape'] > 6000:
+        warnings.append(f"⚠️  SBCAPE molto elevato ({results['sbcape']:.0f} J/kg) - verifica dati")
+    if results['sbcape'] > 1500 and T_surface_C < 10:
+        warnings.append(f"⚠️  CAPE elevato con T bassa ({T_surface_C:.1f}°C) - situazione insolita")
+    if results['cin'] < -500:
+        warnings.append(f"⚠️  CIN molto forte ({results['cin']:.0f} J/kg) - convezione fortemente inibita")
+    return warnings
+
+
+def calcola_sbcape_advanced(data, station_data=None):
+    """Calcola SBCAPE, MUCAPE, CIN e parametri convettivi avanzati.
+    Profilo umidità reale, interpolazione cubica, MUCAPE, wind shear."""
+    if not data:
+        print("Errore: dati invalidi")
+        return None
+
+    try:
+        hourly = data.get("hourly", {})
+
+        # Ora corrente UTC
+        current_hour_idx = 0
+        if "time" in hourly:
+            from datetime import timezone as _tz
+            now_utc = datetime.now(_tz.utc)
+            now_hour_str = now_utc.strftime("%Y-%m-%dT%H:")
+            for i, time_str in enumerate(hourly["time"]):
+                if time_str.startswith(now_hour_str):
+                    current_hour_idx = i
+                    break
+
+        print(f"  Usando dati dell'ora: {hourly['time'][current_hour_idx] if 'time' in hourly else 'N/A'} (indice {current_hour_idx})")
+
+        # Se l'ora corrente ha dati null, cerca l'ultima ora valida
+        test_key = "temperature_850hPa"
+        if (test_key in hourly and hourly[test_key] and
+                len(hourly[test_key]) > current_hour_idx and
+                hourly[test_key][current_hour_idx] is None):
+            original_idx = current_hour_idx
+            for idx in range(current_hour_idx, -1, -1):
+                if hourly[test_key][idx] is not None:
+                    current_hour_idx = idx
+                    break
+            if current_hour_idx != original_idx:
+                print(f"  ⚠️  Ora {original_idx} ha dati null, uso ora {current_hour_idx} ({hourly['time'][current_hour_idx]})")
+
+        # Superficie: priorità stazione reale
+        if station_data:
+            print("  → Usando dati REALI dalla stazione meteo (T, Td, P, RH)")
+            T_surface_C = station_data['temperature']
+            Td_surface_C = station_data['dewpoint']
+            p_surface = station_data['pressure']
+            RH_surface = station_data['humidity'] / 100
+            data_source = "Stazione Tuya (reale)"
+        else:
+            print("  → Usando dati modello Open-Meteo (fallback)")
+            current = data.get("current", {})
+            T_surface_C = current.get("temperature_2m")
+            RH_surface = current.get("relative_humidity_2m", 50) / 100
+            Td_surface_C = current.get("dew_point_2m")
+            p_msl = current.get("pressure_msl", 1013.25)
+            if T_surface_C is None:
+                print("Errore: dati di superficie mancanti")
+                return None
+            T_surface_K = T_surface_C + 273.15
+            p_surface = p_msl * ((1 - 0.0065 * ELEVATION / T_surface_K) ** 5.255)
+            data_source = "Open-Meteo (modello)"
+
+        T_surface_K = T_surface_C + 273.15
+
+        if Td_surface_C is not None:
+            q_surface = dewpoint_to_mixing_ratio(Td_surface_C, p_surface)
+        else:
+            es_surface = vapor_pressure(T_surface_C)
+            e_surface = es_surface * RH_surface
+            q_surface = mixing_ratio(e_surface, p_surface)
+
+        # Profilo verticale
+        pressure_levels = [1000, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500]
+        T_env_list = [T_surface_K]
+        p_env_list = [p_surface]
+        RH_env_list = [RH_surface]
+
+        for p_level in pressure_levels:
+            key_temp = f"temperature_{p_level}hPa"
+            key_rh = f"relative_humidity_{p_level}hPa"
+            if (key_temp in hourly and hourly[key_temp] and
+                    len(hourly[key_temp]) > current_hour_idx and p_level <= p_surface):
+                T_val = hourly[key_temp][current_hour_idx]
+                if key_rh in hourly and hourly[key_rh] and len(hourly[key_rh]) > current_hour_idx:
+                    RH_val = hourly[key_rh][current_hour_idx] / 100
+                else:
+                    RH_val = 0.5 if p_level > 500 else 0.3
+                if T_val is not None:
+                    p_env_list.append(p_level)
+                    T_env_list.append(T_val + 273.15)
+                    RH_env_list.append(RH_val)
+
+        if len(p_env_list) < 3:
+            print("Errore: profilo verticale insufficiente")
+            return None
+
+        p_env = np.array(p_env_list)
+        T_env = np.array(T_env_list)
+        RH_env = np.array(RH_env_list)
+
+        sort_idx = np.argsort(p_env)[::-1]
+        p_env = p_env[sort_idx]
+        T_env = T_env[sort_idx]
+        RH_env = RH_env[sort_idx]
+
+        # Interpolazione ad alta risoluzione (ogni 10 hPa)
+        p_min = max(200, p_env[-1])
+        p_fine = np.arange(p_surface, p_min, -10)
+
+        if len(p_env) >= 4:
+            T_interp_func = interp1d(p_env, T_env, kind='cubic', fill_value='extrapolate')
+            RH_interp_func = interp1d(p_env, RH_env, kind='linear', fill_value='extrapolate', bounds_error=False)
+            T_fine = T_interp_func(p_fine)
+            RH_fine = RH_interp_func(p_fine)
+            RH_fine = np.clip(RH_fine, 0.05, 1.0)
+            print(f"  Interpolazione: {len(p_env)} livelli → {len(p_fine)} livelli (10 hPa)")
+        else:
+            T_fine = T_env
+            RH_fine = RH_env
+            p_fine = p_env
+
+        # SBCAPE (surface-based)
+        Td_display = f"{Td_surface_C:.1f}" if Td_surface_C is not None else "N/A"
+        print(f"  Sollevamento particella: T={T_surface_C:.1f}°C, Td={Td_display}°C, p={p_surface:.1f}hPa, RH={RH_surface*100:.0f}%")
+        T_parcel_sb, p_lcl_sb = lift_parcel(T_surface_K, p_surface, q_surface, p_fine)
+        result_sb = calcola_cape_from_profile(T_parcel_sb, p_fine, T_fine, RH_fine, q_surface, p_lcl_sb)
+
+        # MUCAPE
+        print("  Cercando livello più instabile (MUCAPE)...")
+        result_mu = calcola_mucape(data, station_data, T_fine, p_fine, RH_fine)
+
+        # Wind shear
+        shear = calcola_wind_shear(data, current_hour_idx, station_data)
+
+        # Lifted Index
+        idx_500 = None
+        for i, p in enumerate(p_fine):
+            if abs(p - 500) < 15:
+                idx_500 = i
+                break
+        li = (T_fine[idx_500] - T_parcel_sb[idx_500]) if idx_500 is not None else 0
+
+        # Stampa
+        print(f"  LCL: {p_lcl_sb:.1f} hPa")
+        if result_sb['lfc_pressure']:
+            print(f"  LFC: {result_sb['lfc_pressure']:.1f} hPa")
+            print(f"  EL: {result_sb['el_pressure']:.1f} hPa" if result_sb['el_pressure'] else "  EL: top atmosfera")
+        else:
+            print("  LFC: non trovato (atmosfera stabile)")
+        if result_mu and result_mu['sbcape'] > result_sb['sbcape']:
+            print(f"  MUCAPE: {result_mu['sbcape']:.0f} J/kg (livello {result_mu['mu_level']:.0f} hPa)")
+
+        results = {
+            "sbcape": round(float(max(0, result_sb['sbcape'])), 2),
+            "mucape": round(float(max(0, result_mu['sbcape'])), 2) if result_mu else None,
+            "mu_level": round(float(result_mu['mu_level']), 1) if result_mu else None,
+            "cin": round(float(result_sb['cin']), 2),
+            "lifted_index": round(float(li), 2),
+            "lcl_pressure": round(float(p_lcl_sb), 1),
+            "lfc_pressure": round(float(result_sb['lfc_pressure']), 1) if result_sb['lfc_pressure'] else None,
+            "el_pressure": round(float(result_sb['el_pressure']), 1) if result_sb['el_pressure'] else None,
+            "bulk_shear": round(float(shear['bulk_shear']), 1) if shear else None,
+            "timestamp": datetime.now().isoformat(),
+            "location": f"La Spezia ({LATITUDE}, {LONGITUDE}) - {ELEVATION}m",
+            "unit": "J/kg",
+            "calculation_method": "Advanced thermodynamic integration v2.0",
+            "data_source": data_source,
+            "profile_model": data.get("_model_used", "best_match"),
+            "parameters": {
+                "temperature_surface": round(float(T_surface_C), 1),
+                "dewpoint_surface": round(float(Td_surface_C), 1) if Td_surface_C else None,
+                "rh_surface": round(float(RH_surface * 100), 0),
+                "pressure_surface": round(float(p_surface), 1),
+                "mixing_ratio_surface": round(float(q_surface * 1000), 2),
+                "profile_levels": int(len(p_fine)),
+                "interpolated": len(p_fine) > len(p_env)
+            }
+        }
+
+        warnings = _validate_sbcape_results(results, T_surface_C)
+        if warnings:
+            results['warnings'] = warnings
+            for w in warnings:
+                print(w)
+
+        return results
+
+    except Exception as e:
+        print(f"Errore calcolo SBCAPE: {e}")
+        traceback.print_exc()
+        return None
+
+
+def calcola_severe_score(results, raffica_kmh=0):
+    """Severe Weather Score combinando multipli parametri (score custom 0-12).
+    NON standardizzato; usare solo come indicatore qualitativo."""
+    score = 0
+    reasons = []
+
+    sbcape = results.get('sbcape', 0)
+    mucape = results.get('mucape', 0)
+    cin = abs(results.get('cin', 0))
+    shear = results.get('bulk_shear', 0)
+
+    max_cape = max(sbcape, mucape) if mucape else sbcape
+
+    if max_cape > 3000:
+        score += 4; reasons.append(f"CAPE estremo ({max_cape:.0f} J/kg)")
+    elif max_cape > 2500:
+        score += 3; reasons.append(f"CAPE molto forte ({max_cape:.0f} J/kg)")
+    elif max_cape > 1500:
+        score += 2; reasons.append(f"CAPE forte ({max_cape:.0f} J/kg)")
+    elif max_cape > 1000:
+        score += 1; reasons.append(f"CAPE moderato ({max_cape:.0f} J/kg)")
+
+    if cin < 50:
+        score += 2; reasons.append("CAP debole/assente")
+    elif cin < 100:
+        score += 1; reasons.append("CAP moderato")
+
+    if shear and shear > 15:
+        score += 3; reasons.append(f"Shear elevato ({shear:.1f} m/s)")
+    elif shear and shear > 10:
+        score += 2; reasons.append(f"Shear moderato ({shear:.1f} m/s)")
+
+    if raffica_kmh > 60:
+        score += 2; reasons.append(f"Raffiche forti ({raffica_kmh:.0f} km/h)")
+    elif raffica_kmh > 40:
+        score += 1; reasons.append(f"Raffiche moderate ({raffica_kmh:.0f} km/h)")
+
+    if score >= 7:
+        level = "⚡🌪️ ALLERTA MASSIMA: RISCHIO SUPERCELLE/TORNADO"
+    elif score >= 5:
+        level = "⚡ ALLERTA: TEMPORALI SEVERI PROBABILI"
+    elif score >= 3:
+        level = "⚡ AVVISO: TEMPORALI FORTI POSSIBILI"
+    else:
+        level = None
+
+    return {'score': score, 'level': level, 'reasons': reasons}
+
+
+def calcola_e_salva_sbcape():
+    """Entry-point standalone: calcola SBCAPE e salva su FILE_SBCAPE.
+    Può essere invocato con `python meteo.py --sbcape`."""
+    print("=" * 70)
+    print("📊 CALCOLO AVANZATO SBCAPE/MUCAPE & PARAMETRI CONVETTIVI v2.0")
+    print("=" * 70)
+    print(f"Coordinate: {LATITUDE}°N, {LONGITUDE}°E")
+    print(f"Elevazione: {ELEVATION} m s.l.m.")
+    print()
+
+    print("📡 Lettura dati dalla stazione meteo Tuya (con retry)...")
+    station_data = fetch_station_data_with_retry(max_retries=3)
+    if not station_data:
+        print("⚠️  Stazione non disponibile, userò dati modello come fallback")
+
+    print("⏳ Scaricando profilo verticale da Open-Meteo (con cache)...")
+    data = fetch_profile_cached()
+    if not data:
+        print("✗ Errore nel fetching dei dati")
+        return
+
+    print("⚙️  Calcolando SBCAPE, MUCAPE, CIN e parametri convettivi...")
+    risultato = calcola_sbcape_advanced(data, station_data)
+    if not risultato:
+        print("✗ Errore nel calcolo")
+        return
+
+    raffica = station_data['wind_gust'] if station_data else 0
+    severe = calcola_severe_score(risultato, raffica)
+    risultato['severe_score'] = severe['score']
+    if severe['level']:
+        risultato['severe_warning'] = severe['level']
+        risultato['severe_reasons'] = severe['reasons']
+
+    print()
+    print(f"SBCAPE: {risultato['sbcape']:.1f} J/kg")
+    if risultato.get('mucape'):
+        print(f"MUCAPE: {risultato['mucape']:.1f} J/kg (livello {risultato['mu_level']:.0f} hPa)")
+    print(f"CIN:    {risultato['cin']:.1f} J/kg")
+    print(f"LI:     {risultato['lifted_index']:.1f} °C")
+    if risultato.get('bulk_shear'):
+        print(f"Shear:  {risultato['bulk_shear']:.1f} m/s")
+    if severe['level']:
+        print(f"\n{severe['level']}")
+        print(f"Severe Score: {severe['score']}/12")
+        for reason in severe['reasons']:
+            print(f"  • {reason}")
+
+    with open(FILE_SBCAPE, "w") as f:
+        json.dump(risultato, f, indent=4)
+    print(f"\n✓ Risultati salvati in {FILE_SBCAPE}")
+    print("=" * 70)
 
 
 def get_auth_headers(method, url, token=None, body=""):
@@ -761,7 +1529,7 @@ def esegui_report():
         print(f"  Saturazione: {saturazione_percentuale:.1f}% ({sat_visualizzato:.2f}/{capacita_campo} mm)")
         print(f"  API totale: {sat_visualizzato:.2f} mm")
 
-        # --- LEGGI SBCAPE (Spostato PRIMA degli avvisi per poter generare l'alert) ---
+        # --- CALCOLO SBCAPE INLINE (integrato da calcola_SBCAPE.py) ---
         sbcape_str = ""
         sbcape_value = 0
         mucape_value = 0
@@ -770,19 +1538,84 @@ def esegui_report():
         bulk_shear = 0
         severe_score = 0
         severe_warning = None
+        convective_risk = {
+            "score": 0.0,
+            "level": "basso",
+            "warning": None,
+            "event_label": "Instabilità convettiva",
+            "event_trigger": False,
+            "max_cape": 0.0,
+            "cin_abs": 0.0,
+            "li": None,
+            "shear": 0.0,
+        }
+
+        # Costruisci station_data dal Tuya già letto in questo run
+        _station_data_for_sbcape = {
+            'temperature': temp_ext,
+            'dewpoint': dew_point,
+            'pressure': pressione_locale if pressione_locale else 1013.0,
+            'humidity': umid_ext,
+            'wind_speed': v_medio,
+            'wind_gust': d.get('windspeed_gust', 0) / 10,
+        }
+
         try:
-            if os.path.exists("sbcape.json"):
-                with open("sbcape.json", "r") as f:
-                    sbcape_data = json.load(f)
-                    sbcape_value = sbcape_data.get("sbcape") or 0
-                    mucape_value = sbcape_data.get("mucape") or 0
-                    cin_value = sbcape_data.get("cin") or 0
-                    li_value = sbcape_data.get("lifted_index")
-                    bulk_shear = sbcape_data.get("bulk_shear") or 0
-                    severe_score = sbcape_data.get("severe_score") or 0
-                    severe_warning = sbcape_data.get("severe_warning")
-        except Exception as e:
-            print(f"Errore lettura SBCAPE: {e}")
+            print("\n⚙️  Calcolo SBCAPE/MUCAPE inline...")
+            _om_data = fetch_profile_cached()
+            if _om_data:
+                _sbcape_result = calcola_sbcape_advanced(_om_data, _station_data_for_sbcape)
+                if _sbcape_result:
+                    sbcape_value = _sbcape_result.get("sbcape") or 0
+                    mucape_value = _sbcape_result.get("mucape") or 0
+                    cin_value = _sbcape_result.get("cin") or 0
+                    li_value = _sbcape_result.get("lifted_index")
+                    bulk_shear = _sbcape_result.get("bulk_shear") or 0
+
+                    _severe = calcola_severe_score(_sbcape_result, raffica)
+                    severe_score = _severe['score']
+                    severe_warning = _severe.get('level')
+
+                    # Salva su FILE_SBCAPE per compatibilità
+                    _sbcape_result['severe_score'] = severe_score
+                    if severe_warning:
+                        _sbcape_result['severe_warning'] = severe_warning
+                        _sbcape_result['severe_reasons'] = _severe.get('reasons', [])
+                    with open(FILE_SBCAPE, "w") as f:
+                        json.dump(_sbcape_result, f, indent=4)
+                    print(f"  ✓ SBCAPE={sbcape_value:.0f} MUCAPE={mucape_value:.0f} CIN={cin_value:.0f} LI={li_value} Shear={bulk_shear} SevScore={severe_score}")
+                else:
+                    print("  ⚠️  Calcolo SBCAPE fallito, provo fallback da JSON")
+                    raise RuntimeError("calcolo fallito")
+            else:
+                print("  ⚠️  Profilo Open-Meteo non disponibile, provo fallback da JSON")
+                raise RuntimeError("profilo non disponibile")
+        except Exception as _e:
+            # Fallback: leggi da sbcape.json pre-esistente (se presente)
+            print(f"  Fallback sbcape.json: {_e}")
+            try:
+                if os.path.exists(FILE_SBCAPE):
+                    with open(FILE_SBCAPE, "r") as f:
+                        sbcape_data = json.load(f)
+                        sbcape_value = sbcape_data.get("sbcape") or 0
+                        mucape_value = sbcape_data.get("mucape") or 0
+                        cin_value = sbcape_data.get("cin") or 0
+                        li_value = sbcape_data.get("lifted_index")
+                        bulk_shear = sbcape_data.get("bulk_shear") or 0
+                        severe_score = sbcape_data.get("severe_score") or 0
+                        severe_warning = sbcape_data.get("severe_warning")
+                    print(f"  ✓ Letto da {FILE_SBCAPE} (fallback)")
+            except Exception as e2:
+                print(f"  ✗ Anche fallback JSON fallito: {e2}")
+
+        convective_risk = valuta_instabilita_convettiva(
+            sbcape_value,
+            mucape_value,
+            cin_value,
+            li_value,
+            bulk_shear,
+            severe_score,
+        )
 
         # --- TENDENZA BAROMETRICA ---
         storico = carica_storico()
@@ -872,20 +1705,8 @@ def esegui_report():
         if severe_warning:
             avvisi.append(severe_warning)
         else:
-            # Fallback: logica multi-parametro (più realistica)
-            # Nota: bulk_shear è un proxy 10m-120m, quindi soglie conservative.
-            max_cape = max(sbcape_value, mucape_value)
-            cin_abs = abs(cin_value)
-            li_ok = li_value is not None and li_value <= -2
-            shear_ok = bulk_shear >= 8
-
-            if (
-                max_cape >= 1200
-                and cin_abs <= 125
-                and li_ok
-                and shear_ok
-            ):
-                avvisi.append("⚡ AVVISO: RISCHIO FORTI TEMPORALI")
+            if convective_risk["warning"]:
+                avvisi.append(convective_risk["warning"])
         # ---------------------------------------------------------
         
         # Costruisci stringa con parametri avanzati (evita duplicati con gli avvisi)
@@ -903,6 +1724,8 @@ def esegui_report():
             sbcape_lines.append(f"Bulk Shear: {bulk_shear:.1f} m/s")
         if severe_score > 0 and "severe score" not in avvisi_lower:
             sbcape_lines.append(f"Severe Score: {severe_score}/12")
+        elif convective_risk["score"] > 0 and "severe score" not in avvisi_lower:
+            sbcape_lines.append(f"Convective Score (fallback): {convective_risk['score']}/12")
         sbcape_str = "\n".join(sbcape_lines) + ("\n" if sbcape_lines else "")
 
         str_avvisi = "\n".join(avvisi) + "\n\n" if avvisi else ""
@@ -1022,25 +1845,18 @@ def esegui_report():
         # Allerta ARPAL gestita separatamente (monitor_arpal.py)
         
         # Instabilità convettiva: trigger unico multi-parametro (più realistico)
-        max_cape = max(sbcape_value, mucape_value)
-        cin_abs = abs(cin_value)
-        li_ok = li_value is not None and li_value <= -2
-        shear_ok = bulk_shear >= 8
-        rischio_forti_temporali = (
-            max_cape >= 1200
-            and cin_abs <= 125
-            and li_ok
-            and shear_ok
-        )
-
-        if rischio_forti_temporali:
+        if convective_risk["event_trigger"]:
+            li_text = f"{convective_risk['li']:.1f}"
+            if convective_risk["li"] is None:
+                li_text = "n/d"
             eventi_significativi.append(
-                f"Rischio forti temporali (CAPE {max_cape:.0f} J/kg, CIN {cin_value:.0f} J/kg, "
-                f"LI {li_value:.1f}°C, Shear {bulk_shear:.1f} m/s)"
+                f"{convective_risk['event_label']} (Score {convective_risk['score']}/12, "
+                f"CAPE {convective_risk['max_cape']:.0f} J/kg, CIN {cin_value:.0f} J/kg, "
+                f"LI {li_text}°C, Shear {convective_risk['shear']:.1f} m/s)"
             )
         
         # Severe Score elevato
-        if severe_score >= 7:
+        if severe_score >= 7 and not convective_risk["event_trigger"]:
             eventi_significativi.append(f"Severe Score: {severe_score}/12")
         
         # Confronta avvisi (nuovi avvisi rispetto a prima)
@@ -1112,6 +1928,9 @@ def esegui_report():
                     print("⏭️  Grafico non generato (dati insufficienti)")
 
 if __name__ == "__main__":
-
-
-    esegui_report()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--sbcape":
+        # Modalità standalone: calcola solo SBCAPE e salva su JSON
+        calcola_e_salva_sbcape()
+    else:
+        esegui_report()
