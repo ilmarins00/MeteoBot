@@ -1,9 +1,9 @@
 {
     "api_ultimo_valore": 177.84,
     "sat_base_oggi": 172.46868376610504,
-    "etp_accumulata_ieri": 0.49,
+    "etp_accumulata_ieri": 0.51,
     "data_calcolo": "2026-02-19",
-    "ultimo_update_ora": "2026-02-19 08:58:27.084797+01:00",
+    "ultimo_update_ora": "2026-02-19 09:01:37.847443+01:00",
     "ultimo_etp_giornaliera": 0.72,
     "ultimo_etr_giornaliera": 0.72,
     "ultima_saturazione_perc": 88.9,
@@ -11,12 +11,11 @@
     "t_max_oggi": 12.8,
     "ultima_pressione": 1000.0,
     "ultimi_avvisi": [
-        "\u26a0\ufe0f AVVISO: BURRASCA",
         "\u26f0\ufe0f AVVISO: SUOLO SATURO",
         "\u26a1 AVVISO: TEMPORALI FORTI POSSIBILI"
     ],
-    "n_run_oggi": 11,
-    "etp_media_oggi": 0.49,
+    "n_run_oggi": 12,
+    "etp_media_oggi": 0.51,
     "ultimo_kc": 0.35,
     "ultimo_ke": 0.2,
     "ultimo_kcb": 0.15,
