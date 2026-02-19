@@ -2,8 +2,6 @@ name: MeteoBot - Monitor ARPAL
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '5 * * * *'  # 5 minuti dopo l'ora
 
 concurrency:
   group: arpal
