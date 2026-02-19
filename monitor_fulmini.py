@@ -93,8 +93,8 @@ def collect_strikes_websocket(
                     ws_url,
                     timeout=15,
                     header=[
-                        ("Origin", "https://www.blitzortung.org"),
-                        ("User-Agent", "Mozilla/5.0"),
+                        "Origin: https://www.blitzortung.org",
+                        "User-Agent: Mozilla/5.0",
                     ],
                     sslopt={"check_hostname": False, "cert_reqs": 0},
                 )
