@@ -1,9 +1,9 @@
 {
-    "api_ultimo_valore": 177.69,
+    "api_ultimo_valore": 177.68,
     "sat_base_oggi": 172.46868376610504,
-    "etp_accumulata_ieri": 0.63,
+    "etp_accumulata_ieri": 0.64,
     "data_calcolo": "2026-02-19",
-    "ultimo_update_ora": "2026-02-19 15:39:06.869444+01:00",
+    "ultimo_update_ora": "2026-02-19 15:58:30.767789+01:00",
     "ultimo_etp_giornaliera": 0.82,
     "ultimo_etr_giornaliera": 0.82,
     "ultima_saturazione_perc": 88.8,
@@ -13,8 +13,8 @@
     "ultimi_avvisi": [
         "\u26f0\ufe0f AVVISO: SUOLO SATURO"
     ],
-    "n_run_oggi": 20,
-    "etp_media_oggi": 0.63,
+    "n_run_oggi": 21,
+    "etp_media_oggi": 0.64,
     "ultimo_kc": 0.35,
     "ultimo_ke": 0.2,
     "ultimo_kcb": 0.15,
