@@ -10,7 +10,106 @@
   "max_criterio": "",
   "emoji": "🟢",
   "bacini_piccoli_hours": [],
-  "bacini_piccoli_timeline": [],
-  "ora": 15,
-  "notifica_inviata": true
+  "bacini_piccoli_timeline": [
+    {
+      "ora": "00",
+      "livello": "Verde"
+    },
+    {
+      "ora": "01",
+      "livello": "Verde"
+    },
+    {
+      "ora": "02",
+      "livello": "Verde"
+    },
+    {
+      "ora": "03",
+      "livello": "Verde"
+    },
+    {
+      "ora": "04",
+      "livello": "Verde"
+    },
+    {
+      "ora": "05",
+      "livello": "Verde"
+    },
+    {
+      "ora": "06",
+      "livello": "Verde"
+    },
+    {
+      "ora": "07",
+      "livello": "Verde"
+    },
+    {
+      "ora": "08",
+      "livello": "Verde"
+    },
+    {
+      "ora": "09",
+      "livello": "Verde"
+    },
+    {
+      "ora": "10",
+      "livello": "Verde"
+    },
+    {
+      "ora": "11",
+      "livello": "Verde"
+    },
+    {
+      "ora": "12",
+      "livello": "Verde"
+    },
+    {
+      "ora": "13",
+      "livello": "Verde"
+    },
+    {
+      "ora": "14",
+      "livello": "Verde"
+    },
+    {
+      "ora": "15",
+      "livello": "Verde"
+    },
+    {
+      "ora": "16",
+      "livello": "Verde"
+    },
+    {
+      "ora": "17",
+      "livello": "Verde"
+    },
+    {
+      "ora": "18",
+      "livello": "Verde"
+    },
+    {
+      "ora": "19",
+      "livello": "Verde"
+    },
+    {
+      "ora": "20",
+      "livello": "Verde"
+    },
+    {
+      "ora": "21",
+      "livello": "Verde"
+    },
+    {
+      "ora": "22",
+      "livello": "Verde"
+    },
+    {
+      "ora": "23",
+      "livello": "Verde"
+    }
+  ],
+  "sotto_zone": {},
+  "ora": 18,
+  "notifica_inviata": true,
+  "vigilanza": "ALLERTALIGURIAMenuHomepageMessaggiAllerta di Protezione Civile - Regione LiguriaBollettino di Vigilanza/Avviso meteo di ARPALMonitoraggio meteoidro di ARPALGuida alla lettura dei messaggiSocial networkDati in tempo realeGuida all'allertaIl sistema di Protezione Civile: chi fa cosaLivelli di Allerta e altri rischiDivisione del territorioMisure di autoprotezioneLink utiliContatti"
 }
