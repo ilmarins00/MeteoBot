@@ -1,20 +1,19 @@
 {
-    "api_ultimo_valore": 173.4,
+    "api_ultimo_valore": 173.74,
     "sat_base_oggi": 172.46868376610504,
     "etp_accumulata_ieri": 0.44,
     "data_calcolo": "2026-02-19",
-    "ultimo_update_ora": "2026-02-19 04:58:27.708760+01:00",
+    "ultimo_update_ora": "2026-02-19 05:58:26.374051+01:00",
     "ultimo_etp_giornaliera": 0.44,
     "ultimo_etr_giornaliera": 0.44,
-    "ultima_saturazione_perc": 86.7,
+    "ultima_saturazione_perc": 86.9,
     "t_min_oggi": 10.8,
     "t_max_oggi": 11.5,
-    "ultima_pressione": 1004.0,
+    "ultima_pressione": 1002.0,
     "ultimi_avvisi": [
-        "\u26f0\ufe0f AVVISO: SUOLO SATURO",
-        "\u26a1 AVVISO: TEMPORALI FORTI POSSIBILI"
+        "\u26f0\ufe0f AVVISO: SUOLO SATURO"
     ],
-    "n_run_oggi": 6,
+    "n_run_oggi": 7,
     "etp_media_oggi": 0.44,
     "ultimo_kc": 0.35,
     "ultimo_ke": 0.2,
