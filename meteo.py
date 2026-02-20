@@ -56,7 +56,7 @@ from config import (
     ELEVATION,
     TIMEZONE
 )
-from utils import extract_pressure_hpa
+from utils import extract_pressure_hpa, fetch_wmo_station_data_laspezia
 # NOTE: pressure extraction implemented here as `estrai_pressione_hpa`
 
 def carica_storico():
@@ -545,8 +545,8 @@ _CACHE_DURATION = 600  # 10 minuti
 def fetch_station_data_with_retry(max_retries=3):
     """Legge i dati reali dalla stazione meteo Tuya con retry logic."""
     if not ACCESS_ID or not ACCESS_SECRET or not DEVICE_ID:
-        print("✗ TUYA non configurato: verifica TUYA_ACCESS_ID / TUYA_ACCESS_SECRET / TUYA_DEVICE_ID")
-        return None
+        print("✗ TUYA non configurato: provo fallback stazione esterna WMO")
+        return fetch_wmo_station_data_laspezia()
     for attempt in range(max_retries):
         try:
             token_url = "/v1.0/token?grant_type=1"
@@ -604,7 +604,8 @@ def fetch_station_data_with_retry(max_retries=3):
               f"Td={station_data['dewpoint']:.1f}°C, P={station_data['pressure']:.1f}hPa, "
               f"RH={station_data['humidity']}%")
         return station_data
-    return None
+    print("⚠️  Tuya non disponibile dopo i retry, provo fallback stazione esterna WMO")
+    return fetch_wmo_station_data_laspezia()
 
 
 def fetch_profile_cached():
@@ -1207,36 +1208,63 @@ def esegui_report(force_send=False, target_chat_id=None):
         target_chat_id: Se fornito, invia solo a questa chat.
     """
     _send_to = [str(target_chat_id)] if target_chat_id else LISTA_CHAT
+    external_station_data = None
+    source_info_line = ""
 
-    # Verifica che le credenziali Tuya siano configurate; se mancano, esci pulito
-    if not ACCESS_ID or not ACCESS_SECRET or not DEVICE_ID:
-        print("✗ TUYA non configurato: verifica TUYA_ACCESS_ID / TUYA_ACCESS_SECRET / TUYA_DEVICE_ID")
-        return
+    def _build_virtual_tuya_payload_from_external(station):
+        return {
+            'temp_current_external': int(round((station.get('temperature') or 0) * 10)),
+            'humidity_outdoor': int(round(station.get('humidity') or 0)),
+            'pressure': float(station.get('pressure') or 1013.0),
+            'windspeed_avg': int(round((station.get('wind_speed') or 0) * 10)),
+            'windspeed_gust': int(round((station.get('wind_gust') or 0) * 10)),
+            'dew_point_temp': int(round((station.get('dewpoint') or 0) * 10)),
+            'feellike_temp': int(round((station.get('temperature') or 0) * 10)),
+            'heat_index': int(round((station.get('temperature') or 0) * 10)),
+            'windchill_index': int(round((station.get('temperature') or 0) * 10)),
+            'rain_24h': 0,
+            'rain_1h': 0,
+            'uv_index': 0,
+            'battery_percentage': 0,
+        }
 
-    token_url = "/v1.0/token?grant_type=1"
-    try:
-        r = requests.get(ENDPOINT + token_url, headers=get_auth_headers("GET", token_url), timeout=10).json()
-    except Exception as e:
-        print(f"Errore connessione Tuya (token): {e}")
-        return
+    d = None
+    if ACCESS_ID and ACCESS_SECRET and DEVICE_ID:
+        token_url = "/v1.0/token?grant_type=1"
+        try:
+            r = requests.get(ENDPOINT + token_url, headers=get_auth_headers("GET", token_url), timeout=10).json()
+        except Exception as e:
+            print(f"Errore connessione Tuya (token): {e}")
+            r = None
 
-    if not r or not r.get("success") or "result" not in r or "access_token" not in r["result"]:
-        print(f"Errore Token Tuya: risposta non valida o credenziali errate. Dettaglio: {r}")
-        return
+        if r and r.get("success") and "result" in r and "access_token" in r["result"]:
+            token = r["result"]["access_token"]
+            status_url = f"/v1.0/devices/{DEVICE_ID}/status"
+            try:
+                res = requests.get(ENDPOINT + status_url, headers=get_auth_headers("GET", status_url, token), timeout=10).json()
+            except Exception as e:
+                print(f"Errore connessione Tuya (status): {e}")
+                res = None
 
-    token = r["result"]["access_token"]
-    status_url = f"/v1.0/devices/{DEVICE_ID}/status"
-    try:
-        res = requests.get(ENDPOINT + status_url, headers=get_auth_headers("GET", status_url, token), timeout=10).json()
-    except Exception as e:
-        print(f"Errore connessione Tuya (status): {e}")
-        return
+            if res and res.get("success") and "result" in res:
+                d = {item['code']: item['value'] for item in res.get("result", [])}
+            else:
+                print(f"Errore lettura device Tuya: risposta non valida. Dettaglio: {res}")
+        else:
+            print(f"Errore Token Tuya: risposta non valida o credenziali errate. Dettaglio: {r}")
+    else:
+        print("✗ TUYA non configurato: uso fallback stazione esterna WMO")
 
-    if not res or not res.get("success") or "result" not in res:
-        print(f"Errore lettura device Tuya: risposta non valida. Dettaglio: {res}")
-        return
-
-    d = {item['code']: item['value'] for item in res.get("result", [])}
+    if d is None:
+        external_station_data = fetch_wmo_station_data_laspezia()
+        if not external_station_data:
+            print("✗ Nessun dato disponibile né da Tuya né da stazioni WMO esterne")
+            return
+        d = _build_virtual_tuya_payload_from_external(external_station_data)
+        source_info_line = (
+            "⚠️ *Dati da stazione meteo esterna WMO*\n"
+            f"Fonte: {external_station_data.get('station_id')} — {external_station_data.get('station_name')}\n"
+        )
 
     print("DATI GREZZI RICEVUTI:", json.dumps(d, indent=4))
 
@@ -1289,16 +1317,19 @@ def esegui_report(force_send=False, target_chat_id=None):
         
         # estrai raffica di vento da file locale (ora + valore)
         raffica = 0
-        try:
-            if os.path.exists("raffica.json"):
-                with open("raffica.json", "r") as f:
-                    raff_val = json.load(f)
-                    if isinstance(raff_val, dict):
-                        raffica = raff_val.get("gust", 0)
-                    elif isinstance(raff_val, (int, float)):
-                        raffica = raff_val
-        except Exception:
-            raffica = 0
+        if external_station_data:
+            raffica = external_station_data.get('wind_gust', 0) or 0
+        else:
+            try:
+                if os.path.exists("raffica.json"):
+                    with open("raffica.json", "r") as f:
+                        raff_val = json.load(f)
+                        if isinstance(raff_val, dict):
+                            raffica = raff_val.get("gust", 0)
+                        elif isinstance(raff_val, (int, float)):
+                            raffica = raff_val
+            except Exception:
+                raffica = 0
         
         # Parametri Termometrici Avanzati
         dew_point = d.get('dew_point_temp', 0) / 10
@@ -1861,6 +1892,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             f"📡 *STAZIONE METEO LA SPEZIA — FOCE*\n"
             f"📅 {data_ora_it}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"{source_info_line}"
             f"{str_avvisi}"
             f"🌡️ *TEMPERATURE*\n"
             f"Aria: {temp_ext}°C\n"

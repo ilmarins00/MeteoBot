@@ -11,6 +11,7 @@ from config import (
     TUYA_DEVICE_ID as DEVICE_ID,
     FILE_RAFFICA as FILE_JSON
 )
+from utils import fetch_wmo_station_data_laspezia
 
 def get_auth_headers(method, url, token=None, body=""):
     import hmac, hashlib
@@ -49,10 +50,23 @@ def request_json(url, headers, label, retries=3, timeout=20, delay=2):
     return None
 
 def get_wind_gust():
+    def _fallback_gust():
+        data = fetch_wmo_station_data_laspezia()
+        if not data:
+            return None
+        gust = data.get("wind_gust")
+        if not isinstance(gust, (int, float)):
+            return None
+        print(
+            "✓ Raffica da stazione esterna WMO: "
+            f"{gust:.1f} km/h ({data.get('station_id')} - {data.get('station_name')})"
+        )
+        return float(gust)
+
     # Verifica che le credenziali Tuya siano configurate
     if not ACCESS_ID or not ACCESS_SECRET or not DEVICE_ID:
-        print("✗ TUYA non configurato: verifica TUYA_ACCESS_ID / TUYA_ACCESS_SECRET / TUYA_DEVICE_ID")
-        return None
+        print("✗ TUYA non configurato: uso fallback da stazione esterna WMO")
+        return _fallback_gust()
 
     token_url = "/v1.0/token?grant_type=1"
     r = request_json(
@@ -61,11 +75,11 @@ def get_wind_gust():
         "token"
     )
     if r is None:
-        return None
+        return _fallback_gust()
 
     if not r or not r.get("success") or "result" not in r or "access_token" not in r["result"]:
         print(f"Errore Token Tuya: risposta non valida o credenziali errate. Dettaglio: {r}")
-        return None
+        return _fallback_gust()
 
     token = r["result"]["access_token"]
     status_url = f"/v1.0/devices/{DEVICE_ID}/status"
@@ -75,24 +89,24 @@ def get_wind_gust():
         "status"
     )
     if res is None:
-        return None
+        return _fallback_gust()
 
     if not res or not res.get("success") or "result" not in res:
         print(f"Errore lettura device Tuya: risposta non valida. Dettaglio: {res}")
-        return None
+        return _fallback_gust()
 
     d = {item.get('code'): item.get('value') for item in res.get("result", []) if isinstance(item, dict)}
     gust_raw = d.get('windspeed_gust')
 
     if gust_raw is None or gust_raw == "":
         print("Valore 'windspeed_gust' non presente nella risposta Tuya")
-        return None
+        return _fallback_gust()
 
     try:
         return float(gust_raw) / 10
     except (TypeError, ValueError):
         print(f"Valore 'windspeed_gust' non numerico: {gust_raw}")
-        return None
+        return _fallback_gust()
 
 def update_json_max(gust):
     now = datetime.now()
