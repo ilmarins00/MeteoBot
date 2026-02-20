@@ -1,14 +1,14 @@
 {
-    "sbcape": 77.88,
-    "mucape": 73.75,
+    "sbcape": 42.47,
+    "mucape": 39.07,
     "mu_level": 1013.0,
-    "cin": -73.84,
-    "lifted_index": 0.69,
+    "cin": -41.48,
+    "lifted_index": 0.83,
     "lcl_pressure": 925.5,
     "lfc_pressure": 853.0,
-    "el_pressure": 633.0,
-    "bulk_shear": 1.0,
-    "timestamp": "2026-02-20T16:58:30.136380",
+    "el_pressure": 663.0,
+    "bulk_shear": 0.3,
+    "timestamp": "2026-02-20T17:06:28.459006",
     "location": "La Spezia (44.124444, 9.798167) - 100m",
     "unit": "J/kg",
     "calculation_method": "Advanced thermodynamic integration v2.0",
@@ -23,5 +23,5 @@
         "profile_levels": 52,
         "interpolated": true
     },
-    "severe_score": 1
+    "severe_score": 2
 }
