@@ -2,8 +2,6 @@ name: MeteoBot - Esegui meteo.py
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 * * * *'  # Ogni ora
 
 concurrency:
   group: meteo
