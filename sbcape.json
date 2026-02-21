@@ -8,7 +8,7 @@
     "lfc_pressure": null,
     "el_pressure": null,
     "bulk_shear": 1.1,
-    "timestamp": "2026-02-21T21:51:54.501822",
+    "timestamp": "2026-02-21T21:58:32.824779",
     "location": "La Spezia (44.124444, 9.798167) - 100m",
     "unit": "J/kg",
     "calculation_method": "Advanced thermodynamic integration v2.0",
