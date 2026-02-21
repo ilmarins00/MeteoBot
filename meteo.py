@@ -1216,8 +1216,8 @@ def esegui_report(force_send=False, target_chat_id=None):
             'temp_current_external': int(round((station.get('temperature') or 0) * 10)),
             'humidity_outdoor': int(round(station.get('humidity') or 0)),
             'pressure': float(station.get('pressure') or 1013.0),
-            'windspeed_avg': int(round((station.get('wind_speed') or 0) * 10)),
-            'windspeed_gust': int(round((station.get('wind_gust') or 0) * 10)),
+            'windspeed_avg': 0,
+            'windspeed_gust': 0,
             'dew_point_temp': int(round((station.get('dewpoint') or 0) * 10)),
             'feellike_temp': int(round((station.get('temperature') or 0) * 10)),
             'heat_index': int(round((station.get('temperature') or 0) * 10)),
@@ -1315,21 +1315,8 @@ def esegui_report(force_send=False, target_chat_id=None):
         pioggia_24h = round(_pioggia_24h_somma, 1)
         print(f"  Pioggia 24h calcolata: {pioggia_24h} mm (sensore: {pioggia_24h_sensore} mm, somma storico+attuale)")
         
-        # estrai raffica di vento da file locale (ora + valore)
+        # Raffica non più monitorata; il dato non viene mostrato nel report
         raffica = 0
-        if external_station_data:
-            raffica = external_station_data.get('wind_gust', 0) or 0
-        else:
-            try:
-                if os.path.exists("raffica.json"):
-                    with open("raffica.json", "r") as f:
-                        raff_val = json.load(f)
-                        if isinstance(raff_val, dict):
-                            raffica = raff_val.get("gust", 0)
-                        elif isinstance(raff_val, (int, float)):
-                            raffica = raff_val
-            except Exception:
-                raffica = 0
         
         # Parametri Termometrici Avanzati
         dew_point = d.get('dew_point_temp', 0) / 10
@@ -1905,8 +1892,8 @@ def esegui_report(force_send=False, target_chat_id=None):
             f"Pioggia ultima ora: {pioggia_1h} mm\n"
             f"Pioggia 24h: {pioggia_24h} mm\n\n"
             f"🌬️ *VENTO*\n"
-            f"Velocità media: {v_medio} km/h\n"
-            f"Raffica max: {raffica} km/h\n\n"
+            f"Velocità media (10 min): {v_medio} km/h\n"
+            f"Raffica max:\n\n"
             f"🔵 *PRESSIONE ATMOSFERICA*\n"
             f"Livello mare: {pressione_msl} hPa {simbolo_baro}\n\n"
             f"☀️ *RADIAZIONE*\n"
@@ -1936,6 +1923,9 @@ def esegui_report(force_send=False, target_chat_id=None):
         
         # 2. Eventi meteo significativi
         eventi_significativi = []
+
+        ultimo_invio_slot = dati_salvati.get("ultimo_invio_slot")
+        ultimo_invio_ts_raw = dati_salvati.get("ultimo_invio_ts")
         
         # Pioggia in corso (soglia abbassata per monitoraggio perturbazioni)
         if pioggia_1h >= thresholds.RAIN_SIGNIFICANT:
@@ -1988,6 +1978,33 @@ def esegui_report(force_send=False, target_chat_id=None):
         
         # 3. Decide se inviare
         devo_inviare = force_send or e_orario_programmato or len(eventi_significativi) > 0
+
+        # 3b. Anti-duplicato: evita doppio invio ravvicinato per lo stesso trigger
+        invio_slot = None
+        invio_duplicato = False
+        if e_orario_programmato:
+            invio_slot = f"scheduled:{now_it.strftime('%Y-%m-%d')}:{ora_corrente:02d}"
+        elif eventi_significativi:
+            eventi_fingerprint = "|".join(sorted(eventi_significativi))
+            event_hash = hashlib.sha1(eventi_fingerprint.encode("utf-8")).hexdigest()[:12]
+            invio_slot = f"event:{event_hash}"
+
+        if devo_inviare and not force_send and invio_slot and ultimo_invio_slot == invio_slot:
+            if invio_slot.startswith("scheduled:"):
+                invio_duplicato = True
+            elif invio_slot.startswith("event:") and ultimo_invio_ts_raw:
+                try:
+                    ultimo_invio_dt = datetime.fromisoformat(ultimo_invio_ts_raw)
+                    if ultimo_invio_dt.tzinfo is None:
+                        ultimo_invio_dt = ultimo_invio_dt.replace(tzinfo=TZ_ROME)
+                    if (now_it - ultimo_invio_dt).total_seconds() < 600:
+                        invio_duplicato = True
+                except Exception:
+                    invio_duplicato = False
+
+        if invio_duplicato:
+            print(f"⏭️  Invio duplicato evitato (slot: {invio_slot})")
+            devo_inviare = False
         
         # Debug
         if devo_inviare:
@@ -2004,6 +2021,7 @@ def esegui_report(force_send=False, target_chat_id=None):
         if devo_inviare:
             url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
             url_tg_photo = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+            invio_avvenuto = False
             if not TELEGRAM_TOKEN or not _send_to:
                 print("✗ Telegram non configurato (manca token o lista chat); salto invio")
             else:
@@ -2018,6 +2036,7 @@ def esegui_report(force_send=False, target_chat_id=None):
                         tg_payload = response.json()
                         if tg_payload.get("ok"):
                             print(f"✓ Messaggio inviato a {chat_id}")
+                            invio_avvenuto = True
                         else:
                             print(f"✗ Telegram API testo errore per {chat_id}: {tg_payload}")
                     except Exception as e:
@@ -2041,6 +2060,7 @@ def esegui_report(force_send=False, target_chat_id=None):
                                 tg_payload = response.json()
                                 if tg_payload.get("ok"):
                                     print(f"✓ Grafico inviato a {chat_id}")
+                                    invio_avvenuto = True
                                 else:
                                     print(f"✗ Telegram API grafico errore per {chat_id}: {tg_payload}")
                             except Exception as e:
@@ -2049,6 +2069,12 @@ def esegui_report(force_send=False, target_chat_id=None):
                         print("⏭️  Grafico non generato (dati insufficienti)")
                 except Exception as e_graf:
                     print(f"⚠️  Errore grafico (non bloccante): {e_graf}")
+
+            if invio_avvenuto and invio_slot:
+                nuovi_dati["ultimo_invio_slot"] = invio_slot
+                nuovi_dati["ultimo_invio_ts"] = now_it.isoformat()
+                with open(FILE_MEMORIA, "w") as f:
+                    json.dump(nuovi_dati, f, indent=4)
 
 if __name__ == "__main__":
     import sys
