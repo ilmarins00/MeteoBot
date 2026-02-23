@@ -1,9 +1,9 @@
 {
-    "api_ultimo_valore": 165.16,
+    "api_ultimo_valore": 165.11,
     "sat_base_oggi": 165.68222743482127,
-    "etp_accumulata_ieri": 0.51,
+    "etp_accumulata_ieri": 0.56,
     "data_calcolo": "2026-02-23",
-    "ultimo_update_ora": "2026-02-23 11:58:41.356005+01:00",
+    "ultimo_update_ora": "2026-02-23 12:58:34.540585+01:00",
     "ultimo_etp_giornaliera": 1.05,
     "ultimo_etr_giornaliera": 1.05,
     "ultima_saturazione_perc": 82.6,
@@ -11,12 +11,10 @@
     "t_max_oggi": 14.0,
     "ultima_pressione": 1033.2,
     "ultimi_avvisi": [],
-    "n_run_oggi": 10,
-    "etp_media_oggi": 0.51,
+    "n_run_oggi": 11,
+    "etp_media_oggi": 0.56,
     "ultimo_kc": 0.35,
     "ultimo_ke": 0.2,
     "ultimo_kcb": 0.15,
-    "ultimo_ks": 1.0,
-    "ultimo_invio_slot": "scheduled:2026-02-23:11",
-    "ultimo_invio_ts": "2026-02-23T11:58:41.356005+01:00"
+    "ultimo_ks": 1.0
 }
