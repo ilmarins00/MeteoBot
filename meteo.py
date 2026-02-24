@@ -588,7 +588,6 @@ def fetch_station_data_with_retry(max_retries=3):
             'pressure': extract_pressure_hpa(d) or 1013.0,
             'humidity': d.get('humidity_outdoor', 0),
             'wind_speed': d.get('windspeed_avg', 0) / 10,
-            'wind_gust': d.get('windspeed_gust', 0) / 10,
         }
 
         if (station_data['temperature'] < -50 or station_data['temperature'] > 60 or
@@ -1086,7 +1085,7 @@ def calcola_sbcape_advanced(data, station_data=None):
         return None
 
 
-def calcola_severe_score(results, raffica_kmh=0):
+def calcola_severe_score(results):
     """Severe Weather Score combinando multipli parametri (score custom 0-12).
     NON standardizzato; usare solo come indicatore qualitativo."""
     score = 0
@@ -1117,11 +1116,6 @@ def calcola_severe_score(results, raffica_kmh=0):
         score += 3; reasons.append(f"Shear elevato ({shear:.1f} m/s)")
     elif shear and shear > 10:
         score += 2; reasons.append(f"Shear moderato ({shear:.1f} m/s)")
-
-    if raffica_kmh > 60:
-        score += 2; reasons.append(f"Raffiche forti ({raffica_kmh:.0f} km/h)")
-    elif raffica_kmh > 40:
-        score += 1; reasons.append(f"Raffiche moderate ({raffica_kmh:.0f} km/h)")
 
     if score >= 7:
         level = "⚡🌪️ ALLERTA MASSIMA: RISCHIO SUPERCELLE/TORNADO"
@@ -1162,8 +1156,7 @@ def calcola_e_salva_sbcape():
         print("✗ Errore nel calcolo")
         return
 
-    raffica = station_data['wind_gust'] if station_data else 0
-    severe = calcola_severe_score(risultato, raffica)
+    severe = calcola_severe_score(risultato)
     risultato['severe_score'] = severe['score']
     if severe['level']:
         risultato['severe_warning'] = severe['level']
@@ -1217,7 +1210,6 @@ def esegui_report(force_send=False, target_chat_id=None):
             'humidity_outdoor': int(round(station.get('humidity') or 0)),
             'pressure': float(station.get('pressure') or 1013.0),
             'windspeed_avg': 0,
-            'windspeed_gust': 0,
             'dew_point_temp': int(round((station.get('dewpoint') or 0) * 10)),
             'feellike_temp': int(round((station.get('temperature') or 0) * 10)),
             'heat_index': int(round((station.get('temperature') or 0) * 10)),
@@ -1315,9 +1307,6 @@ def esegui_report(force_send=False, target_chat_id=None):
         _pioggia_24h_somma += max(pioggia_1h, 0)
         pioggia_24h = round(_pioggia_24h_somma, 1)
         print(f"  Pioggia 24h calcolata: {pioggia_24h} mm (sensore: {pioggia_24h_sensore} mm, somma storico+attuale)")
-        
-        # Raffica non più monitorata; il dato non viene mostrato nel report
-        raffica = 0
         
         # Parametri Termometrici Avanzati
         dew_point = d.get('dew_point_temp', 0) / 10
@@ -1650,7 +1639,6 @@ def esegui_report(force_send=False, target_chat_id=None):
             'pressure': pressione_locale if pressione_locale else 1013.0,
             'humidity': umid_ext,
             'wind_speed': v_medio,
-            'wind_gust': d.get('windspeed_gust', 0) / 10,
         }
 
         try:
@@ -1665,7 +1653,7 @@ def esegui_report(force_send=False, target_chat_id=None):
                     li_value = _sbcape_result.get("lifted_index")
                     bulk_shear = _sbcape_result.get("bulk_shear") or 0
 
-                    _severe = calcola_severe_score(_sbcape_result, raffica)
+                    _severe = calcola_severe_score(_sbcape_result)
                     severe_score = _severe['score']
                     severe_warning = _severe.get('level')
 
@@ -1723,7 +1711,6 @@ def esegui_report(force_send=False, target_chat_id=None):
             "pioggia_24h": pioggia_24h,
             "umidita": umid_ext,
             "vento": v_medio,
-            "raffica": raffica,
             "dew_point": dew_point,
             "api": sat_visualizzato,
             "sbcape": sbcape_value,
@@ -1750,14 +1737,6 @@ def esegui_report(force_send=False, target_chat_id=None):
             else:
                 avvisi.append("🌫️ AVVISO: FOSCHIA (T-Td ≤0.5°C, U≥99%)")
         
-        # ── VENTO — soglie ARPAL raffiche ──
-        if raffica >= thresholds.ARPAL_WIND_ROSSO:
-            avvisi.append(f"🔴⚠️ AVVISO: BURRASCA FORTE — raffica {raffica} km/h (soglia ARPAL 🔴 ≥{thresholds.ARPAL_WIND_ROSSO:.0f} km/h)")
-        elif raffica >= thresholds.ARPAL_WIND_ARANCIONE:
-            avvisi.append(f"🟠⚠️ AVVISO: BURRASCA — raffica {raffica} km/h (soglia ARPAL 🟠 ≥{thresholds.ARPAL_WIND_ARANCIONE:.0f} km/h)")
-        elif raffica >= thresholds.ARPAL_WIND_GIALLO:
-            avvisi.append(f"🟡⚠️ AVVISO: VENTO FORTE — raffica {raffica} km/h (soglia ARPAL 🟡 ≥{thresholds.ARPAL_WIND_GIALLO:.0f} km/h)")
-
         # ── TEMPERATURA — soglie ARPAL ondata di calore / gelo ──
         if temp_ext >= thresholds.ARPAL_HEAT_ROSSO:
             avvisi.append(f"🔴🔥 AVVISO: CALDO ESTREMO — {temp_ext}°C (soglia ARPAL 🔴 ≥{thresholds.ARPAL_HEAT_ROSSO:.0f}°C)")
@@ -1933,10 +1912,6 @@ def esegui_report(force_send=False, target_chat_id=None):
         if pioggia_1h >= thresholds.RAIN_SIGNIFICANT:
             eventi_significativi.append(f"Pioggia: {pioggia_1h} mm/h")
         
-        # Vento forte
-        if raffica > thresholds.WIND_STRONG:
-            eventi_significativi.append(f"Raffica: {raffica} km/h")
-
         # Temperature estreme
         # Soglia di gelo: trigger se temperatura è minore o uguale alla soglia
         if temp_ext <= thresholds.TEMP_FREEZING:
