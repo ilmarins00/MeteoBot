@@ -1287,6 +1287,7 @@ def esegui_report(force_send=False, target_chat_id=None):
         v_medio = d.get('windspeed_avg', 0) / 10
         pioggia_24h_sensore = d.get('rain_24h', 0) / 10  # Dato grezzo dal sensore (resetta ogni 24h)
         pioggia_1h = d.get('rain_1h', 0) / 10  # Intensità pioggia ultima ora
+        rain_rate = d.get('rain_rate', 0) / 10  # Tasso istantaneo mm/h
         
         # Calcola pioggia 24h reale sommando i pioggia_1h dallo storico
         # Il sensore resetta il contatore rain_24h ogni giorno, quindi non è affidabile
@@ -1890,7 +1891,8 @@ def esegui_report(force_send=False, target_chat_id=None):
             f"💧 *UMIDITÀ E PRECIPITAZIONI*\n"
             f"Umidità: {umid_ext}%\n"
             f"Pioggia ultima ora: {pioggia_1h} mm\n"
-            f"Pioggia 24h: {pioggia_24h} mm\n\n"
+            f"Pioggia 24h: {pioggia_24h} mm\n"
+            f"Rain rate: {rain_rate} mm/h\n\n"
             f"🌬️ *VENTO*\n"
             f"Velocità media (10 min): {v_medio} km/h\n"
             f"Raffica max:\n\n"
