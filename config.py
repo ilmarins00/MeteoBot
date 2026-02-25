@@ -33,6 +33,11 @@ TUYA_ACCESS_SECRET = get_env_optional("TUYA_ACCESS_SECRET")
 TUYA_DEVICE_ID = get_env_optional("TUYA_DEVICE_ID")
 TUYA_ENDPOINT = get_env_optional("TUYA_ENDPOINT", "https://openapi.tuyaeu.com")
 
+# Ecowitt Wittboy API Configuration
+ECOWITT_APPLICATION_KEY = get_env_optional("ECOWITT_APPLICATION_KEY")
+ECOWITT_API_KEY = get_env_optional("ECOWITT_API_KEY")
+ECOWITT_MAC = get_env_optional("ECOWITT_MAC")
+
 # Telegram Configuration
 TELEGRAM_TOKEN = get_env_optional("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_IDS = get_chat_ids()
@@ -48,6 +53,11 @@ FILE_STORICO = "storico_24h.json"
 FILE_MEMORIA = "meteo_memoria.json"
 FILE_SBCAPE = "sbcape.json"
 FILE_RAFFICA = "raffica.json"
+
+# File Paths — Ecowitt (separati per evitare conflitti)
+FILE_STORICO_ECOWITT = "storico_24h_ecowitt.json"
+FILE_MEMORIA_ECOWITT = "meteo_memoria_ecowitt.json"
+FILE_SBCAPE_ECOWITT = "sbcape_ecowitt.json"
 
 @dataclass
 class Thresholds:

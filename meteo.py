@@ -639,7 +639,7 @@ def fetch_profile_cached():
     base_params = {
         "latitude": LATITUDE,
         "longitude": LONGITUDE,
-        "current": "temperature_2m,relative_humidity_2m,pressure_msl,dew_point_2m,windspeed_10m,winddirection_10m",
+        "current": "temperature_2m,relative_humidity_2m,pressure_msl,dew_point_2m,windspeed_10m,winddirection_10m,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high",
         "hourly": hourly_vars,
         "timezone": "UTC"
     }
@@ -1620,6 +1620,9 @@ def esegui_report(force_send=False, target_chat_id=None):
         bulk_shear = 0
         severe_score = 0
         severe_warning = None
+        cc_low = 0
+        cc_mid = 0
+        cc_high = 0
         convective_risk = {
             "score": 0.0,
             "level": "basso",
@@ -1645,6 +1648,13 @@ def esegui_report(force_send=False, target_chat_id=None):
             print("\n⚙️  Calcolo SBCAPE/MUCAPE inline...")
             _om_data = fetch_profile_cached()
             if _om_data:
+                # Estrai nuvolosità a strati da Open-Meteo
+                _current_om = _om_data.get("current", {})
+                cc_low = _current_om.get("cloud_cover_low", 0) or 0
+                cc_mid = _current_om.get("cloud_cover_mid", 0) or 0
+                cc_high = _current_om.get("cloud_cover_high", 0) or 0
+                print(f"  ☁️ Nuvolosità: bassa={cc_low}% media={cc_mid}% alta={cc_high}%")
+
                 _sbcape_result = calcola_sbcape_advanced(_om_data, _station_data_for_sbcape)
                 if _sbcape_result:
                     sbcape_value = _sbcape_result.get("sbcape") or 0
@@ -1716,7 +1726,10 @@ def esegui_report(force_send=False, target_chat_id=None):
             "sbcape": sbcape_value,
             "mucape": mucape_value,
             "bulk_shear": bulk_shear,
-            "theta_e": classifica_massa_aria(temp_ext, dew_point, pressione_msl, mese_corrente).get("theta_e")
+            "theta_e": classifica_massa_aria(temp_ext, dew_point, pressione_msl, mese_corrente).get("theta_e"),
+            "cc_low": cc_low,
+            "cc_mid": cc_mid,
+            "cc_high": cc_high
         })
         salva_storico(storico)
         
@@ -1879,6 +1892,10 @@ def esegui_report(force_send=False, target_chat_id=None):
             f"Livello mare: {pressione_msl} hPa {simbolo_baro}\n\n"
             f"☀️ *RADIAZIONE*\n"
             f"Indice UV: {uv_idx}\n\n"
+            f"☁️ *NUVOLOSITÀ (Open-Meteo)*\n"
+            f"Bassa (<2 km): {cc_low}%\n"
+            f"Media (2-6 km): {cc_mid}%\n"
+            f"Alta (>6 km): {cc_high}%\n\n"
             f"🌱 *BILANCIO IDRICO SUOLO*\n"
             f"API: {sat_visualizzato} mm ({saturazione_percentuale:.1f}%)\n"
             f"ETR: {etr_giornaliera} mm\n"
