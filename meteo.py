@@ -1103,7 +1103,21 @@ def esegui_report(force_send=False, target_chat_id=None):
         T_k = temp_ext + 273.15 if -50 < temp_ext < 60 else 288.15
         pressione_msl = round(pressione_locale * math.exp(g_val * h / (Rd * T_k)), 1)
         v_medio = d.get('windspeed_avg', 0) / 10
-        raffica = d.get('windspeed_gust', 0) / 10  # Raffica vento
+
+        # Raffica vento: raffica massima oraria da stazione WMO certificata
+        # Il METAR wgst è il picco di raffica dall'ultima osservazione (tipicamente 1h)
+        raffica_source = "Tuya"
+        wmo_gust_data = fetch_wmo_station_data_laspezia() if not external_station_data else external_station_data
+        if wmo_gust_data and wmo_gust_data.get('wind_gust'):
+            raffica = round(wmo_gust_data['wind_gust'], 1)
+            raffica_source = f"WMO {wmo_gust_data.get('station_id', '')}"
+            print(f"✓ Raffica max oraria WMO: {raffica} km/h (da {raffica_source})")
+        else:
+            raffica = d.get('windspeed_gust', 0) / 10  # Fallback Tuya
+            if raffica > 0:
+                print(f"⚠️  Raffica da Tuya (istantanea, non max oraria): {raffica} km/h")
+            else:
+                print("⚠️  Raffica non disponibile (né WMO né Tuya)")
         pioggia_24h_sensore = d.get('rain_24h', 0) / 10  # Dato grezzo dal sensore (resetta ogni 24h)
         pioggia_1h = d.get('rain_1h', 0) / 10  # Intensità pioggia ultima ora
         rain_rate = d.get('rain_rate', 0) / 10  # Tasso istantaneo mm/h
@@ -1691,7 +1705,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             f"Rain rate: {rain_rate} mm/h\n\n"
             f"🌬️ *VENTO*\n"
             f"Velocità media: {v_medio} km/h\n"
-            f"Raffica max: {raffica} km/h\n\n"
+            f"Raffica max (1h): {raffica} km/h ({raffica_source})\n\n"
             f"🔵 *PRESSIONE ATMOSFERICA*\n"
             f"Livello mare: {pressione_msl} hPa {simbolo_baro}\n\n"
             f"☀️ *RADIAZIONE*\n"
