@@ -1804,6 +1804,8 @@ def esegui_report(force_send=False, target_chat_id=None):
         # Debug
         if devo_inviare:
             motivo = []
+            if force_send:
+                motivo.append("Invio forzato (--force)")
             if e_orario_programmato:
                 motivo.append(f"Orario programmato: {ora_corrente:02d}:{minuto_corrente:02d}")
             if eventi_significativi:

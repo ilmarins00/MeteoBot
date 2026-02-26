@@ -33,7 +33,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
         run: |
-          python meteo_ecowitt.py --force
+          python meteo_ecowitt.py
       - name: Commit JSON aggiornati
         if: always()
         run: |
