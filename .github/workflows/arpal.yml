@@ -40,16 +40,16 @@ jobs:
             git fetch origin main
             cp state.json /tmp/local_state.json 2>/dev/null || true
             git reset --hard origin/main
-            python3 -c "
-import json, os
-with open('/tmp/local_state.json') as f: local = json.load(f)
-remote = {}
-if os.path.exists('state.json'):
-    with open('state.json') as f: remote = json.load(f)
-for s in ['arpal']:
-    if s in local: remote[s] = local[s]
-with open('state.json', 'w') as f: json.dump(remote, f, indent=4, ensure_ascii=False)
-" || true
+            python3 << 'PYEOF'
+          import json, os
+          with open('/tmp/local_state.json') as f: local = json.load(f)
+          remote = {}
+          if os.path.exists('state.json'):
+              with open('state.json') as f: remote = json.load(f)
+          for s in ['arpal']:
+              if s in local: remote[s] = local[s]
+          with open('state.json', 'w') as f: json.dump(remote, f, indent=4, ensure_ascii=False)
+          PYEOF
             git add state.json || true
             if git diff --cached --quiet; then
               echo "Nessuna modifica da committare"
@@ -57,13 +57,13 @@ with open('state.json', 'w') as f: json.dump(remote, f, indent=4, ensure_ascii=F
             fi
             git commit -m "Aggiorna state.json da GitHub Actions [skip ci]"
             if git push; then
-              echo "✓ Push riuscito (tentativo $attempt)"
+              echo "Push riuscito (tentativo $attempt)"
               exit 0
             fi
-            echo "⚠️  Push rifiutato, ritento ($attempt/5)..."
+            echo "Push rifiutato, ritento ($attempt/5)..."
             sleep $((attempt * 2))
           done
-          echo "✗ Push fallito dopo 5 tentativi"
+          echo "Push fallito dopo 5 tentativi"
           exit 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
