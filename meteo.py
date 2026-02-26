@@ -5,7 +5,6 @@ import requests
 import json
 import os
 import math
-import re
 import traceback
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -60,7 +59,7 @@ def carica_storico():
         try:
             with open(FILE_STORICO, "r") as f:
                 return json.load(f)
-        except:
+        except Exception:
             pass
     return []
 
@@ -1098,14 +1097,13 @@ def esegui_report(force_send=False, target_chat_id=None):
             print("Pressione non disponibile da Tuya, uso fallback 1013.0 hPa")
             pressione_locale = 1013.0
         # Riduzione pressione al livello del mare con formula ipsometrica
-        # P0 = P * exp(g * h / (Rd * T))
-        # h = 100 m (altitudine Foce), T = temp_ext + 273.15
-        h = 100.0
+        h = ELEVATION  # altitudine stazione (da config)
         Rd = 287.05
-        g = 9.80665
-        T_k = temp_ext + 273.15 if temp_ext > -50 and temp_ext < 60 else 288.15
-        pressione_msl = round(pressione_locale * math.exp(g * h / (Rd * T_k)), 1)
+        g_val = 9.80665
+        T_k = temp_ext + 273.15 if -50 < temp_ext < 60 else 288.15
+        pressione_msl = round(pressione_locale * math.exp(g_val * h / (Rd * T_k)), 1)
         v_medio = d.get('windspeed_avg', 0) / 10
+        raffica = d.get('windspeed_gust', 0) / 10  # Raffica vento
         pioggia_24h_sensore = d.get('rain_24h', 0) / 10  # Dato grezzo dal sensore (resetta ogni 24h)
         pioggia_1h = d.get('rain_1h', 0) / 10  # Intensità pioggia ultima ora
         rain_rate = d.get('rain_rate', 0) / 10  # Tasso istantaneo mm/h
@@ -1341,6 +1339,7 @@ def esegui_report(force_send=False, target_chat_id=None):
         # Evaporazione suolo: calcolata scientificamente secondo l'approccio
         # dual Kc (FAO-56). Ev = Ke * ETo, dove ETo = `etp_base`.
         evaporazione_suolo = 0.0
+        ke = 0.0
 
         # Calcolo di Ke (evaporazione suolo) secondo approccio FAO-56 (dual Kc):
         # Ke_initial = max(0, Kc - Kcb)
@@ -1526,6 +1525,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             "pioggia_24h": pioggia_24h,
             "umidita": umid_ext,
             "vento": v_medio,
+            "raffica": raffica,
             "dew_point": dew_point,
             "api": sat_visualizzato,
             "sbcape": sbcape_value,
@@ -1690,8 +1690,8 @@ def esegui_report(force_send=False, target_chat_id=None):
             f"Pioggia 24h: {pioggia_24h} mm\n"
             f"Rain rate: {rain_rate} mm/h\n\n"
             f"🌬️ *VENTO*\n"
-            f"Velocità media (10 min): {v_medio} km/h\n"
-            f"Raffica max:\n\n"
+            f"Velocità media: {v_medio} km/h\n"
+            f"Raffica max: {raffica} km/h\n\n"
             f"🔵 *PRESSIONE ATMOSFERICA*\n"
             f"Livello mare: {pressione_msl} hPa {simbolo_baro}\n\n"
             f"☀️ *RADIAZIONE*\n"
@@ -1753,9 +1753,7 @@ def esegui_report(force_send=False, target_chat_id=None):
         
         # Instabilità convettiva: trigger unico multi-parametro (più realistico)
         if convective_risk["event_trigger"]:
-            li_text = f"{convective_risk['li']:.1f}"
-            if convective_risk["li"] is None:
-                li_text = "n/d"
+            li_text = f"{convective_risk['li']:.1f}" if convective_risk["li"] is not None else "n/d"
             eventi_significativi.append(
                 f"{convective_risk['event_label']} (Score {convective_risk['score']}/12, "
                 f"CAPE {convective_risk['max_cape']:.0f} J/kg, CIN {cin_value:.0f} J/kg, "
