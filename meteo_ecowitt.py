@@ -949,6 +949,58 @@ def calc_wind_chill(temp_c, wind_kmh):
     return round(WC, 1)
 
 
+def fetch_ecowitt_hourly_max_gust():
+    """Recupera la raffica massima registrata dalla Ecowitt nell'ultima ora.
+
+    Usa l'API v3 history con intervallo di 1 ora.
+    L'endpoint history restituisce il valore MAX di wind_gust nel periodo.
+    Restituisce il valore in km/h oppure None se non disponibile.
+    """
+    if not ECOWITT_APPLICATION_KEY or not ECOWITT_API_KEY or not ECOWITT_MAC:
+        return None
+
+    now_utc = datetime.now(timezone.utc)
+    end_date = now_utc.strftime("%Y-%m-%d%%20%H:%M:%S")
+    start_date = (now_utc - timedelta(hours=1)).strftime("%Y-%m-%d%%20%H:%M:%S")
+
+    url = "https://api.ecowitt.net/api/v3/device/history"
+    params = {
+        "application_key": ECOWITT_APPLICATION_KEY,
+        "api_key": ECOWITT_API_KEY,
+        "mac": ECOWITT_MAC,
+        "start_date": start_date,
+        "end_date": end_date,
+        "call_back": "wind",
+        "cycle_type": "auto",
+        "wind_speed_unitid": 6,  # km/h
+    }
+
+    try:
+        r = requests.get(url, params=params, timeout=15)
+        r.raise_for_status()
+        resp = r.json()
+    except Exception as e:
+        print(f"⚠️  Errore fetch history Ecowitt (raffica max 1h): {e}")
+        return None
+
+    if resp.get("code") != 0:
+        print(f"⚠️  Errore Ecowitt history API: {resp.get('msg', 'sconosciuto')}")
+        return None
+
+    try:
+        wind_data = resp.get("data", {}).get("wind", {})
+        gust_list = wind_data.get("wind_gust", {}).get("list", {})
+        if not gust_list:
+            print("⚠️  History Ecowitt: nessun dato wind_gust nell'ultima ora")
+            return None
+        max_gust = max(float(v) for v in gust_list.values())
+        print(f"✓ Raffica max oraria Ecowitt (history): {max_gust} km/h")
+        return round(max_gust, 1)
+    except Exception as e:
+        print(f"⚠️  Errore parsing history Ecowitt wind_gust: {e}")
+        return None
+
+
 def fetch_ecowitt_data(max_retries=3):
     """Legge i dati in tempo reale dalla stazione Ecowitt Wittboy.
 
@@ -1110,7 +1162,14 @@ def esegui_report(force_send=False, target_chat_id=None):
     umid_ext = ecowitt['humidity']
     pressione_locale = ecowitt['pressure']
     v_medio = ecowitt['wind_speed']
-    raffica = ecowitt['wind_gust']
+
+    # Raffica: massima registrata dalla Ecowitt nell'ultima ora (via API history)
+    raffica_1h = fetch_ecowitt_hourly_max_gust()
+    if raffica_1h is not None:
+        raffica = raffica_1h
+    else:
+        raffica = ecowitt['wind_gust']  # Fallback: valore istantaneo
+        print(f"⚠️  Uso raffica istantanea Ecowitt (history non disponibile): {raffica} km/h")
     dew_point = ecowitt['dewpoint']
     feel_like = ecowitt['feels_like']
     heat_index = ecowitt['heat_index']
@@ -1585,7 +1644,7 @@ def esegui_report(force_send=False, target_chat_id=None):
         f"Rain rate: {rain_rate} mm/h\n\n"
         f"🌬️ *VENTO*\n"
         f"Velocità media: {v_medio} km/h\n"
-        f"Raffica max: {raffica} km/h\n\n"
+        f"Raffica max (1h): {raffica} km/h\n\n"
         f"🔵 *PRESSIONE ATMOSFERICA*\n"
         f"Livello mare: {pressione_msl} hPa {simbolo_baro}\n\n"
         f"☀️ *RADIAZIONE*\n"
