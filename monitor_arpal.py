@@ -12,7 +12,7 @@ Novità rispetto alla versione base:
 - Supporto sotto-zone C / C+ / C- (quando presenti)
 - Logica notifica migliorata: re-invia se livello peggiora, non solo cambia
 
-Esegue salvataggio dello stato in `arpal_state.json` nella cartella di lavoro.
+Esegue salvataggio dello stato in `state.json` (sezione arpal) nella cartella di lavoro.
 """
 import requests
 import re
@@ -21,11 +21,10 @@ import os
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
-from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_IDS as LISTA_CHAT
+from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_IDS as LISTA_CHAT, load_state_section, save_state_section
 
 URL = "https://allertaliguria.regione.liguria.it/"
 URL_VIGILANZA = "https://allertaliguria.regione.liguria.it/"
-STATE_FILE = "arpal_state.json"
 
 COLOR_MAP = {"V": "Verde", "G": "Giallo", "A": "Arancione", "R": "Rosso"}
 EMOJI = {"Verde": "🟢", "Giallo": "🟡", "Arancione": "🟠", "Rosso": "🔴"}
@@ -374,18 +373,11 @@ def parse_vigilanza(html: str) -> Optional[str]:
 
 
 def load_state() -> Dict[str, Any]:
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
+    return load_state_section('arpal')
 
 
 def save_state(state: Dict[str, Any]):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2, ensure_ascii=False)
+    save_state_section('arpal', state)
 
 
 def build_message(parsed: Dict[str, Any], vigilanza: Optional[str] = None) -> str:

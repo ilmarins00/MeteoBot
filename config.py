@@ -49,15 +49,43 @@ ELEVATION = 100  # meters above sea level
 TIMEZONE = "Europe/Rome"
 
 # File Paths
-FILE_STORICO = "storico_24h.json"
-FILE_MEMORIA = "meteo_memoria.json"
-FILE_SBCAPE = "sbcape.json"
-FILE_RAFFICA = "raffica.json"
+FILE_STATE = "state.json"       # Stato unificato di tutti gli script
+FILE_STORICO = "storico_24h.json"  # Storico 24h (array, resta separato)
 
-# File Paths — Ecowitt (separati per evitare conflitti)
-FILE_STORICO_ECOWITT = "storico_24h_ecowitt.json"
-FILE_MEMORIA_ECOWITT = "meteo_memoria_ecowitt.json"
-FILE_SBCAPE_ECOWITT = "sbcape_ecowitt.json"
+
+def load_state_section(section: str) -> dict:
+    """Legge una sezione dal file di stato unificato state.json.
+
+    Sezioni: 'meteo', 'sbcape', 'arpal', 'omirl', 'fulmini'.
+    Restituisce un dict vuoto se la sezione non esiste.
+    """
+    import json as _json
+    if not os.path.exists(FILE_STATE):
+        return {}
+    try:
+        with open(FILE_STATE, "r") as f:
+            data = _json.load(f)
+        return data.get(section, {})
+    except Exception:
+        return {}
+
+
+def save_state_section(section: str, value: dict):
+    """Scrive una sezione nel file di stato unificato state.json.
+
+    Le altre sezioni rimangono invariate.
+    """
+    import json as _json
+    data = {}
+    if os.path.exists(FILE_STATE):
+        try:
+            with open(FILE_STATE, "r") as f:
+                data = _json.load(f)
+        except Exception:
+            data = {}
+    data[section] = value
+    with open(FILE_STATE, "w") as f:
+        _json.dump(data, f, indent=4, ensure_ascii=False)
 
 @dataclass
 class Thresholds:
@@ -180,6 +208,4 @@ LIGHTNINGMAPS_URL = (
     f"y={LATITUDE};x={LONGITUDE};d=2;dl=2;dc=0;"
 )
 
-# ── File di stato per i nuovi monitor ──
-FILE_OMIRL_STATE = "omirl_state.json"
-FILE_FULMINI_STATE = "fulmini_state.json"
+# (FILE_OMIRL_STATE e FILE_FULMINI_STATE rimossi — usare load_state_section / save_state_section)

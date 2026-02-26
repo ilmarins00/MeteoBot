@@ -37,7 +37,8 @@ from config import (
     BLITZORTUNG_REGION,
     RAINVIEWER_API,
     LIGHTNINGMAPS_URL,
-    FILE_FULMINI_STATE,
+    load_state_section,
+    save_state_section,
     thresholds,
 )
 
@@ -405,18 +406,11 @@ def build_message(
 
 
 def load_state() -> Dict[str, Any]:
-    if os.path.exists(FILE_FULMINI_STATE):
-        try:
-            with open(FILE_FULMINI_STATE, "r") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
+    return load_state_section('fulmini')
 
 
 def save_state(state: Dict[str, Any]):
-    with open(FILE_FULMINI_STATE, "w") as f:
-        json.dump(state, f, indent=2, ensure_ascii=False)
+    save_state_section('fulmini', state)
 
 
 def should_send(state: Dict[str, Any], n_strikes: int, force: bool = False) -> bool:

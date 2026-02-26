@@ -8,7 +8,7 @@ per ottenere i dati pluviometrici in tempo reale delle stazioni nel distretto SP
 Quando almeno una stazione supera la soglia (default 6 mm/h), scarica un'immagine
 radar composita da RainViewer e invia una notifica Telegram con mappa e dettagli.
 
-Esegue in modo idempotente: salva lo stato in `omirl_state.json` e non re-invia
+Esegue in modo idempotente: salva lo stato in `state.json` (sezione omirl) e non re-invia
 per lo stesso evento se la notifica è già stata inviata nell'ultima ora.
 
 Uso:
@@ -31,7 +31,8 @@ from config import (
     OMIRL_RAIN_ENDPOINT,
     OMIRL_DISTRICT_FILTER,
     RAINVIEWER_API,
-    FILE_OMIRL_STATE,
+    load_state_section,
+    save_state_section,
     thresholds,
 )
 
@@ -174,18 +175,11 @@ def build_message(exceeding: List[Dict], all_sp: List[Dict], radar_time: Optiona
 
 
 def load_state() -> Dict[str, Any]:
-    if os.path.exists(FILE_OMIRL_STATE):
-        try:
-            with open(FILE_OMIRL_STATE, "r") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
+    return load_state_section('omirl')
 
 
 def save_state(state: Dict[str, Any]):
-    with open(FILE_OMIRL_STATE, "w") as f:
-        json.dump(state, f, indent=2, ensure_ascii=False)
+    save_state_section('omirl', state)
 
 
 def should_send(state: Dict[str, Any], exceeding: List[Dict], force: bool = False) -> bool:

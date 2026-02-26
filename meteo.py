@@ -48,8 +48,8 @@ from config import (
     TELEGRAM_TOKEN,
     TELEGRAM_CHAT_IDS as LISTA_CHAT,
     FILE_STORICO,
-    FILE_MEMORIA,
-    FILE_SBCAPE,
+    load_state_section,
+    save_state_section,
     thresholds,
     LATITUDE,
     LONGITUDE,
@@ -1130,7 +1130,7 @@ def calcola_severe_score(results):
 
 
 def calcola_e_salva_sbcape():
-    """Entry-point standalone: calcola SBCAPE e salva su FILE_SBCAPE.
+    """Entry-point standalone: calcola SBCAPE e salva su state.json (sezione 'sbcape').
     Può essere invocato con `python meteo.py --sbcape`."""
     print("=" * 70)
     print("📊 CALCOLO AVANZATO SBCAPE/MUCAPE & PARAMETRI CONVETTIVI v2.0")
@@ -1176,9 +1176,8 @@ def calcola_e_salva_sbcape():
         for reason in severe['reasons']:
             print(f"  • {reason}")
 
-    with open(FILE_SBCAPE, "w") as f:
-        json.dump(risultato, f, indent=4)
-    print(f"\n✓ Risultati salvati in {FILE_SBCAPE}")
+    save_state_section('sbcape', risultato)
+    print("\n✓ Risultati salvati in state.json (sezione 'sbcape')")
     print("=" * 70)
 
 
@@ -1318,7 +1317,6 @@ def esegui_report(force_send=False, target_chat_id=None):
 
         # --- CALCOLO API AVANZATO (Indice Saturazione Suolo) ---
         # Parametri specifici per La Spezia - Foce (suolo costiero/urbano)
-        # Usa FILE_MEMORIA importato da config, non sovrascrivere
         
         mese_corrente = now_it.month
         oggi_str = now_it.strftime("%Y-%m-%d")
@@ -1350,14 +1348,7 @@ def esegui_report(force_send=False, target_chat_id=None):
         )
         
         # Temperatura: recupera min/max dal file memoria o usa valori di default
-        dati_salvati = {}
-        
-        if os.path.exists(FILE_MEMORIA):
-            try:
-                with open(FILE_MEMORIA, "r") as f:
-                    dati_salvati = json.load(f)
-            except:
-                dati_salvati = {}
+        dati_salvati = load_state_section('meteo')
         
         # Gestione temperatura min/max giornaliera
         t_min_oggi = dati_salvati.get("t_min_oggi", temp_ext)
@@ -1429,22 +1420,8 @@ def esegui_report(force_send=False, target_chat_id=None):
         beta_drenaggio = 3.5   # Esponente di forma (3-4 per suoli argilloso-limosi)
         
         # Rileggi dati salvati per ottenere valori completi
-        debug_msg = f"FILE_MEMORIA={os.path.abspath(FILE_MEMORIA)}, exists={os.path.exists(FILE_MEMORIA)}"
-        print(debug_msg)
-        
-        if os.path.exists(FILE_MEMORIA):
-            try:
-                with open(FILE_MEMORIA, "r") as f:
-                    dati_salvati = json.load(f)
-                debug_msg += f" | ✓ Letto: {dati_salvati}"
-                print(debug_msg)
-            except Exception as e:
-                debug_msg += f" | ✗ Errore: {e}"
-                print(debug_msg)
-                dati_salvati = {}
-        else:
-            debug_msg += " | ✗ NON trovato"
-            print(debug_msg)
+        dati_salvati = load_state_section('meteo')
+        print(f"state.json sezione 'meteo': {dati_salvati}")
 
         ultima_data = dati_salvati.get("data_calcolo", "")
         api_ultimo_valore = dati_salvati.get("api_ultimo_valore", 179.45) # Seed richiesto: 179.45
@@ -1667,13 +1644,12 @@ def esegui_report(force_send=False, target_chat_id=None):
                     severe_score = _severe['score']
                     severe_warning = _severe.get('level')
 
-                    # Salva su FILE_SBCAPE per compatibilità
+                    # Salva su state.json sezione 'sbcape'
                     _sbcape_result['severe_score'] = severe_score
                     if severe_warning:
                         _sbcape_result['severe_warning'] = severe_warning
                         _sbcape_result['severe_reasons'] = _severe.get('reasons', [])
-                    with open(FILE_SBCAPE, "w") as f:
-                        json.dump(_sbcape_result, f, indent=4)
+                    save_state_section('sbcape', _sbcape_result)
                     print(f"  ✓ SBCAPE={sbcape_value:.0f} MUCAPE={mucape_value:.0f} CIN={cin_value:.0f} LI={li_value} Shear={bulk_shear} SevScore={severe_score}")
                 else:
                     print("  ⚠️  Calcolo SBCAPE fallito, provo fallback da JSON")
@@ -1682,20 +1658,19 @@ def esegui_report(force_send=False, target_chat_id=None):
                 print("  ⚠️  Profilo Open-Meteo non disponibile, provo fallback da JSON")
                 raise RuntimeError("profilo non disponibile")
         except Exception as _e:
-            # Fallback: leggi da sbcape.json pre-esistente (se presente)
-            print(f"  Fallback sbcape.json: {_e}")
+            # Fallback: leggi da state.json sezione 'sbcape' (se presente)
+            print(f"  Fallback state.json['sbcape']: {_e}")
             try:
-                if os.path.exists(FILE_SBCAPE):
-                    with open(FILE_SBCAPE, "r") as f:
-                        sbcape_data = json.load(f)
-                        sbcape_value = sbcape_data.get("sbcape") or 0
-                        mucape_value = sbcape_data.get("mucape") or 0
-                        cin_value = sbcape_data.get("cin") or 0
-                        li_value = sbcape_data.get("lifted_index")
-                        bulk_shear = sbcape_data.get("bulk_shear") or 0
-                        severe_score = sbcape_data.get("severe_score") or 0
-                        severe_warning = sbcape_data.get("severe_warning")
-                    print(f"  ✓ Letto da {FILE_SBCAPE} (fallback)")
+                sbcape_data = load_state_section('sbcape')
+                if sbcape_data:
+                    sbcape_value = sbcape_data.get("sbcape") or 0
+                    mucape_value = sbcape_data.get("mucape") or 0
+                    cin_value = sbcape_data.get("cin") or 0
+                    li_value = sbcape_data.get("lifted_index")
+                    bulk_shear = sbcape_data.get("bulk_shear") or 0
+                    severe_score = sbcape_data.get("severe_score") or 0
+                    severe_warning = sbcape_data.get("severe_warning")
+                    print("  ✓ Letto da state.json sezione 'sbcape' (fallback)")
             except Exception as e2:
                 print(f"  ✗ Anche fallback JSON fallito: {e2}")
 
@@ -1861,8 +1836,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             "ultimo_ks": round(ks, 2)
         }
 
-        with open(FILE_MEMORIA, "w") as f:
-            json.dump(nuovi_dati, f, indent=4)
+        save_state_section('meteo', nuovi_dati)
 
         # Data e Ora Italiana (automatica solare/legale)
         data_ora_it = now_it.strftime('%d/%m/%Y %H:%M')
@@ -2067,8 +2041,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             if invio_avvenuto and invio_slot:
                 nuovi_dati["ultimo_invio_slot"] = invio_slot
                 nuovi_dati["ultimo_invio_ts"] = now_it.isoformat()
-                with open(FILE_MEMORIA, "w") as f:
-                    json.dump(nuovi_dati, f, indent=4)
+                save_state_section('meteo', nuovi_dati)
 
 if __name__ == "__main__":
     import sys
