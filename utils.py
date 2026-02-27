@@ -122,3 +122,56 @@ def fetch_wmo_station_data_laspezia(timeout=15):
         f"Wind={data['wind_speed']} km/h Gust={data['wind_gust']} km/h"
     )
     return data
+
+
+# ── OMIRL – Raffica massima oraria dalla stazione di La Spezia ──
+
+_OMIRL_WIND_ENDPOINT = "https://omirl.regione.liguria.it/Omirl/rest/stations/sensorvalues/Vento"
+_OMIRL_WIND_STATION = "SPZIA"   # Stazione La Spezia città
+
+
+def fetch_omirl_hourly_max_gust_laspezia(timeout=15):
+    """Recupera la raffica massima oraria dalla stazione OMIRL di La Spezia.
+
+    Interroga l'endpoint Vento di OMIRL e restituisce il campo ``max``
+    della stazione SPZIA, che rappresenta il valore massimo (raffica)
+    registrato nel periodo di osservazione corrente (1 h).
+
+    Restituisce il valore in km/h (float) oppure None.
+    """
+    try:
+        resp = requests.get(
+            _OMIRL_WIND_ENDPOINT,
+            timeout=timeout,
+            headers={
+                "User-Agent": "MeteoBot/1.0",
+                "Accept": "application/json",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        print(f"✗ Errore fetch OMIRL Vento: {exc}")
+        return None
+
+    rows = data.get("tableRows", [])
+    if not rows:
+        print("✗ OMIRL Vento: nessun dato disponibile")
+        return None
+
+    # Cerca la stazione di La Spezia
+    for row in rows:
+        if row.get("code") == _OMIRL_WIND_STATION:
+            max_val = row.get("max")
+            if max_val is not None:
+                try:
+                    gust = round(float(max_val), 1)
+                    print(f"✓ Raffica max oraria OMIRL La Spezia (SPZIA): {gust} km/h")
+                    return gust
+                except (TypeError, ValueError):
+                    pass
+            print("✗ OMIRL Vento SPZIA: campo 'max' non disponibile")
+            return None
+
+    print(f"✗ OMIRL Vento: stazione {_OMIRL_WIND_STATION} non trovata")
+    return None
