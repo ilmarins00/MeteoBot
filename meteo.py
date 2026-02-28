@@ -1111,9 +1111,28 @@ def esegui_report(force_send=False, target_chat_id=None):
             raffica = raffica_1h
             raffica_source = "OMIRL La Spezia (max 1h)"
         else:
-            raffica = d.get('windspeed_gust', 0) / 10  # Fallback Tuya
+            # Fallback: massima raffica dell'ultima ora dallo storico + valore Tuya attuale
+            _raffica_tuya = d.get('windspeed_gust', 0) / 10
+            _cutoff_1h = datetime.now(TZ_ROME) - timedelta(hours=1)
+            _storico_raffica = carica_storico()
+            _gust_1h = [_raffica_tuya] if _raffica_tuya > 0 else []
+            for _sr in _storico_raffica:
+                _ts_str = _sr.get("ts")
+                _sr_raffica = _sr.get("raffica")
+                if not _ts_str or not isinstance(_sr_raffica, (int, float)) or _sr_raffica <= 0:
+                    continue
+                try:
+                    _ts_dt = datetime.fromisoformat(_ts_str)
+                    if _ts_dt.tzinfo is None:
+                        _ts_dt = _ts_dt.replace(tzinfo=TZ_ROME)
+                    if _ts_dt >= _cutoff_1h:
+                        _gust_1h.append(_sr_raffica)
+                except Exception:
+                    continue
+            raffica = max(_gust_1h) if _gust_1h else 0
             if raffica > 0:
-                print(f"⚠️  Raffica da Tuya (istantanea, non max oraria): {raffica} km/h")
+                raffica_source = "Tuya (max 1h)"
+                print(f"✓ Raffica max ultima ora (storico+Tuya): {raffica} km/h")
             else:
                 print("⚠️  Raffica non disponibile (né OMIRL né Tuya)")
         pioggia_24h_sensore = d.get('rain_24h', 0) / 10  # Dato grezzo dal sensore (resetta ogni 24h)

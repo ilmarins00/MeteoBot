@@ -1078,7 +1078,7 @@ def fetch_ecowitt_data(max_retries=3):
             'feels_like': round(feels_like, 1),
             'heat_index': round(heat_index, 1),
             'wind_chill': round(wind_chill_val, 1),
-            'pressure': round(pressure_abs, 1),
+            'pressure': int(round(pressure_abs)),
             'wind_speed': round(wind_speed, 1),
             'wind_gust': round(wind_gust, 1),
             'rain_rate': round(rain_rate, 1),
@@ -1092,7 +1092,7 @@ def fetch_ecowitt_data(max_retries=3):
             f"✓ Dati Ecowitt Wittboy ricevuti: "
             f"T={result['temperature']:.1f}°C, "
             f"Td={result['dewpoint']:.1f}°C, "
-            f"P={result['pressure']:.1f}hPa, "
+            f"P={result['pressure']}hPa, "
             f"RH={result['humidity']}%, "
             f"Wind={result['wind_speed']} km/h, "
             f"Gust={result['wind_gust']} km/h"
@@ -1184,7 +1184,7 @@ def esegui_report(force_send=False, target_chat_id=None):
     Rd = 287.05
     g_val = 9.80665
     T_k = temp_ext + 273.15 if -50 < temp_ext < 60 else 288.15
-    pressione_msl = round(pressione_locale * math.exp(g_val * h / (Rd * T_k)), 1)
+    pressione_msl = int(round(pressione_locale * math.exp(g_val * h / (Rd * T_k))))
 
     # Pioggia 24h reale: somma storico + campione corrente
     _storico_tmp = carica_storico()
