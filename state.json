@@ -161,13 +161,13 @@
         "vigilanza": "PREVISIONI METEO Data emissione: 01 marzo 2026 ore 10:36 Consulta il Bollettino di Vigilanza/Avviso Meteorologico regionale per i dettagli previsionali."
     },
     "omirl": {
-        "last_check_ts": "2026-03-01T19:32:48.368262+01:00",
+        "last_check_ts": "2026-03-01T19:47:32.593689+01:00",
         "n_stations_sp": 37,
         "n_stations_rain": 0,
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-03-01T19:32:47.524914+01:00",
+        "last_check_ts": "2026-03-01T19:47:31.467642+01:00",
         "recent_strikes": [],
         "total_in_window": 0,
         "status": "ok"
