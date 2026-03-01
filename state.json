@@ -161,13 +161,13 @@
         "vigilanza": "PREVISIONI METEO Data emissione: 28 febbraio 2026 ore 10:14 Consulta il Bollettino di Vigilanza/Avviso Meteorologico regionale per i dettagli previsionali."
     },
     "omirl": {
-        "last_check_ts": "2026-03-01T04:17:29.642911+01:00",
+        "last_check_ts": "2026-03-01T04:32:37.094850+01:00",
         "n_stations_sp": 37,
         "n_stations_rain": 0,
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-03-01T04:17:28.793148+01:00",
+        "last_check_ts": "2026-03-01T04:32:36.258127+01:00",
         "recent_strikes": [],
         "total_in_window": 0,
         "status": "ok"
