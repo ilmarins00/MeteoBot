@@ -123,12 +123,12 @@ def cmd_help(chat_id):
 
 
 def cmd_meteo(chat_id):
-    """Genera e invia il report meteo completo della stazione."""
+    """Genera e invia il report meteo completo della stazione (Ecowitt)."""
     send_message(chat_id, "⏳ Generazione report meteo in corso...")
     try:
-        import meteo
+        import meteo_ecowitt
 
-        meteo.esegui_report(force_send=True, target_chat_id=str(chat_id))
+        meteo_ecowitt.esegui_report(force_send=True, target_chat_id=str(chat_id))
     except Exception as e:
         send_message(chat_id, f"❌ Errore report meteo: {e}")
         traceback.print_exc()
@@ -287,20 +287,47 @@ def save_offset(offset):
 def main():
     once = "--once" in sys.argv
 
+    # --poll-duration <seconds>: polling per N secondi poi esce (per GitHub Actions)
+    poll_duration = None
+    if "--poll-duration" in sys.argv:
+        idx = sys.argv.index("--poll-duration")
+        if idx + 1 < len(sys.argv):
+            try:
+                poll_duration = int(sys.argv[idx + 1])
+            except ValueError:
+                print("❌ --poll-duration richiede un numero (secondi)")
+                sys.exit(1)
+
     if not TELEGRAM_TOKEN:
         print("❌ TELEGRAM_TOKEN non configurato!")
         sys.exit(1)
 
     print("🤖 MeteoBot command listener avviato")
     print(f"   Chat autorizzate: {LISTA_CHAT}")
-    print(f"   Modalità: {'singola (--once)' if once else 'continua (long-polling)'}")
+    if once:
+        print("   Modalità: singola (--once)")
+    elif poll_duration:
+        print(f"   Modalità: polling per {poll_duration}s")
+    else:
+        print("   Modalità: continua (long-polling)")
     print(f"   Comandi: {', '.join(COMMANDS.keys())}")
 
     offset = load_offset()
+    start_time = time.time()
 
     while True:
         try:
-            timeout = 0 if once else 30
+            if once:
+                timeout = 0
+            elif poll_duration:
+                remaining = poll_duration - (time.time() - start_time)
+                if remaining <= 0:
+                    print("⏰ Durata polling raggiunta, esco.")
+                    break
+                timeout = min(30, int(remaining))
+            else:
+                timeout = 30
+
             updates = get_updates(offset=offset, timeout=timeout)
 
             for update in updates:
@@ -311,14 +338,19 @@ def main():
             if once:
                 break
 
+            if poll_duration and (time.time() - start_time) >= poll_duration:
+                print("⏰ Durata polling raggiunta, esco.")
+                break
+
         except KeyboardInterrupt:
             print("\nArresto...")
             break
         except Exception as e:
             print(f"Errore loop principale: {e}")
             traceback.print_exc()
-            if not once:
-                time.sleep(5)
+            if once:
+                break
+            time.sleep(5)
 
 
 if __name__ == "__main__":
