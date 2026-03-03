@@ -145,14 +145,47 @@ def calcola_tendenza_barometrica(storico, pressione_attuale):
 # ====================================================================
 
 def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
-    """Classifica la massa d'aria secondo Bergeron (1928) con parametro primario θe.
+    """Classifica la massa d'aria secondo Bergeron (1928).
 
-    Metodo scientifico:
-      1. Calcolo θe con formula di Bolton (1980)
-      2. Classificazione primaria su θe (contenuto energetico totale)
-      3. Discriminante continentale/marittima su spread T-Td (Stull, 2017)
-      4. Anomalia termica rispetto a medie ARPAL 1991-2020
+    Discriminante primario: punto di rugiada (Td).
+    ──────────────────────────────────────────────
+    In meteorologia operativa la classificazione si basa su θe a 850 hPa
+    (da radiosondaggio o modello NWP), livello in cui il riscaldamento
+    solare superficiale non arriva.  Quando si dispone solo di dati di
+    superficie, θe mostra un **ciclo diurno spurio** (±10-15 °C) perché
+    la temperatura al suolo è dominata dal riscaldamento/raffreddamento
+    diabatico (radiativo), non adiabatico.  Ciò causa salti artificiosi
+    nella classificazione tra giorno e notte.
+
+    Il punto di rugiada (Td) non ha questo problema:
+      • variazione diurna tipica < 2 °C (quasi conservativo)
+      • rappresenta direttamente il contenuto d'umidità e la regione
+        sorgente della massa d'aria
+      • è il parametro standard usato da NWS, ECMWF, Météo-France
+        per l'identificazione delle masse d'aria da osservazioni al suolo
+
+    θe viene calcolata correttamente (Bolton 1980, con pressione alla
+    stazione anziché MSL) e riportata a scopo informativo / convettivo.
+
+    Discriminanti secondari:
+      • spread T−Td  → continentale vs marittima  (Stull 2017)
+      • anomalia T   → sottoclassificazione locale (ARPAL 1991-2020)
+
+    Soglie Td per il Mediterraneo nord-occidentale (La Spezia):
+      Td < −8 °C   → Artica  (cA / mA)
+      Td −8…0 °C   → Polare  (cP / mP)
+      Td  0…8 °C   → Polare modificata / transizione
+      Td  8…15 °C  → Mediterranea / temperata
+      Td 15…20 °C  → Subtropicale
+      Td ≥ 20 °C   → Tropicale
+
+    Riferimenti:
+      Bolton D.  (1980)  Mon. Wea. Rev., 108, 1046-1053
+      Bergeron T. (1928) Geofysiske Publikasjoner, 5(6)
+      Stull R.    (2017) Practical Meteorology, Univ. of British Columbia
+      Lionello P. et al. (2006) Mediterranean Climate Variability, Elsevier
     """
+    # Medie climatologiche mensili La Spezia (°C) – fonte ARPAL 1991-2020
     t_media_clima = {
         1: 7.5,  2: 8.2,  3: 10.8, 4: 13.8,
         5: 17.8, 6: 21.5, 7: 24.2, 8: 24.0,
@@ -162,37 +195,59 @@ def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
     t_norma = t_media_clima.get(mese, 15.0)
     anomalia = temp - t_norma
 
+    # Spread T − Td (indicatore marittimo / continentale, Stull 2017)
+    spread = temp - dew_point
+
+    # --- CALCOLO θe CORRETTO (Bolton 1980, eq. 43) ---
+    # NOTA: la formula richiede la pressione al livello dell'osservazione
+    #       (pressione stazione), NON la pressione ridotta al livello del mare.
+    #       Usiamo la formula ipsometrica inversa per ricavare p_stazione.
+    p_stazione = pressione_msl * (1 - 0.0065 * ELEVATION / 288.15) ** 5.2561
+
     try:
         T_K = temp + 273.15
         Td_K = dew_point + 273.15
+        # Pressione di vapore saturo al punto di rugiada (Magnus-Tetens)
         e_vapor = 6.112 * math.exp(17.67 * dew_point / (dew_point + 243.5))
-        r = 0.622 * e_vapor / (pressione_msl - e_vapor)
+        # Rapporto di miscelanza (kg/kg) – pressione alla stazione
+        r = 0.622 * e_vapor / (p_stazione - e_vapor)
+        # Temperatura al LCL (Bolton 1980, eq. 15)
         T_LCL = 1.0 / (1.0 / (Td_K - 56) + math.log(T_K / Td_K) / 800.0) + 56.0
-        theta_e = T_K * (1000.0 / pressione_msl) ** (0.2854 * (1 - 0.28 * r)) \
-                  * math.exp(r * (1 + 0.81 * r) * (3376.0 / T_LCL - 2.54))
+        # θe (Bolton 1980, eq. 43) – con pressione stazione
+        theta_e = (T_K
+                   * (1000.0 / p_stazione) ** (0.2854 * (1 - 0.28 * r))
+                   * math.exp(r * (1 + 0.81 * r) * (3376.0 / T_LCL - 2.54)))
         theta_e_C = theta_e - 273.15
     except (ValueError, ZeroDivisionError, OverflowError):
-        theta_e_C = temp + 10
-        r = 0
+        theta_e_C = temp + 10  # Fallback conservativo
 
-    spread = temp - dew_point
+    # --- CLASSIFICAZIONE BERGERON (soglie su Td) ---
+    # Td è quasi-conservativo nel ciclo diurno e rappresenta il contenuto
+    # termodinamico reale della massa d'aria senza la contaminazione del
+    # riscaldamento solare superficiale.
 
-    if theta_e_C < 5:
+    if dew_point < -8:
+        # Aria artica
         if spread > 10:
             tipo, nome, emoji = "cA", "Continentale Artica", "🧊"
             desc = "Aria gelida e secca di origine artico-continentale"
         else:
             tipo, nome, emoji = "mA", "Marittima Artica", "🏔️"
             desc = "Aria gelida di origine artica, moderata dal transito marittimo"
-    elif theta_e_C < 15:
+    elif dew_point < 0:
+        # Aria polare fredda
         if spread > 8:
             tipo, nome, emoji = "cP", "Continentale Polare", "❄️"
             desc = "Aria fredda e secca di origine continentale (Est Europa/Russia)"
         else:
             tipo, nome, emoji = "mP", "Marittima Polare", "🌊"
             desc = "Aria fredda e umida dall'Atlantico settentrionale"
-    elif theta_e_C < 30:
-        if spread > 10:
+    elif dew_point < 8:
+        # Aria polare modificata / transizione
+        if spread > 15:
+            tipo, nome, emoji = "cT", "Continentale Tropicale", "🏜️"
+            desc = "Aria calda e secca di origine sahariana/nordafricana"
+        elif spread > 10:
             tipo, nome, emoji = "cP", "Continentale Polare modificata", "🌥️"
             desc = "Massa polare continentale in fase di riscaldamento"
         elif anomalia < -2:
@@ -201,7 +256,8 @@ def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
         else:
             tipo, nome, emoji = "mP/mTr", "Polare in transizione", "🌤️"
             desc = "Massa polare in riscaldamento sul Mediterraneo"
-    elif theta_e_C < 45:
+    elif dew_point < 15:
+        # Aria mediterranea / temperata
         if spread > 15:
             tipo, nome, emoji = "cT", "Continentale Tropicale", "🏜️"
             desc = "Aria calda e secca di origine sahariana/nordafricana"
@@ -214,7 +270,19 @@ def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
         else:
             tipo, nome, emoji = "mTr", "Marittima Mediterranea", "🌤️"
             desc = "Aria temperata stazionaria sul bacino mediterraneo"
+    elif dew_point < 20:
+        # Aria subtropicale
+        if spread > 15:
+            tipo, nome, emoji = "cT", "Continentale Tropicale", "🏜️"
+            desc = "Aria calda e secca di origine sahariana/nordafricana"
+        elif spread > 10:
+            tipo, nome, emoji = "cT/mT", "Tropicale mista", "🌅"
+            desc = "Massa tropicale con componente continentale"
+        else:
+            tipo, nome, emoji = "mT", "Marittima Tropicale", "🌴"
+            desc = "Aria calda e umida dal Mediterraneo meridionale o subtropicale"
     else:
+        # Td ≥ 20 °C: aria tropicale
         if spread > 15:
             tipo, nome, emoji = "cT", "Continentale Tropicale", "🏜️"
             desc = "Aria molto calda e secca di origine sahariana"
