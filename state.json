@@ -157,8 +157,9 @@
             }
         ],
         "sotto_zone": {},
-        "ora": 12,
-        "vigilanza": "PREVISIONI METEO Data emissione: 02 marzo 2026 ore 10:38 Consulta il Bollettino di Vigilanza/Avviso Meteorologico regionale per i dettagli previsionali."
+        "ora": 10,
+        "notifica_inviata": true,
+        "vigilanza": "PREVISIONI METEO Data emissione: 03 marzo 2026 ore 10:30 Consulta il Bollettino di Vigilanza/Avviso Meteorologico regionale per i dettagli previsionali."
     },
     "omirl": {
         "last_check_ts": "2026-03-03T10:47:36.483738+01:00",
