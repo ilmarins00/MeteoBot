@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """
 Bot Comandi Telegram – MeteoBot
-
 Ascolta comandi Telegram via long-polling e invia report on-demand,
 bypassando la logica di invio smart.
-
 Comandi disponibili:
   /meteo    — Report meteo completo (stazione La Spezia)
   /arpal    — Stato allerta ARPAL Zona C
@@ -12,27 +10,21 @@ Comandi disponibili:
   /omirl    — Precipitazioni rete OMIRL La Spezia
   /tutto    — Esegui tutti i monitor in sequenza
   /help     — Mostra comandi disponibili
-
 Uso:
-  python bot_commands.py              # Long-polling continuo (background)
-  python bot_commands.py --once       # Processa comandi in coda ed esci
+  python bot_commands.py              
+  python bot_commands.py --once       
 """
 import json
 import os
 import sys
 import time
 import traceback
-
 import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_IDS as LISTA_CHAT
-
 TZ_ROME = ZoneInfo("Europe/Rome")
-
 OFFSET_FILE = "bot_offset.json"
-
 COMMANDS = {
     "/meteo": "📡 Report meteo stazione La Spezia",
     "/arpal": "🟢 Stato allerta ARPAL — Zona C",
@@ -41,53 +33,66 @@ COMMANDS = {
     "/tutto": "📋 Esegui tutti i monitor",
     "/help": "❓ Mostra comandi disponibili",
 }
-
-
-# ── Telegram helpers ──────────────────────────────────────────────────────────
-
-
 def get_updates(offset=None, timeout=30):
-    """Recupera nuovi messaggi dal bot Telegram (long-polling)."""
+    """Recupera nuovi messaggi dal bot Telegram (long-polling) con retry."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
     params = {"timeout": timeout, "allowed_updates": '["message"]'}
     if offset is not None:
         params["offset"] = offset
-    try:
-        r = requests.get(url, params=params, timeout=timeout + 10)
-        r.raise_for_status()
-        return r.json().get("result", [])
-    except Exception as e:
-        print(f"Errore getUpdates: {e}")
-        return []
-
-
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            r = requests.get(url, params=params, timeout=timeout + 10)
+            r.raise_for_status()
+            return r.json().get("result", [])
+        except requests.exceptions.Timeout:
+            print(f"⚠️  Timeout getUpdates (attempt {attempt + 1}/{max_retries})")
+            if attempt < max_retries - 1:
+                time.sleep(2)
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️  Errore rete getUpdates (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2)
+        except Exception as e:
+            print(f"❌ Errore getUpdates: {e}")
+            traceback.print_exc()
+            break
+    return []
 def send_message(chat_id, text, parse_mode="Markdown"):
     """Invia un messaggio testuale, gestendo messaggi troppo lunghi per Telegram."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    # Limite Telegram: 4096 caratteri per messaggio
+    max_retries = 3
     for i in range(0, len(text), 4096):
         chunk = text[i : i + 4096]
-        try:
-            r = requests.post(
-                url,
-                data={"chat_id": chat_id, "text": chunk, "parse_mode": parse_mode},
-                timeout=15,
-            )
-            r.raise_for_status()
-            payload = r.json()
-            if not payload.get("ok"):
-                # Fallback senza parse_mode (il Markdown potrebbe non essere valido)
-                requests.post(
-                    url, data={"chat_id": chat_id, "text": chunk}, timeout=15
+        for attempt in range(max_retries):
+            try:
+                r = requests.post(
+                    url,
+                    data={"chat_id": chat_id, "text": chunk, "parse_mode": parse_mode},
+                    timeout=15,
                 )
-        except Exception as e:
-            print(f"Errore invio messaggio a {chat_id}: {e}")
-
-
+                r.raise_for_status()
+                payload = r.json()
+                if not payload.get("ok"):
+                    r = requests.post(
+                        url, data={"chat_id": chat_id, "text": chunk}, timeout=15
+                    )
+                    r.raise_for_status()
+                break  
+            except requests.exceptions.Timeout:
+                print(f"⚠️  Timeout sendMessage a {chat_id} (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+            except requests.exceptions.RequestException as e:
+                print(f"⚠️  Errore rete sendMessage a {chat_id} (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+            except Exception as e:
+                print(f"❌ Errore invio messaggio a {chat_id}: {e}")
+                break
 def send_photo(chat_id, image_bytes, caption="", filename="photo.png"):
     """Invia una foto con caption opzionale."""
     import io
-
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     try:
         r = requests.post(
@@ -103,16 +108,9 @@ def send_photo(chat_id, image_bytes, caption="", filename="photo.png"):
         r.raise_for_status()
     except Exception as e:
         print(f"Errore invio foto a {chat_id}: {e}")
-
-
 def is_authorized(chat_id):
     """Verifica che il chat_id sia nella lista autorizzata."""
     return str(chat_id) in [str(c) for c in LISTA_CHAT]
-
-
-# ── Gestori comandi ───────────────────────────────────────────────────────────
-
-
 def cmd_help(chat_id):
     """Mostra la lista dei comandi disponibili."""
     lines = ["🤖 *Comandi MeteoBot*\n"]
@@ -120,26 +118,20 @@ def cmd_help(chat_id):
         lines.append(f"  {cmd} — {desc}")
     lines.append(f"\n🕒 {datetime.now(TZ_ROME).strftime('%d/%m/%Y %H:%M')}")
     send_message(chat_id, "\n".join(lines))
-
-
 def cmd_meteo(chat_id):
     """Genera e invia il report meteo completo della stazione (Ecowitt)."""
     send_message(chat_id, "⏳ Generazione report meteo in corso...")
     try:
         import meteo_ecowitt
-
         meteo_ecowitt.esegui_report(force_send=True, target_chat_id=str(chat_id))
     except Exception as e:
         send_message(chat_id, f"❌ Errore report meteo: {e}")
         traceback.print_exc()
-
-
 def cmd_arpal(chat_id):
     """Scarica e invia lo stato allerta ARPAL Zona C."""
     send_message(chat_id, "⏳ Scaricamento dati ARPAL...")
     try:
         import monitor_arpal
-
         html = monitor_arpal.fetch_html()
         if not html:
             send_message(chat_id, "❌ Impossibile scaricare la pagina ARPAL.")
@@ -151,14 +143,11 @@ def cmd_arpal(chat_id):
     except Exception as e:
         send_message(chat_id, f"❌ Errore ARPAL: {e}")
         traceback.print_exc()
-
-
 def cmd_fulmini(chat_id):
     """Esegue il monitor fulmini e invia i risultati."""
     send_message(chat_id, "⏳ Analisi fulmini in corso (~1 min)...")
     try:
         import monitor_fulmini
-
         result = monitor_fulmini.run_analysis(force=True, listen_seconds=60)
         if result:
             if result.get("image"):
@@ -179,14 +168,11 @@ def cmd_fulmini(chat_id):
     except Exception as e:
         send_message(chat_id, f"❌ Errore fulmini: {e}")
         traceback.print_exc()
-
-
 def cmd_omirl(chat_id):
     """Scarica dati OMIRL e invia eventuali superamenti di soglia."""
     send_message(chat_id, "⏳ Scaricamento dati OMIRL...")
     try:
         import monitor_omirl
-
         result = monitor_omirl.run_analysis(force=True)
         if result:
             if result.get("image"):
@@ -207,8 +193,6 @@ def cmd_omirl(chat_id):
     except Exception as e:
         send_message(chat_id, f"❌ Errore OMIRL: {e}")
         traceback.print_exc()
-
-
 def cmd_tutto(chat_id):
     """Esegue tutti i monitor in sequenza."""
     send_message(chat_id, "⏳ Esecuzione completa di tutti i monitor...")
@@ -216,10 +200,6 @@ def cmd_tutto(chat_id):
     cmd_arpal(chat_id)
     cmd_omirl(chat_id)
     cmd_fulmini(chat_id)
-
-
-# ── Dispatcher ────────────────────────────────────────────────────────────────
-
 DISPATCH = {
     "/meteo": cmd_meteo,
     "/arpal": cmd_arpal,
@@ -229,17 +209,13 @@ DISPATCH = {
     "/help": cmd_help,
     "/start": cmd_help,
 }
-
-
 def process_update(update):
     """Processa un singolo update Telegram."""
     message = update.get("message", {})
     chat_id = message.get("chat", {}).get("id")
     text = (message.get("text") or "").strip()
-
     if not chat_id or not text:
         return
-
     if not is_authorized(chat_id):
         send_message(
             chat_id,
@@ -247,10 +223,7 @@ def process_update(update):
         )
         print(f"Accesso negato: chat_id={chat_id}")
         return
-
-    # Estrai il comando (rimuovi @nomebot se presente)
     cmd = text.split()[0].split("@")[0].lower()
-
     handler = DISPATCH.get(cmd)
     if handler:
         print(f"📩 Comando {cmd} da chat {chat_id}")
@@ -260,12 +233,6 @@ def process_update(update):
             print(f"Errore gestione {cmd}: {e}")
             traceback.print_exc()
             send_message(chat_id, f"❌ Errore interno: {e}")
-    # Ignora i messaggi che non sono comandi
-
-
-# ── Persistenza offset ────────────────────────────────────────────────────────
-
-
 def load_offset():
     if os.path.exists(OFFSET_FILE):
         try:
@@ -274,20 +241,11 @@ def load_offset():
         except Exception:
             pass
     return None
-
-
 def save_offset(offset):
     with open(OFFSET_FILE, "w") as f:
         json.dump({"offset": offset}, f)
-
-
-# ── Entry point ───────────────────────────────────────────────────────────────
-
-
 def main():
     once = "--once" in sys.argv
-
-    # --poll-duration <seconds>: polling per N secondi poi esce (per GitHub Actions)
     poll_duration = None
     if "--poll-duration" in sys.argv:
         idx = sys.argv.index("--poll-duration")
@@ -297,11 +255,9 @@ def main():
             except ValueError:
                 print("❌ --poll-duration richiede un numero (secondi)")
                 sys.exit(1)
-
     if not TELEGRAM_TOKEN:
         print("❌ TELEGRAM_TOKEN non configurato!")
         sys.exit(1)
-
     print("🤖 MeteoBot command listener avviato")
     print(f"   Chat autorizzate: {LISTA_CHAT}")
     if once:
@@ -311,10 +267,10 @@ def main():
     else:
         print("   Modalità: continua (long-polling)")
     print(f"   Comandi: {', '.join(COMMANDS.keys())}")
-
     offset = load_offset()
     start_time = time.time()
-
+    consecutive_errors = 0
+    max_consecutive_errors = 10
     while True:
         try:
             if once:
@@ -327,31 +283,31 @@ def main():
                 timeout = min(30, int(remaining))
             else:
                 timeout = 30
-
             updates = get_updates(offset=offset, timeout=timeout)
-
             for update in updates:
                 process_update(update)
                 offset = update["update_id"] + 1
                 save_offset(offset)
-
+            if updates:
+                consecutive_errors = 0
             if once:
                 break
-
             if poll_duration and (time.time() - start_time) >= poll_duration:
                 print("⏰ Durata polling raggiunta, esco.")
                 break
-
         except KeyboardInterrupt:
             print("\nArresto...")
             break
         except Exception as e:
-            print(f"Errore loop principale: {e}")
+            print(f"❌ Errore loop principale: {e}")
             traceback.print_exc()
+            consecutive_errors += 1
+            if consecutive_errors >= max_consecutive_errors:
+                print(f"❌ Troppi errori consecutivi ({consecutive_errors}), esco per sicurezza.")
+                break
+            time.sleep(min(5 * consecutive_errors, 30))  
             if once:
                 break
             time.sleep(5)
-
-
 if __name__ == "__main__":
     main()
