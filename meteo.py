@@ -1076,8 +1076,8 @@ def esegui_report(force_send=False, target_chat_id=None):
             except Exception:
                 continue
         _pioggia_24h_somma += max(pioggia_1h, 0)
-        pioggia_24h = round(_pioggia_24h_somma, 1)
-        print(f"  Pioggia 24h calcolata: {pioggia_24h} mm (sensore: {pioggia_24h_sensore} mm, somma storico+attuale)")
+        pioggia_24h = round(max(_pioggia_24h_somma, pioggia_24h_sensore), 1)
+        print(f"  Pioggia 24h calcolata: {pioggia_24h} mm (somma storico: {_pioggia_24h_somma:.1f} mm, sensore: {pioggia_24h_sensore} mm)")
         dew_point = d.get('dew_point_temp', 0) / 10
         feel_like = d.get('feellike_temp', 0) / 10
         heat_index = d.get('heat_index', 0) / 10

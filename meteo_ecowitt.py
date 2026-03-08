@@ -1114,9 +1114,9 @@ def esegui_report(force_send=False, target_chat_id=None):
         except Exception:
             continue
     _pioggia_24h_somma += max(pioggia_1h, 0)
-    pioggia_24h = round(_pioggia_24h_somma, 1)
     pioggia_24h_sensore = ecowitt['rain_24h']
-    print(f"  Pioggia 24h calcolata: {pioggia_24h} mm (sensore: {pioggia_24h_sensore} mm, somma storico+attuale)")
+    pioggia_24h = round(max(_pioggia_24h_somma, pioggia_24h_sensore), 1)
+    print(f"  Pioggia 24h calcolata: {pioggia_24h} mm (somma storico: {_pioggia_24h_somma:.1f} mm, sensore: {pioggia_24h_sensore} mm)")
     mese_corrente = now_it.month
     oggi_str = now_it.strftime("%Y-%m-%d")
     giorno_anno = now_it.timetuple().tm_yday
