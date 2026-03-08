@@ -289,6 +289,49 @@ def calcola_theta_e_850hpa(data_openmeteo):
         return round(theta_e_850_C, 1)
     except Exception as e:
         print(f"⚠️  Errore calcolo theta-e 850 hPa: {e}")
+        def estrai_temperature_alti_livelli(data_openmeteo):
+            """Estrae le temperature a 500 hPa e 850 hPa dai dati Open-Meteo.
+    
+            Args:
+                data_openmeteo: dizionario con dati Open-Meteo inclusi i livelli di pressione
+        
+            Returns:
+                dict con 'T_500' e 'T_850' in °C, o None se non disponibili
+            """
+            try:
+                hourly = data_openmeteo.get("hourly", {})
+                if not hourly:
+                    return None
+                current_hour_idx = 0
+                if "time" in hourly:
+                    from datetime import timezone as _tz
+                    now_utc = datetime.now(_tz.utc)
+                    now_hour_str = now_utc.strftime("%Y-%m-%dT%H:")
+                    for i, time_str in enumerate(hourly["time"]):
+                        if time_str.startswith(now_hour_str):
+                            current_hour_idx = i
+                            break
+                key_temp_500 = "temperature_500hPa"
+                key_temp_850 = "temperature_850hPa"
+                if key_temp_500 not in hourly or key_temp_850 not in hourly:
+                    print("⚠️  Dati temperatura 500/850 hPa non disponibili")
+                    return None
+                if len(hourly[key_temp_500]) <= current_hour_idx or len(hourly[key_temp_850]) <= current_hour_idx:
+                    print("⚠️  Indice ora corrente fuori range per temperature alti livelli")
+                    return None
+                T_500_C = hourly[key_temp_500][current_hour_idx]
+                T_850_C = hourly[key_temp_850][current_hour_idx]
+                if T_500_C is None or T_850_C is None:
+                    print("⚠️  Temperature 500/850 hPa null per ora corrente")
+                    return None
+                print(f"✓ Temperature alti livelli: T_500={T_500_C:.1f}°C, T_850={T_850_C:.1f}°C")
+                return {
+                    'T_500': round(T_500_C, 1),
+                    'T_850': round(T_850_C, 1)
+                }
+            except Exception as e:
+                print(f"⚠️  Errore estrazione temperature alti livelli: {e}")
+                return None
         return None
 def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, severe_score=0):
     """Valutazione ingredient-based del rischio convettivo su scala 0-12."""
@@ -1399,15 +1442,22 @@ def esegui_report(force_send=False, target_chat_id=None):
     theta_e_850 = None
     if _om_data:
         theta_e_850 = calcola_theta_e_850hpa(_om_data)
+            temp_alti_livelli = estrai_temperature_alti_livelli(_om_data)
+        else:
+            temp_alti_livelli = None
     if theta_e_850 is not None:
         theta_e_str = f"θe sup: {massa_aria['theta_e']}°C · θe 850hPa: {theta_e_850}°C"
     else:
         theta_e_str = f"θe: {massa_aria['theta_e']}°C"
+        if temp_alti_livelli:
+            temp_livelli_str = f" · T_850hPa: {temp_alti_livelli['T_850']}°C · T_500hPa: {temp_alti_livelli['T_500']}°C"
+        else:
+            temp_livelli_str = ""
     massa_str = (
         f"🌍 *MASSA D'ARIA*\n"
         f"{massa_aria['emoji']} {massa_aria['nome']} ({massa_aria['tipo']})\n"
         f"{massa_aria['desc']}\n"
-        f"{theta_e_str} · Anomalia: {massa_aria['anomalia']:+.1f}°C · Spread T-Td: {massa_aria['spread']}°C\n"
+        f"{theta_e_str} · Anomalia: {massa_aria['anomalia']:+.1f}°C · Spread T-Td: {massa_aria['spread']}°C{temp_livelli_str}\n"
     )
     theta_e_display = theta_e_850 if theta_e_850 is not None else massa_aria['theta_e']
     print(f"Massa d'aria: {massa_aria['tipo']} ({massa_aria['nome']}) - θe_850={theta_e_850}°C, θe_sup={massa_aria['theta_e']}°C, anomalia={massa_aria['anomalia']:+.1f}°C")
