@@ -1025,6 +1025,8 @@ def esegui_report(force_send=False, target_chat_id=None):
         T_k = temp_ext + 273.15 if -50 < temp_ext < 60 else 288.15
         pressione_msl = round(pressione_locale * math.exp(g_val * h / (Rd * T_k)), 1)
         v_medio = d.get('windspeed_avg', 0) / 10
+        _wind_keys = [k for k in d.keys() if 'wind' in k.lower() or 'gust' in k.lower()]
+        print(f"  Campi vento Tuya disponibili: {_wind_keys} → valori: {[(k, d[k]) for k in _wind_keys]}")
         raffica_source = "Tuya"
         _cutoff_1h = datetime.now(TZ_ROME) - timedelta(hours=1)
         _storico_raffica = carica_storico()
@@ -1048,10 +1050,10 @@ def esegui_report(force_send=False, target_chat_id=None):
         if _gust_1h:
             raffica = max(_gust_1h)
             raffica_source = "Tuya (max 1h)"
-            print(f"✓ Raffica max ultima ora (storico Tuya): {raffica} km/h")
+            print(f"✓ Raffica max ultima ora (storico Tuya): {raffica} km/h ({len(_gust_1h)} campioni)")
         else:
-            raffica = 0
-            print("⚠️  Raffica non disponibile")
+            raffica = _raffica_attuale
+            print(f"⚠️  Nessun dato storico raffiche, uso istantanea: {raffica} km/h")
         pioggia_24h_sensore = (d.get('rain_24h', 0) / 10) * TUYA_RAIN_CALIBRATION
         pioggia_1h = (d.get('rain_1h', 0) / 10) * TUYA_RAIN_CALIBRATION
         rain_rate = (d.get('rain_rate', 0) / 10) * TUYA_RAIN_RATE_CALIBRATION
@@ -1338,7 +1340,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             "pioggia_24h": pioggia_24h,
             "umidita": umid_ext,
             "vento": v_medio,
-            "raffica": raffica,
+            "raffica": _raffica_attuale,
             "dew_point": dew_point,
             "api": sat_visualizzato,
             "sbcape": sbcape_value,
