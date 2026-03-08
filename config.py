@@ -38,6 +38,7 @@ TUYA_RAIN_CALIBRATION = 1.0
 TUYA_RAIN_RATE_CALIBRATION = 1.0 
 ECOWITT_RAIN_CALIBRATION = 1.0      
 ECOWITT_RAIN_RATE_CALIBRATION = 1.0 
+METEO_SCRIPT = "meteo"
 FILE_STATE = "state.json"       
 FILE_STORICO = "storico_24h.json"  
 def load_state_section(section: str) -> dict:

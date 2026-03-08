@@ -119,11 +119,13 @@ def cmd_help(chat_id):
     lines.append(f"\n🕒 {datetime.now(TZ_ROME).strftime('%d/%m/%Y %H:%M')}")
     send_message(chat_id, "\n".join(lines))
 def cmd_meteo(chat_id):
-    """Genera e invia il report meteo completo della stazione (Ecowitt)."""
+    """Genera e invia il report meteo completo della stazione."""
     send_message(chat_id, "⏳ Generazione report meteo in corso...")
     try:
-        import meteo_ecowitt
-        meteo_ecowitt.esegui_report(force_send=True, target_chat_id=str(chat_id))
+        import importlib
+        from config import METEO_SCRIPT
+        modulo = importlib.import_module(METEO_SCRIPT)
+        modulo.esegui_report(force_send=True, target_chat_id=str(chat_id))
     except Exception as e:
         send_message(chat_id, f"❌ Errore report meteo: {e}")
         traceback.print_exc()
