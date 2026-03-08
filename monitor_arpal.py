@@ -393,10 +393,9 @@ def main():
         print("Nessun avviso di vigilanza presente")
     state = load_state()
     prev_max = state.get("max_livello", "Verde")
-    prev_detail = state.get("dettaglio", {})
-    prev_vigilanza = state.get("vigilanza")
     notifica_inviata = state.get("notifica_inviata", False)
     ultima_data_notifica = state.get("data_ultima_notifica", "")
+    ultimo_max_notificato = state.get("ultimo_max_notificato", "Verde")
     oggi_str = datetime.now().strftime("%Y-%m-%d")
     if ultima_data_notifica != oggi_str:
         notifica_inviata = False
@@ -405,39 +404,29 @@ def main():
     motivo = ""
     livello_attuale = parsed.get("max_livello", "Verde")
     livello_num = ORDER.get(livello_attuale, 0)
-    livello_prev_num = ORDER.get(prev_max, 0)
+    livello_prev_notificato = ORDER.get(ultimo_max_notificato, 0)
     if livello_num >= ORDER.get("Giallo", 1):
         if not notifica_inviata:
             send = True
             motivo = "Nuova allerta"
-        elif livello_num > livello_prev_num:
+        elif livello_num > livello_prev_notificato:
             send = True
-            motivo = f"Peggioramento: {prev_max} → {livello_attuale}"
-        elif parsed.get("dettaglio") != prev_detail:
-            send = True
-            motivo = "Dettaglio criteri aggiornato"
-    if livello_prev_num >= ORDER.get("Giallo", 1) and livello_num == 0:
-        if notifica_inviata:
-            send = True
-            motivo = f"Cessazione allerta (era {prev_max})"
-    if vigilanza and vigilanza != prev_vigilanza:
-        if not send:
-            send = True
-            motivo = "Nuovo avviso di vigilanza"
+            motivo = f"Peggioramento: {ultimo_max_notificato} → {livello_attuale}"
     if send:
         print(f"📤 Invio notifica ARPAL: {motivo}")
         msg = build_message(parsed, vigilanza)
         send_telegram(msg)
         parsed["notifica_inviata"] = True
         parsed["data_ultima_notifica"] = oggi_str
+        parsed["ultimo_max_notificato"] = livello_attuale
     else:
         reason = "livello sotto Giallo" if livello_num < 1 else "nessun cambiamento"
         if notifica_inviata:
-            reason += ", notifica già inviata"
+            reason += ", notifica già inviata oggi"
         print(f"Nessun invio: {reason}")
-        if notifica_inviata and livello_num >= 1:
-            parsed["notifica_inviata"] = True
-            parsed["data_ultima_notifica"] = state.get("data_ultima_notifica", oggi_str)
+        parsed["notifica_inviata"] = notifica_inviata
+        parsed["data_ultima_notifica"] = ultima_data_notifica
+        parsed["ultimo_max_notificato"] = ultimo_max_notificato if notifica_inviata else "Verde"
     parsed["vigilanza"] = vigilanza
     save_state(parsed)
 if __name__ == "__main__":

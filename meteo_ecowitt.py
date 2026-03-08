@@ -1440,19 +1440,18 @@ def esegui_report(force_send=False, target_chat_id=None):
     str_avvisi = "\n".join(avvisi) + "\n\n" if avvisi else ""
     massa_aria = classifica_massa_aria(temp_ext, dew_point, pressione_msl, mese_corrente)
     theta_e_850 = None
+    temp_alti_livelli = None
     if _om_data:
         theta_e_850 = calcola_theta_e_850hpa(_om_data)
-            temp_alti_livelli = estrai_temperature_alti_livelli(_om_data)
-        else:
-            temp_alti_livelli = None
+        temp_alti_livelli = estrai_temperature_alti_livelli(_om_data)
     if theta_e_850 is not None:
         theta_e_str = f"θe sup: {massa_aria['theta_e']}°C · θe 850hPa: {theta_e_850}°C"
     else:
         theta_e_str = f"θe: {massa_aria['theta_e']}°C"
-        if temp_alti_livelli:
-            temp_livelli_str = f" · T_850hPa: {temp_alti_livelli['T_850']}°C · T_500hPa: {temp_alti_livelli['T_500']}°C"
-        else:
-            temp_livelli_str = ""
+    if temp_alti_livelli:
+        temp_livelli_str = f" · T_850hPa: {temp_alti_livelli['T_850']}°C · T_500hPa: {temp_alti_livelli['T_500']}°C"
+    else:
+        temp_livelli_str = ""
     massa_str = (
         f"🌍 *MASSA D'ARIA*\n"
         f"{massa_aria['emoji']} {massa_aria['nome']} ({massa_aria['tipo']})\n"
