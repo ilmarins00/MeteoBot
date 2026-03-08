@@ -289,49 +289,42 @@ def calcola_theta_e_850hpa(data_openmeteo):
         return round(theta_e_850_C, 1)
     except Exception as e:
         print(f"⚠️  Errore calcolo theta-e 850 hPa: {e}")
-        def estrai_temperature_alti_livelli(data_openmeteo):
-            """Estrae le temperature a 500 hPa e 850 hPa dai dati Open-Meteo.
-    
-            Args:
-                data_openmeteo: dizionario con dati Open-Meteo inclusi i livelli di pressione
-        
-            Returns:
-                dict con 'T_500' e 'T_850' in °C, o None se non disponibili
-            """
-            try:
-                hourly = data_openmeteo.get("hourly", {})
-                if not hourly:
-                    return None
-                current_hour_idx = 0
-                if "time" in hourly:
-                    from datetime import timezone as _tz
-                    now_utc = datetime.now(_tz.utc)
-                    now_hour_str = now_utc.strftime("%Y-%m-%dT%H:")
-                    for i, time_str in enumerate(hourly["time"]):
-                        if time_str.startswith(now_hour_str):
-                            current_hour_idx = i
-                            break
-                key_temp_500 = "temperature_500hPa"
-                key_temp_850 = "temperature_850hPa"
-                if key_temp_500 not in hourly or key_temp_850 not in hourly:
-                    print("⚠️  Dati temperatura 500/850 hPa non disponibili")
-                    return None
-                if len(hourly[key_temp_500]) <= current_hour_idx or len(hourly[key_temp_850]) <= current_hour_idx:
-                    print("⚠️  Indice ora corrente fuori range per temperature alti livelli")
-                    return None
-                T_500_C = hourly[key_temp_500][current_hour_idx]
-                T_850_C = hourly[key_temp_850][current_hour_idx]
-                if T_500_C is None or T_850_C is None:
-                    print("⚠️  Temperature 500/850 hPa null per ora corrente")
-                    return None
-                print(f"✓ Temperature alti livelli: T_500={T_500_C:.1f}°C, T_850={T_850_C:.1f}°C")
-                return {
-                    'T_500': round(T_500_C, 1),
-                    'T_850': round(T_850_C, 1)
-                }
-            except Exception as e:
-                print(f"⚠️  Errore estrazione temperature alti livelli: {e}")
-                return None
+        return None
+
+def estrai_temperature_alti_livelli(data_openmeteo):
+    try:
+        hourly = data_openmeteo.get("hourly", {})
+        if not hourly:
+            return None
+        current_hour_idx = 0
+        if "time" in hourly:
+            from datetime import timezone as _tz
+            now_utc = datetime.now(_tz.utc)
+            now_hour_str = now_utc.strftime("%Y-%m-%dT%H:")
+            for i, time_str in enumerate(hourly["time"]):
+                if time_str.startswith(now_hour_str):
+                    current_hour_idx = i
+                    break
+        key_temp_500 = "temperature_500hPa"
+        key_temp_850 = "temperature_850hPa"
+        if key_temp_500 not in hourly or key_temp_850 not in hourly:
+            print("⚠️  Dati temperatura 500/850 hPa non disponibili")
+            return None
+        if len(hourly[key_temp_500]) <= current_hour_idx or len(hourly[key_temp_850]) <= current_hour_idx:
+            print("⚠️  Indice ora corrente fuori range per temperature alti livelli")
+            return None
+        T_500_C = hourly[key_temp_500][current_hour_idx]
+        T_850_C = hourly[key_temp_850][current_hour_idx]
+        if T_500_C is None or T_850_C is None:
+            print("⚠️  Temperature 500/850 hPa null per ora corrente")
+            return None
+        print(f"✓ Temperature alti livelli: T_500={T_500_C:.1f}°C, T_850={T_850_C:.1f}°C")
+        return {
+            'T_500': round(T_500_C, 1),
+            'T_850': round(T_850_C, 1)
+        }
+    except Exception as e:
+        print(f"⚠️  Errore estrazione temperature alti livelli: {e}")
         return None
 def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, severe_score=0):
     """Valutazione ingredient-based del rischio convettivo su scala 0-12."""
