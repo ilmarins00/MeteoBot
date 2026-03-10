@@ -157,20 +157,20 @@
             }
         ],
         "sotto_zone": {},
-        "ora": 10,
+        "ora": 18,
         "notifica_inviata": false,
         "data_ultima_notifica": "",
         "ultimo_max_notificato": "Verde",
-        "vigilanza": "PREVISIONI METEO Data emissione: 09 marzo 2026 ore 11:37 Consulta il Bollettino di Vigilanza/Avviso Meteorologico regionale per i dettagli previsionali."
+        "vigilanza": "PREVISIONI METEO Data emissione: 08 marzo 2026 ore 09:45 Consulta il Bollettino di Vigilanza/Avviso Meteorologico regionale per i dettagli previsionali."
     },
     "omirl": {
-        "last_check_ts": "2026-03-10T11:17:35.257117+01:00",
+        "last_check_ts": "2026-03-09T16:47:35.137851+01:00",
         "n_stations_sp": 37,
-        "n_stations_rain": 11,
+        "n_stations_rain": 4,
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-03-10T11:17:34.479871+01:00",
+        "last_check_ts": "2026-03-09T16:47:34.286552+01:00",
         "recent_strikes": [],
         "total_in_window": 0,
         "status": "ok"
