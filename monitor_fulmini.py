@@ -21,7 +21,6 @@ import json
 import os
 import sys
 import io
-import re
 import math
 import time
 import requests
@@ -34,7 +33,6 @@ from config import (
     TELEGRAM_CHAT_IDS as LISTA_CHAT,
     LATITUDE, LONGITUDE,
     BLITZORTUNG_WS_URLS,
-    BLITZORTUNG_REGION,
     RAINVIEWER_API,
     LIGHTNINGMAPS_URL,
     load_state_section,
@@ -61,6 +59,33 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
 
 
+def _lzw_decode(text: str) -> str:
+    """Decomprime un messaggio LZW usato dal protocollo Blitzortung WebSocket.
+    Ogni carattere Unicode nel testo rappresenta un codice LZW."""
+    if not text:
+        return ''
+    chars = list(text)
+    curr_char = chars[0]
+    old_phrase = curr_char
+    result = [curr_char]
+    dictionary: Dict[int, str] = {}
+    next_code = 256
+    for i in range(1, len(chars)):
+        code = ord(chars[i])
+        if 256 > code:
+            phrase = chars[i]
+        elif code in dictionary:
+            phrase = dictionary[code]
+        else:
+            phrase = old_phrase + curr_char
+        result.append(phrase)
+        curr_char = phrase[0]
+        dictionary[next_code] = old_phrase + curr_char
+        next_code += 1
+        old_phrase = phrase
+    return ''.join(result)
+
+
 def collect_strikes_websocket(
     duration_seconds: int = 120,
     radius_km: float = 20.0,
@@ -79,136 +104,114 @@ def collect_strikes_websocket(
 
     strikes_nearby: List[Dict[str, Any]] = []
     total_received = 0
-
-    # Formati di subscription da tentare (diverse versioni del protocollo Blitzortung)
-    SUBSCRIPTION_MSGS = [
-        json.dumps({"a": 111}),          # protocollo v2 più comune
-        json.dumps({"a": BLITZORTUNG_REGION}),  # regione Europa (1)
-        json.dumps({"a": 0}),             # worldwide fallback
-    ]
+    sub_msg = json.dumps({"a": 111})
 
     for ws_url in BLITZORTUNG_WS_URLS:
-        for sub_msg in SUBSCRIPTION_MSGS:
+        try:
+            print(f"Connessione a {ws_url} ...")
+            ws = websocket.WebSocket(skip_utf8_validation=True)
+            ws.connect(
+                ws_url,
+                timeout=15,
+                header=[
+                    "Origin: https://www.blitzortung.org",
+                    "User-Agent: Mozilla/5.0",
+                ],
+                sslopt={"check_hostname": False, "cert_reqs": 0},
+            )
+
+            ws.settimeout(3)
             try:
-                print(f"Connessione a {ws_url} (sub={sub_msg}) ...")
-                ws = websocket.create_connection(
-                    ws_url,
-                    timeout=15,
-                    header=[
-                        "Origin: https://www.blitzortung.org",
-                        "User-Agent: Mozilla/5.0",
-                    ],
-                    sslopt={"check_hostname": False, "cert_reqs": 0},
-                )
+                ws.recv()
+            except Exception:
+                pass
 
-                # Alcuni server inviano un messaggio di benvenuto — leggi prima di sottoscrivere
-                ws.settimeout(3)
+            ws.send(sub_msg)
+            print(f"Connesso, ascolto per {duration_seconds}s ...")
+
+            start = time.time()
+            ws.settimeout(5)
+            connected = True
+
+            while time.time() - start < duration_seconds:
                 try:
-                    greeting = ws.recv()
-                    print(f"  Server greeting: {greeting[:80] if greeting else '(vuoto)'}")
-                except Exception:
-                    pass  # nessun greeting, va bene lo stesso
+                    raw_msg = ws.recv()
+                    if not raw_msg:
+                        continue
 
-                # Invia subscription
-                ws.send(sub_msg)
-                print(f"Connesso, ascolto per {duration_seconds}s ...")
-
-                start = time.time()
-                ws.settimeout(5)
-                connected = True
-
-                while time.time() - start < duration_seconds:
+                    decoded = _lzw_decode(raw_msg)
                     try:
-                        raw = ws.recv()
-                        if not raw:
-                            continue
+                        data = json.loads(decoded)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
 
-                        # Blitzortung può inviare dati con timestamp in formato
-                        # non-JSON standard (es. 1234567890123456789 senza virgolette).
-                        # Tentiamo parsing JSON; se fallisce, proviamo un fix.
-                        try:
-                            data = json.loads(raw)
-                        except json.JSONDecodeError:
-                            # Log solo i primi messaggi malformati per debug
-                            if total_received == 0:
-                                print(f"  Raw non-JSON (primo msg): {raw[:120]}")
-                            # Prova a sistemare numeri grandi non quotati
-                            fixed = re.sub(r':\s*(\d{16,})\s*([,}])', r':"\1"\2', raw)
-                            try:
-                                data = json.loads(fixed)
-                            except json.JSONDecodeError:
-                                continue  # Messaggio irrecuperabile, skip
+                    total_received += 1
 
-                        total_received += 1
+                    lat = data.get("lat")
+                    lon = data.get("lon")
+                    if lat is None or lon is None:
+                        continue
 
-                        lat = data.get("lat")
-                        lon = data.get("lon")
-                        if lat is None or lon is None:
-                            continue
-
-                        dist = haversine_km(LATITUDE, LONGITUDE, lat, lon)
-                        if dist <= radius_km:
-                            strike_time = data.get("time", 0)
-                            if strike_time > 1e15:
-                                strike_dt = datetime.fromtimestamp(
-                                    strike_time / 1e9, tz=TZ_ROME
-                                )
-                            else:
-                                strike_dt = datetime.now(TZ_ROME)
-
-                            strikes_nearby.append({
-                                "lat": lat,
-                                "lon": lon,
-                                "time": strike_dt.isoformat(),
-                                "distance_km": round(dist, 1),
-                                "signal": data.get("sig", 0),
-                            })
-                            print(
-                                f"  ⚡ Fulmine a {dist:.1f} km "
-                                f"({lat:.3f}, {lon:.3f}) "
-                                f"ore {strike_dt.strftime('%H:%M:%S')}"
+                    dist = haversine_km(LATITUDE, LONGITUDE, lat, lon)
+                    if dist <= radius_km:
+                        strike_time = data.get("time", 0)
+                        if isinstance(strike_time, (int, float)) and strike_time > 1e15:
+                            strike_dt = datetime.fromtimestamp(
+                                strike_time / 1e9, tz=TZ_ROME
                             )
-                    except websocket.WebSocketTimeoutException:
-                        continue
-                    except (
-                        websocket.WebSocketConnectionClosedException,
-                        websocket.WebSocketException,
-                        OSError,
-                        ConnectionResetError,
-                    ) as e:
-                        print(f"Connessione persa ({type(e).__name__})")
-                        connected = False
-                        break
-                    except (ValueError, KeyError, TypeError) as e:
-                        # Errori di parsing dati — non fatali, continua
-                        continue
-                    except Exception as e:
-                        print(f"Errore recv imprevisto: {type(e).__name__}: {e}")
-                        connected = False
-                        break
+                        else:
+                            strike_dt = datetime.now(TZ_ROME)
 
-                try:
-                    ws.close()
-                except Exception:
-                    pass
+                        strikes_nearby.append({
+                            "lat": lat,
+                            "lon": lon,
+                            "time": strike_dt.isoformat(),
+                            "distance_km": round(dist, 1),
+                            "signal": data.get("sig", 0),
+                        })
+                        print(
+                            f"  ⚡ Fulmine a {dist:.1f} km "
+                            f"({lat:.3f}, {lon:.3f}) "
+                            f"ore {strike_dt.strftime('%H:%M:%S')}"
+                        )
+                except websocket.WebSocketTimeoutException:
+                    continue
+                except (
+                    websocket.WebSocketConnectionClosedException,
+                    websocket.WebSocketException,
+                    OSError,
+                    ConnectionResetError,
+                ) as e:
+                    print(f"Connessione persa ({type(e).__name__})")
+                    connected = False
+                    break
+                except (ValueError, KeyError, TypeError):
+                    continue
+                except Exception as e:
+                    print(f"Errore recv imprevisto: {type(e).__name__}: {e}")
+                    connected = False
+                    break
 
-                print(
-                    f"Sessione: {total_received} scariche totali, "
-                    f"{len(strikes_nearby)} entro {radius_km} km"
-                )
+            try:
+                ws.close()
+            except Exception:
+                pass
 
-                # Se abbiamo ricevuto almeno qualcosa, ritorna subito
-                if total_received > 0 or (connected and time.time() - start >= duration_seconds):
-                    return strikes_nearby
+            print(
+                f"Sessione: {total_received} scariche totali, "
+                f"{len(strikes_nearby)} entro {radius_km} km"
+            )
 
-                # Altrimenti prova la prossima subscription/server
-                print("Nessun dato ricevuto, provo combinazione successiva...")
+            if total_received > 0:
+                return strikes_nearby
 
-            except Exception as e:
-                print(f"Errore connessione {ws_url}: {e}")
-                continue
+            print("Nessun dato ricevuto, provo server successivo...")
 
-    print("Impossibile ricevere dati da Blitzortung (tutti i server/protocolli falliti)")
+        except Exception as e:
+            print(f"Errore connessione {ws_url}: {e}")
+            continue
+
+    print("Impossibile ricevere dati da Blitzortung")
     return strikes_nearby
 
 
