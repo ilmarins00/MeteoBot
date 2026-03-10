@@ -120,14 +120,10 @@ class Thresholds:
     ARPAL_SNOW_GIALLO = 5.0
     ARPAL_SNOW_ARANCIONE = 15.0
     ARPAL_SNOW_ROSSO = 30.0
-    OMIRL_RAIN_TRIGGER = 6.0   
     LIGHTNING_RADIUS_KM = 30.0       
     LIGHTNING_STRIKE_THRESHOLD = 1   
     LIGHTNING_WINDOW_MINUTES = 30    
 thresholds = Thresholds()
-OMIRL_API_BASE = "https://omirl.regione.liguria.it/Omirl/rest"
-OMIRL_RAIN_ENDPOINT = f"{OMIRL_API_BASE}/stations/sensorvalues/Pluvio"
-OMIRL_DISTRICT_FILTER = "SP"   
 RAINVIEWER_API = "https://api.rainviewer.com/public/weather-maps.json"
 RAINVIEWER_TILE_URL = "https://tilecache.rainviewer.com/v2/radar/{ts}/512/{z}/{x}/{y}/2/1_1.png"
 BLITZORTUNG_WS_URLS = [

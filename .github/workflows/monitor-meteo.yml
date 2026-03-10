@@ -1,6 +1,6 @@
-name: MeteoBot - Monitor Meteo (OMIRL + Fulmini)
+name: MeteoBot - Monitor Meteo (Fulmini)
 
-# Workflow unificato per i monitor OMIRL radar e Fulmini.
+# Workflow per il monitor Fulmini.
 # Trigger manuale via API (cronjob.org) — un solo cron per entrambi.
 #
 # ── Configurazione cronjob.org ─────────────────────────────────────────────
@@ -65,7 +65,7 @@ jobs:
           remote = {}
           if os.path.exists('state.json'):
               with open('state.json') as f: remote = json.load(f)
-          for s in ['omirl', 'fulmini']:
+          for s in ['fulmini']:
               if s in local: remote[s] = local[s]
           with open('state.json', 'w') as f: json.dump(remote, f, indent=4, ensure_ascii=False)
           PYEOF

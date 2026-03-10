@@ -7,7 +7,6 @@ Comandi disponibili:
   /meteo    — Report meteo completo (stazione La Spezia)
   /arpal    — Stato allerta ARPAL Zona C
   /fulmini  — Analisi fulmini in tempo reale
-  /omirl    — Precipitazioni rete OMIRL La Spezia
   /tutto    — Esegui tutti i monitor in sequenza
   /help     — Mostra comandi disponibili
 Uso:
@@ -29,7 +28,6 @@ COMMANDS = {
     "/meteo": "📡 Report meteo stazione La Spezia",
     "/arpal": "🟢 Stato allerta ARPAL — Zona C",
     "/fulmini": "⚡ Monitor fulmini (Blitzortung)",
-    "/omirl": "🌧️ Precipitazioni rete OMIRL — La Spezia",
     "/tutto": "📋 Esegui tutti i monitor",
     "/help": "❓ Mostra comandi disponibili",
 }
@@ -170,43 +168,16 @@ def cmd_fulmini(chat_id):
     except Exception as e:
         send_message(chat_id, f"❌ Errore fulmini: {e}")
         traceback.print_exc()
-def cmd_omirl(chat_id):
-    """Scarica dati OMIRL e invia eventuali superamenti di soglia."""
-    send_message(chat_id, "⏳ Scaricamento dati OMIRL...")
-    try:
-        import monitor_omirl
-        result = monitor_omirl.run_analysis(force=True)
-        if result:
-            if result.get("image"):
-                send_photo(
-                    chat_id,
-                    result["image"],
-                    caption=result["message"],
-                    filename="radar_omirl.png",
-                )
-            else:
-                send_message(chat_id, result["message"])
-            monitor_omirl.mark_sent(result)
-        else:
-            send_message(
-                chat_id,
-                "✅ Nessuna stazione SP supera la soglia precipitazioni. Tutto OK.",
-            )
-    except Exception as e:
-        send_message(chat_id, f"❌ Errore OMIRL: {e}")
-        traceback.print_exc()
 def cmd_tutto(chat_id):
     """Esegue tutti i monitor in sequenza."""
     send_message(chat_id, "⏳ Esecuzione completa di tutti i monitor...")
     cmd_meteo(chat_id)
     cmd_arpal(chat_id)
-    cmd_omirl(chat_id)
     cmd_fulmini(chat_id)
 DISPATCH = {
     "/meteo": cmd_meteo,
     "/arpal": cmd_arpal,
     "/fulmini": cmd_fulmini,
-    "/omirl": cmd_omirl,
     "/tutto": cmd_tutto,
     "/help": cmd_help,
     "/start": cmd_help,

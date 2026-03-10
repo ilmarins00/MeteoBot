@@ -2,16 +2,13 @@
 """
 Orchestratore Monitor Meteo – Invio unificato
 
-Esegue monitor_fulmini e monitor_omirl in sequenza, poi invia le eventuali
-allerte come album Telegram (media group) così che le foto arrivino insieme.
+Esegue monitor_fulmini, poi invia le eventuali allerte via Telegram.
 
 Flusso:
-1. Esegue monitor_fulmini.run_analysis() — il più lento (~2 min WebSocket)
-2. Esegue monitor_omirl.run_analysis() — veloce (~5s)
-3. Raccoglie i risultati
-4. Se entrambi hanno allerta con foto → sendMediaGroup (album)
-   Se uno solo ha allerta → sendPhoto / sendMessage
-5. Aggiorna lo stato di ciascun monitor dopo l'invio
+1. Esegue monitor_fulmini.run_analysis() (~2 min WebSocket)
+2. Se allerta con foto → sendPhoto
+   Altrimenti → sendMessage
+3. Aggiorna lo stato del monitor dopo l'invio
 
 Uso:
     python send_monitors.py            # Esecuzione standard (cron)
@@ -29,7 +26,6 @@ from config import (
 )
 
 import monitor_fulmini
-import monitor_omirl
 
 
 def send_media_group(
@@ -126,70 +122,25 @@ def send_text(chat_id: str, text: str) -> bool:
 
 
 def dispatch_results(
-    omirl_result: Optional[Dict[str, Any]],
     fulmini_result: Optional[Dict[str, Any]],
 ) -> bool:
     """
     Invia i risultati a tutti i chat Telegram.
-    Se entrambi hanno foto → album (media group).
-    Se uno solo ha foto → foto singola.
-    Se nessuna foto → testo.
+    Se c'è foto → foto singola, altrimenti testo.
     Restituisce True se almeno un invio è riuscito.
     """
     if not TELEGRAM_TOKEN or not LISTA_CHAT:
         print("Telegram non configurato, skip invio")
         return False
 
-    # Prepara gli item con foto
-    photo_items: List[Tuple[str, bytes, str, str]] = []  # (filename, bytes, caption, monitor_name)
-    text_only: List[Tuple[str, str]] = []  # (message, monitor_name)
-
-    if fulmini_result:
-        if fulmini_result.get("image"):
-            photo_items.append((
-                "radar_fulmini.png",
-                fulmini_result["image"],
-                fulmini_result["message"],
-                "fulmini",
-            ))
-        else:
-            text_only.append((fulmini_result["message"], "fulmini"))
-
-    if omirl_result:
-        if omirl_result.get("image"):
-            photo_items.append((
-                "radar_omirl.png",
-                omirl_result["image"],
-                omirl_result["message"],
-                "omirl",
-            ))
-        else:
-            text_only.append((omirl_result["message"], "omirl"))
-
     any_success = False
 
     for chat_id in LISTA_CHAT:
-        # Se ci sono 2+ foto → album
-        if len(photo_items) >= 2:
-            album_items = [(f, b, c) for f, b, c, _ in photo_items]
-            ok = send_media_group(chat_id, album_items)
-            if ok:
+        if fulmini_result.get("image"):
+            if send_single_photo(chat_id, fulmini_result["message"], fulmini_result["image"], "radar_fulmini.png"):
                 any_success = True
-            else:
-                # Fallback: invia singolarmente
-                for filename, img, caption, _ in photo_items:
-                    if send_single_photo(chat_id, caption, img, filename):
-                        any_success = True
-
-        # Se c'è 1 sola foto
-        elif len(photo_items) == 1:
-            filename, img, caption, _ = photo_items[0]
-            if send_single_photo(chat_id, caption, img, filename):
-                any_success = True
-
-        # Messaggi solo testo
-        for msg_text, _ in text_only:
-            if send_text(chat_id, msg_text):
+        else:
+            if send_text(chat_id, fulmini_result["message"]):
                 any_success = True
 
     return any_success
@@ -202,7 +153,7 @@ def main():
     print("  ORCHESTRATORE MONITOR METEO")
     print("=" * 50)
 
-    # 1. Monitor fulmini (più lento — ~2 min WebSocket)
+    # 1. Monitor fulmini (~2 min WebSocket)
     print("\n🔌 Monitor Fulmini...")
     print("-" * 40)
     fulmini_result = monitor_fulmini.run_analysis(force=force)
@@ -211,35 +162,22 @@ def main():
     else:
         print("→ Nessuna allerta fulmini")
 
-    # 2. Monitor OMIRL (più veloce — ~5s)
-    print("\n🌧️ Monitor OMIRL...")
-    print("-" * 40)
-    omirl_result = monitor_omirl.run_analysis(force=force)
-    if omirl_result:
-        n_exc = len(omirl_result["exceeding"])
-        print(f"→ ALLERTA pioggia: {n_exc} stazioni oltre soglia")
-    else:
-        print("→ Nessuna allerta pioggia")
-
-    # 3. Nessuna allerta?
-    if not fulmini_result and not omirl_result:
+    # 2. Nessuna allerta?
+    if not fulmini_result:
         print("\n✅ Nessuna allerta attiva – niente da inviare")
         return
 
-    # 4. Invio unificato
+    # 3. Invio
     print("\n📤 Invio notifiche...")
     print("-" * 40)
-    success = dispatch_results(omirl_result, fulmini_result)
+    success = dispatch_results(fulmini_result)
 
-    # 5. Aggiorna stato di ciascun monitor dopo invio riuscito
+    # 4. Aggiorna stato dopo invio riuscito
     if success:
-        if fulmini_result:
-            monitor_fulmini.mark_sent(fulmini_result)
-        if omirl_result:
-            monitor_omirl.mark_sent(omirl_result)
-        print("\n✅ Invio completato e stati aggiornati")
+        monitor_fulmini.mark_sent(fulmini_result)
+        print("\n✅ Invio completato e stato aggiornato")
     else:
-        print("\n⚠️ Invio fallito — stati NON aggiornati")
+        print("\n⚠️ Invio fallito — stato NON aggiornato")
 
 
 if __name__ == "__main__":
