@@ -587,12 +587,9 @@ def calcola_cape_from_profile(T_parcel, p_env, T_env, RH_env, q_parcel_surface, 
         'el_pressure': p_env[el_idx] if el_idx is not None else None,
         'buoyancy': buoyancy
     }
-def calcola_mucape(data, station_data, T_env, p_env, RH_env):
+def calcola_mucape(data, p_surface, T_env, p_env, RH_env):
     """Calcola Most Unstable CAPE (MUCAPE) cercando la particella più instabile
     nei primi 300 hPa dalla superficie."""
-    if station_data is None:
-        return None
-    p_surface = station_data['pressure']
     max_cape = 0
     mu_result = None
     for p_idx in range(len(p_env)):
@@ -739,7 +736,7 @@ def calcola_sbcape_advanced(data, station_data=None):
         T_parcel_sb, p_lcl_sb = lift_parcel(T_surface_K, p_surface, q_surface, p_fine)
         result_sb = calcola_cape_from_profile(T_parcel_sb, p_fine, T_fine, RH_fine, q_surface, p_lcl_sb)
         print("  Cercando livello più instabile (MUCAPE)...")
-        result_mu = calcola_mucape(data, station_data, T_fine, p_fine, RH_fine)
+        result_mu = calcola_mucape(data, p_surface, T_fine, p_fine, RH_fine)
         shear = calcola_wind_shear(data, current_hour_idx, station_data)
         idx_500 = None
         for i, p in enumerate(p_fine):

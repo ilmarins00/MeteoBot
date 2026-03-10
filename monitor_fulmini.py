@@ -509,16 +509,30 @@ def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dic
             seen.add(key)
             all_strikes.append(s)
 
-    # 4. Aggiorna stato con scariche recenti
-    cutoff = datetime.now(TZ_ROME) - timedelta(minutes=window_min)
+    # 4. Filtra scariche recenti (max 15 min)
+    now = datetime.now(TZ_ROME)
+    cutoff_fresh = now - timedelta(minutes=15)
+    cutoff_window = now - timedelta(minutes=window_min)
     recent_valid = []
     for s in all_strikes:
         try:
             t = datetime.fromisoformat(s["time"])
-            if t >= cutoff:
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=TZ_ROME)
+            if t >= cutoff_fresh:
                 recent_valid.append(s)
         except Exception:
-            recent_valid.append(s)
+            continue
+    if not recent_valid:
+        for s in all_strikes:
+            try:
+                t = datetime.fromisoformat(s["time"])
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=TZ_ROME)
+                if t >= cutoff_window:
+                    recent_valid.append(s)
+            except Exception:
+                continue
 
     state["last_check_ts"] = datetime.now(TZ_ROME).isoformat()
     state["recent_strikes"] = recent_valid[-200:]

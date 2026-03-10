@@ -122,7 +122,7 @@ class Thresholds:
     ARPAL_SNOW_ROSSO = 30.0
     OMIRL_RAIN_TRIGGER = 6.0   
     LIGHTNING_RADIUS_KM = 30.0       
-    LIGHTNING_STRIKE_THRESHOLD = 5   
+    LIGHTNING_STRIKE_THRESHOLD = 1   
     LIGHTNING_WINDOW_MINUTES = 30    
 thresholds = Thresholds()
 OMIRL_API_BASE = "https://omirl.regione.liguria.it/Omirl/rest"
