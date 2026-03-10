@@ -121,7 +121,7 @@ class Thresholds:
     ARPAL_SNOW_ARANCIONE = 15.0
     ARPAL_SNOW_ROSSO = 30.0
     OMIRL_RAIN_TRIGGER = 6.0   
-    LIGHTNING_RADIUS_KM = 20.0       
+    LIGHTNING_RADIUS_KM = 30.0       
     LIGHTNING_STRIKE_THRESHOLD = 5   
     LIGHTNING_WINDOW_MINUTES = 30    
 thresholds = Thresholds()

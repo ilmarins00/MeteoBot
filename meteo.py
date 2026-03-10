@@ -1283,7 +1283,7 @@ def esegui_report(force_send=False, target_chat_id=None):
                 cc_mid = _current_om.get("cloud_cover_mid", 0) or 0
                 cc_high = _current_om.get("cloud_cover_high", 0) or 0
                 print(f"  ☁️ Nuvolosità: bassa={cc_low}% media={cc_mid}% alta={cc_high}%")
-                _sbcape_result = calcola_sbcape_advanced(_om_data, _station_data_for_sbcape)
+                _sbcape_result = calcola_sbcape_advanced(_om_data, None)
                 if _sbcape_result:
                     sbcape_value = _sbcape_result.get("sbcape") or 0
                     mucape_value = _sbcape_result.get("mucape") or 0
@@ -1427,19 +1427,22 @@ def esegui_report(force_send=False, target_chat_id=None):
             theta_e_850 = calcola_theta_e_850hpa(_om_data)
             temp_alti_livelli = estrai_temperature_alti_livelli(_om_data)
         if theta_e_850 is not None:
-            theta_e_str = f"θe sup: {massa_aria['theta_e']}°C · θe 850hPa: {theta_e_850}°C"
+            theta_e_str = f"θe 850hPa: {theta_e_850}°C"
         else:
             theta_e_str = f"θe: {massa_aria['theta_e']}°C"
-        if temp_alti_livelli:
-            temp_livelli_str = f" · T_850hPa: {temp_alti_livelli['T_850']}°C · T_500hPa: {temp_alti_livelli['T_500']}°C"
-        else:
-            temp_livelli_str = ""
         massa_str = (
             f"🌍 *MASSA D'ARIA*\n"
             f"{massa_aria['emoji']} {massa_aria['nome']} ({massa_aria['tipo']})\n"
             f"{massa_aria['desc']}\n"
-            f"{theta_e_str} · Anomalia: {massa_aria['anomalia']:+.1f}°C · Spread T-Td: {massa_aria['spread']}°C{temp_livelli_str}\n"
+            f"{theta_e_str}\n"
+            f"Anomalia: {massa_aria['anomalia']:+.1f}°C\n"
+            f"Spread T-Td: {massa_aria['spread']}°C\n"
         )
+        if temp_alti_livelli:
+            massa_str += (
+                f"T 850hPa: {temp_alti_livelli['T_850']}°C\n"
+                f"T 500hPa: {temp_alti_livelli['T_500']}°C\n"
+            )
         theta_e_display = theta_e_850 if theta_e_850 is not None else massa_aria['theta_e']
         print(f"Massa d'aria: {massa_aria['tipo']} ({massa_aria['nome']}) - θe_850={theta_e_850}°C, θe_sup={massa_aria['theta_e']}°C, anomalia={massa_aria['anomalia']:+.1f}°C")
         nuovi_dati = {
@@ -1479,8 +1482,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             f"💧 *UMIDITÀ E PRECIPITAZIONI*\n"
             f"Umidità: {umid_ext}%\n"
             f"Pioggia ultima ora: {pioggia_1h} mm\n"
-            f"Pioggia 24h: {pioggia_24h} mm\n"
-            f"Rain rate: {rain_rate} mm/h\n\n"
+            f"Pioggia 24h: {pioggia_24h} mm\n\n"
             f"🌬️ *VENTO*\n"
             f"Velocità media: {v_medio} km/h\n"
             f"Raffica max (1h): {raffica} km/h ({raffica_source})\n\n"
@@ -1498,8 +1500,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             f"ETP: {etp_giornaliera} mm\n\n"
             f"⚡ *INSTABILITÀ CONVETTIVA*\n"
             f"{sbcape_str}\n"
-            f"{massa_str}\n"
-            f"🔋 Batteria: {batt}%"
+            f"{massa_str}"
         )
         ora_corrente = now_it.hour
         minuto_corrente = now_it.minute

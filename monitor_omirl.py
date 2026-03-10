@@ -5,8 +5,8 @@ Monitor Precipitazioni OMIRL – Zona La Spezia
 Interroga l'API REST di OMIRL (Osservatorio Meteo-Idrologico Regione Liguria)
 per ottenere i dati pluviometrici in tempo reale delle stazioni nel distretto SP.
 
-Quando almeno una stazione supera la soglia (default 6 mm/h), scarica un'immagine
-radar composita da RainViewer e invia una notifica Telegram con mappa e dettagli.
+Quando almeno una stazione supera la soglia (default 6 mm/h), invia una notifica
+Telegram con i dettagli delle stazioni che superano la soglia.
 
 Esegue in modo idempotente: salva lo stato in `state.json` (sezione omirl) e non re-invia
 per lo stesso evento se la notifica è già stata inviata nell'ultima ora.
@@ -18,7 +18,6 @@ Uso:
 import requests
 import json
 import os
-import io
 import sys
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -27,10 +26,8 @@ from typing import Dict, Any, List, Optional, Tuple
 from config import (
     TELEGRAM_TOKEN,
     TELEGRAM_CHAT_IDS as LISTA_CHAT,
-    LATITUDE, LONGITUDE,
     OMIRL_RAIN_ENDPOINT,
     OMIRL_DISTRICT_FILTER,
-    RAINVIEWER_API,
     load_state_section,
     save_state_section,
     thresholds,
@@ -88,43 +85,6 @@ def find_exceeding_stations(
     return exceeding
 
 
-def fetch_rainviewer_image() -> Tuple[Optional[bytes], Optional[str]]:
-    """Scarica l'immagine radar composita più recente da RainViewer centrata su La Spezia.
-    Restituisce (image_bytes, radar_time_str) o (None, None)."""
-    try:
-        r = requests.get(RAINVIEWER_API, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        radar_list = data.get("radar", {}).get("past", [])
-        if not radar_list:
-            print("Nessun frame radar disponibile da RainViewer")
-            return None, None
-        # Prendi il frame più recente
-        latest = radar_list[-1]
-        ts = latest.get("time", 0)
-        # Timestamp radar in ora locale
-        radar_dt = datetime.fromtimestamp(ts, tz=TZ_ROME)
-        radar_time_str = radar_dt.strftime("%d/%m/%Y %H:%M")
-        # Tile zoom 7 centrato su La Spezia (~44.12, 9.80)
-        import math
-        z = 7
-        n = 2 ** z
-        x_tile = int((LONGITUDE + 180.0) / 360.0 * n)
-        lat_rad = math.radians(LATITUDE)
-        y_tile = int((1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi) / 2.0 * n)
-
-        tile_url = f"https://tilecache.rainviewer.com/v2/radar/{ts}/512/{z}/{x_tile}/{y_tile}/2/1_1.png"
-        img_resp = requests.get(tile_url, timeout=15)
-        img_resp.raise_for_status()
-        if len(img_resp.content) < 500:
-            print(f"Immagine radar troppo piccola ({len(img_resp.content)} bytes), skip")
-            return None, radar_time_str
-        return img_resp.content, radar_time_str
-    except Exception as e:
-        print(f"Errore fetch radar RainViewer: {e}")
-        return None, None
-
-
 def arpal_level(value_mm: float) -> Tuple[str, str]:
     """Determina il livello ARPAL e l'emoji per un'intensità oraria."""
     if value_mm >= thresholds.ARPAL_RAIN_1H_ROSSO:
@@ -137,7 +97,7 @@ def arpal_level(value_mm: float) -> Tuple[str, str]:
         return "Verde", "🟢"
 
 
-def build_message(exceeding: List[Dict], all_sp: List[Dict], radar_time: Optional[str] = None) -> str:
+def build_message(exceeding: List[Dict], all_sp: List[Dict]) -> str:
     """Costruisce il messaggio Telegram con dettaglio stazioni."""
     now_str = datetime.now(TZ_ROME).strftime("%d/%m/%Y %H:%M")
     max_station = exceeding[0]
@@ -149,7 +109,6 @@ def build_message(exceeding: List[Dict], all_sp: List[Dict], radar_time: Optiona
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     )
 
-    # Stazioni che superano la soglia
     lines = []
     for s in exceeding:
         _, em = arpal_level(s["last"])
@@ -160,15 +119,12 @@ def build_message(exceeding: List[Dict], all_sp: List[Dict], radar_time: Optiona
             f"   Comune: {s['municipality']} · Bacino: {s['basin']}"
         )
 
-    # Riepilogo tutte le SP
     n_totale = len(all_sp)
     n_pioggia = sum(1 for s in all_sp if float(s.get("last", 0) or 0) > 0)
 
-    radar_label = f"RainViewer · {radar_time}" if radar_time else "RainViewer"
     footer = (
         f"\n📊 Stazioni SP: {n_pioggia}/{n_totale} con pioggia"
         f"\n🔗 Fonte: OMIRL – Regione Liguria"
-        f"\n📡 Radar: {radar_label}"
     )
 
     return header + "\n".join(lines) + footer
@@ -192,8 +148,7 @@ def should_send(state: Dict[str, Any], exceeding: List[Dict], force: bool = Fals
             last_dt = datetime.fromisoformat(last_send)
             if last_dt.tzinfo is None:
                 last_dt = last_dt.replace(tzinfo=TZ_ROME)
-            # Non re-inviare se l'ultimo invio è stato meno di 50 minuti fa
-            if datetime.now(TZ_ROME) - last_dt < timedelta(minutes=50):
+            if datetime.now(TZ_ROME) - last_dt < timedelta(minutes=120):
                 # Ma se il livello massimo è cambiato (peggiorato), invia comunque
                 prev_max = state.get("max_rain_mm", 0)
                 curr_max = exceeding[0]["last"] if exceeding else 0
@@ -207,22 +162,16 @@ def should_send(state: Dict[str, Any], exceeding: List[Dict], force: bool = Fals
     return True
 
 
-def send_telegram(text: str, image: Optional[bytes] = None):
-    """Invia messaggio Telegram, opzionalmente con foto radar."""
+def send_telegram(text: str):
+    """Invia messaggio Telegram."""
     if not TELEGRAM_TOKEN or not LISTA_CHAT:
         print("Telegram non configurato, skip invio")
         return
     for chat_id in LISTA_CHAT:
         try:
-            if image:
-                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-                files = {"photo": ("radar_omirl.png", io.BytesIO(image), "image/png")}
-                data = {"chat_id": chat_id, "caption": text, "parse_mode": "Markdown"}
-                resp = requests.post(url, data=data, files=files, timeout=15)
-            else:
-                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                data = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
-                resp = requests.post(url, data=data, timeout=10)
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+            data = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+            resp = requests.post(url, data=data, timeout=10)
             resp.raise_for_status()
             payload = resp.json()
             if payload.get("ok"):
@@ -272,14 +221,11 @@ def run_analysis(force: bool = False) -> Optional[Dict[str, Any]]:
         save_state(state)
         return None
 
-    radar_img, radar_time = fetch_rainviewer_image()
-    msg = build_message(exceeding, sp_stations, radar_time)
+    msg = build_message(exceeding, sp_stations)
     save_state(state)
 
     return {
         "message": msg,
-        "image": radar_img,
-        "radar_time": radar_time,
         "exceeding": exceeding,
     }
 
@@ -300,7 +246,7 @@ def main():
     result = run_analysis(force)
     if result is None:
         return
-    send_telegram(result["message"], result.get("image"))
+    send_telegram(result["message"])
     mark_sent(result)
 
 

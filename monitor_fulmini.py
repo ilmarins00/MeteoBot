@@ -362,6 +362,7 @@ def build_message(
     entro_5 = sum(1 for d in distances if d <= 5)
     entro_10 = sum(1 for d in distances if 5 < d <= 10)
     entro_20 = sum(1 for d in distances if 10 < d <= 20)
+    entro_30 = sum(1 for d in distances if 20 < d <= 30)
 
     # Intensità stimata
     if n >= 20:
@@ -384,7 +385,8 @@ def build_message(
         f"📊 *Distribuzione*\n"
         f"  0-5 km: {entro_5} scariche\n"
         f"  5-10 km: {entro_10} scariche\n"
-        f"  10-20 km: {entro_20} scariche\n\n"
+        f"  10-20 km: {entro_20} scariche\n"
+        f"  20-30 km: {entro_30} scariche\n\n"
     )
 
     # Nota sulla fonte
