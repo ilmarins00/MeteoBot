@@ -1,25 +1,25 @@
 {
     "meteo": {
-        "api_ultimo_valore": 138.33,
+        "api_ultimo_valore": 141.55,
         "sat_base_oggi": 134.02289016365742,
         "etp_accumulata_ieri": 0.54,
         "data_calcolo": "2026-03-10",
-        "ultimo_update_ora": "2026-03-10 17:01:57.645242+01:00",
+        "ultimo_update_ora": "2026-03-10 17:14:00.626053+01:00",
         "ultimo_etp_giornaliera": 0.71,
         "ultimo_etr_giornaliera": 0.54,
-        "ultima_saturazione_perc": 69.2,
+        "ultima_saturazione_perc": 70.8,
         "t_min_oggi": 10.8,
         "t_max_oggi": 11.1,
         "ultima_pressione": 1023.2,
         "ultimi_avvisi": [],
-        "n_run_oggi": 2,
+        "n_run_oggi": 3,
         "etp_media_oggi": 0.54,
         "ultimo_kc": 0.45,
         "ultimo_ke": 0.15,
         "ultimo_kcb": 0.25,
         "ultimo_ks": 0.75,
-        "ultimo_invio_slot": "event:e88c781ce6fe",
-        "ultimo_invio_ts": "2026-03-10T17:01:57.645242+01:00"
+        "ultimo_invio_slot": "event:ffe1cdae6ab0",
+        "ultimo_invio_ts": "2026-03-10T17:14:00.626053+01:00"
     },
     "sbcape": {
         "sbcape": 0.0,
@@ -31,7 +31,7 @@
         "lfc_pressure": null,
         "el_pressure": null,
         "bulk_shear": 1.1,
-        "timestamp": "2026-03-10T16:01:58.137979",
+        "timestamp": "2026-03-10T16:14:01.300320",
         "location": "La Spezia (44.124444, 9.798167) - 100m",
         "unit": "J/kg",
         "calculation_method": "Advanced thermodynamic integration v2.0",
@@ -172,7 +172,7 @@
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-03-10T17:07:20.765181+01:00",
+        "last_check_ts": "2026-03-10T17:15:16.739660+01:00",
         "recent_strikes": [],
         "total_in_window": 0,
         "status": "ok"
