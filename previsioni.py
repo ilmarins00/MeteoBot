@@ -229,21 +229,35 @@ def generate_forecast(weather_data, model_used, target_date, api_key):
         "generationConfig": {
             "temperature": 0.2,
             "maxOutputTokens": 4096,
+            "thinkingConfig": {"thinkingBudget": 2048},
         },
     }
 
-    # Usa Pro con attese lunghe (fino a ~10 min totali)
-    url = f"{GEMINI_API_BASE}/models/{gemini_model}:generateContent?key={api_key}"
-    max_retries = 8
-    for attempt in range(1, max_retries + 1):
-        resp = requests.post(url, json=payload, timeout=120)
-        if resp.status_code == 429 and attempt < max_retries:
-            wait = 75  # 75s tra tentativi → ~9 min max totali
-            print(f"  ⚠ Rate limit (429), attendo {wait}s (tentativo {attempt}/{max_retries})...")
-            time.sleep(wait)
-            continue
-        resp.raise_for_status()
-        break
+    # Prova Pro (3 tentativi, 60s tra uno e l'altro → ~3 min max)
+    # Se Pro è rate-limited, usa Flash (stesso thinking)
+    models_to_try = [gemini_model, "gemini-2.5-flash"]
+    for model in models_to_try:
+        url = f"{GEMINI_API_BASE}/models/{model}:generateContent?key={api_key}"
+        max_retries = 3 if model == gemini_model else 2
+        success = False
+        for attempt in range(1, max_retries + 1):
+            resp = requests.post(url, json=payload, timeout=120)
+            if resp.status_code == 429 and attempt < max_retries:
+                wait = 60
+                print(f"  ⚠ Rate limit (429) su {model}, attendo {wait}s ({attempt}/{max_retries})...")
+                time.sleep(wait)
+                continue
+            if resp.status_code == 429:
+                print(f"  ✗ {model} rate-limited, provo modello successivo...")
+                break
+            resp.raise_for_status()
+            success = True
+            gemini_model = model
+            break
+        if success:
+            break
+    else:
+        raise RuntimeError("Tutti i modelli Gemini sono rate-limited, riprova più tardi")
 
     result = resp.json()
 
