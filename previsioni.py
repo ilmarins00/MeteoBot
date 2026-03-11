@@ -246,16 +246,21 @@ def generate_forecast(weather_data, model_used, target_date, api_key):
 
 # ── Telegram ─────────────────────────────────────────────────────────────
 
-def send_telegram(text):
-    """Invia le previsioni a tutti i chat Telegram configurati."""
-    if not TELEGRAM_TOKEN or not LISTA_CHAT:
+def send_telegram(text, target_chat_id=None):
+    """Invia le previsioni ai chat Telegram configurati (o a uno specifico)."""
+    if not TELEGRAM_TOKEN:
         print("Telegram non configurato")
+        return False
+
+    chat_ids = [target_chat_id] if target_chat_id else LISTA_CHAT
+    if not chat_ids:
+        print("Nessun chat_id configurato")
         return False
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     any_ok = False
 
-    for chat_id in LISTA_CHAT:
+    for chat_id in chat_ids:
         try:
             resp = requests.post(
                 url,
@@ -276,7 +281,7 @@ def send_telegram(text):
 
 # ── Main ─────────────────────────────────────────────────────────────────
 
-def main():
+def main(target_chat_id=None):
     print("=" * 50)
     print("  PREVISIONI METEO – GENERAZIONE AI")
     print("=" * 50)
@@ -316,7 +321,7 @@ def main():
     )
     full_msg = header + forecast_text
 
-    if send_telegram(full_msg):
+    if send_telegram(full_msg, target_chat_id=target_chat_id):
         print("\n✅ Previsioni inviate con successo")
     else:
         print("\n⚠️ Invio fallito")

@@ -6,8 +6,9 @@ bypassando la logica di invio smart.
 Comandi disponibili:
   /meteo    — Report meteo completo (stazione La Spezia)
   /arpal    — Stato allerta ARPAL Zona C
-  /fulmini  — Analisi fulmini in tempo reale
-  /tutto    — Esegui tutti i monitor in sequenza
+  /fulmini     — Analisi fulmini in tempo reale
+  /previsioni  — Previsioni meteo del giorno successivo
+  /tutto       — Esegui tutti i monitor in sequenza
   /help     — Mostra comandi disponibili
 Uso:
   python bot_commands.py              
@@ -28,6 +29,7 @@ COMMANDS = {
     "/meteo": "📡 Report meteo stazione La Spezia",
     "/arpal": "🟢 Stato allerta ARPAL — Zona C",
     "/fulmini": "⚡ Monitor fulmini (Blitzortung)",
+    "/previsioni": "🌤 Previsioni meteo domani (AI)",
     "/tutto": "📋 Esegui tutti i monitor",
     "/help": "❓ Mostra comandi disponibili",
 }
@@ -168,6 +170,15 @@ def cmd_fulmini(chat_id):
     except Exception as e:
         send_message(chat_id, f"❌ Errore fulmini: {e}")
         traceback.print_exc()
+def cmd_previsioni(chat_id):
+    """Genera e invia le previsioni meteo per il giorno successivo."""
+    send_message(chat_id, "⏳ Generazione previsioni meteo...")
+    try:
+        import previsioni
+        previsioni.main(target_chat_id=str(chat_id))
+    except Exception as e:
+        send_message(chat_id, f"❌ Errore previsioni: {e}")
+        traceback.print_exc()
 def cmd_tutto(chat_id):
     """Esegue tutti i monitor in sequenza."""
     send_message(chat_id, "⏳ Esecuzione completa di tutti i monitor...")
@@ -178,6 +189,7 @@ DISPATCH = {
     "/meteo": cmd_meteo,
     "/arpal": cmd_arpal,
     "/fulmini": cmd_fulmini,
+    "/previsioni": cmd_previsioni,
     "/tutto": cmd_tutto,
     "/help": cmd_help,
     "/start": cmd_help,
