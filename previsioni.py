@@ -180,11 +180,14 @@ def get_latest_gemini_model(api_key):
         return "gemini-2.5-pro-preview-05-06"
 
     # Filtra modelli pro che supportano generateContent
+    # Escludi i vecchi "gemini-pro" / "gemini-pro-latest" (Gemini 1.0)
     pro = []
     for m in models:
         name = m.get("name", "").replace("models/", "")
         methods = m.get("supportedGenerationMethods", [])
-        if "generateContent" in methods and "pro" in name and "gemini" in name:
+        if ("generateContent" in methods
+                and "pro" in name
+                and "gemini-2" in name):
             pro.append(name)
 
     if not pro:
