@@ -30,6 +30,7 @@ ECOWITT_API_KEY = get_env_optional("ECOWITT_API_KEY")
 ECOWITT_MAC = get_env_optional("ECOWITT_MAC")
 TELEGRAM_TOKEN = get_env_optional("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_IDS = get_chat_ids()
+GEMINI_API_KEY = get_env_optional("GEMINI_API_KEY")
 LATITUDE = 44.124444
 LONGITUDE = 9.798167
 ELEVATION = 100  

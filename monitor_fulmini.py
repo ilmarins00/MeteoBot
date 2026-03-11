@@ -377,36 +377,46 @@ def build_message(
     else:
         intensita = "⚡ SCARICHE RILEVATE"
 
+    # Distribuzione come testo continuo
+    fasce = []
+    if entro_5:
+        fasce.append(f"{entro_5} entro 5 km")
+    if entro_10:
+        fasce.append(f"{entro_10} tra 5 e 10 km")
+    if entro_20:
+        fasce.append(f"{entro_20} tra 10 e 20 km")
+    if entro_30:
+        fasce.append(f"{entro_30} tra 20 e 30 km")
+    distrib_text = ", ".join(fasce)
+
     msg = (
         f"⚡ *ALLERTA FULMINI – La Spezia*\n"
         f"{intensita}\n"
-        f"📅 {now_str}\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"Scariche rilevate: *{n}* in {window_minutes} min\n"
-        f"Più vicino: *{min_dist:.1f} km* ({closest['lat']:.3f}°N, {closest['lon']:.3f}°E)\n"
-        f"Distanza media: {avg_dist:.1f} km\n\n"
-        f"📊 *Distribuzione*\n"
-        f"  0-5 km: {entro_5} scariche\n"
-        f"  5-10 km: {entro_10} scariche\n"
-        f"  10-20 km: {entro_20} scariche\n"
-        f"  20-30 km: {entro_30} scariche\n\n"
+        f"📅 {now_str}\n\n"
+        f"Rilevate *{n}* scariche elettriche entro {int(thresholds.LIGHTNING_RADIUS_KM)} km "
+        f"negli ultimi {window_minutes} minuti, "
+        f"la più vicina registrata a *{min_dist:.1f} km* dal punto di osservazione "
+        f"({closest['lat']:.3f}°N, {closest['lon']:.3f}°E), "
+        f"distanza media {avg_dist:.1f} km. "
+        f"Distribuzione: {distrib_text}."
     )
 
-    # Nota sulla fonte
     source = strikes[0].get("source", "blitzortung")
     if source == "openmeteo":
         wmo = strikes[0].get("wmo_code", 95)
         wmo_labels = {95: "Temporale lieve/moderato", 96: "Temporale con grandine", 99: "Temporale con grandine forte"}
         msg += (
-            f"ℹ️ _Dati da Open-Meteo (WMO {wmo}: {wmo_labels.get(wmo, 'Temporale')})_\n"
-            f"_Le posizioni sono stime – Blitzortung non disponibile_\n\n"
+            f" Dati stimati da Open-Meteo (WMO {wmo}: {wmo_labels.get(wmo, 'Temporale')}), "
+            f"le posizioni sono approssimate in assenza di Blitzortung."
         )
     else:
-        msg += f"📡 Fonte: Blitzortung.org (rete europea)\n\n"
+        msg += f" Fonte: Blitzortung.org, rete europea di rilevamento fulmini."
 
     radar_label = f"RainViewer · {radar_time}" if radar_time else "RainViewer"
-    msg += f"🗺️ [Mappa fulmini in tempo reale]({LIGHTNINGMAPS_URL})\n"
-    msg += f"📡 Radar: {radar_label}"
+    msg += (
+        f"\n\n🗺️ [Mappa fulmini in tempo reale]({LIGHTNINGMAPS_URL})\n"
+        f"📡 Radar: {radar_label}"
+    )
     return msg
 
 
