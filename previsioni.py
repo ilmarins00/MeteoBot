@@ -177,22 +177,22 @@ def get_latest_gemini_model(api_key):
         models = resp.json().get("models", [])
     except Exception as e:
         print(f"  ⚠ Impossibile listare modelli Gemini ({e}), uso default")
-        return "gemini-2.0-flash"
+        return "gemini-2.5-pro-preview-05-06"
 
-    # Filtra modelli che supportano generateContent
-    flash = []
+    # Filtra modelli pro che supportano generateContent
+    pro = []
     for m in models:
         name = m.get("name", "").replace("models/", "")
         methods = m.get("supportedGenerationMethods", [])
-        if "generateContent" in methods and "flash" in name and "gemini" in name:
-            flash.append(name)
+        if "generateContent" in methods and "pro" in name and "gemini" in name:
+            pro.append(name)
 
-    if not flash:
-        return "gemini-2.0-flash"
+    if not pro:
+        return "gemini-2.5-pro-preview-05-06"
 
     # Ordina in modo decrescente: versioni più recenti prima
-    flash.sort(reverse=True)
-    return flash[0]
+    pro.sort(reverse=True)
+    return pro[0]
 
 
 def generate_forecast(weather_data, model_used, target_date, api_key):
