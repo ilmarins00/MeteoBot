@@ -163,8 +163,8 @@ Regole sul contenuto:
 - Nuvolosità descritta a parole: sereno (0-10%), poco nuvoloso (10-30%), parzialmente nuvoloso (30-60%), nuvoloso (60-80%), molto nuvoloso (80-95%), coperto (95-100%).
 - NON usare emoji.
 - NON usare formattazione Markdown (no asterischi, no underscore, no backtick).
-- Massimo 1500 caratteri.
 - Basati SOLO sui dati numerici forniti, non inventare nulla.
+- Scrivi un testo completo che copra TUTTE e quattro le fasce orarie. Non troncare mai a metà frase.
 - Tono professionale ma accessibile a tutti."""
 
 
