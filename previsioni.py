@@ -180,21 +180,27 @@ def get_latest_gemini_model(api_key):
         return "gemini-2.5-pro-preview-05-06"
 
     # Filtra modelli pro che supportano generateContent
-    # Escludi i vecchi "gemini-pro" / "gemini-pro-latest" (Gemini 1.0)
+    # Escludi vecchi gemini-pro 1.0 e varianti specializzate (tts, embedding, etc.)
+    EXCLUDE = {"tts", "embedding", "image", "vision", "tuning"}
     pro = []
     for m in models:
         name = m.get("name", "").replace("models/", "")
         methods = m.get("supportedGenerationMethods", [])
         if ("generateContent" in methods
                 and "pro" in name
-                and "gemini-2" in name):
+                and "gemini-2" in name
+                and not any(x in name for x in EXCLUDE)):
             pro.append(name)
 
     if not pro:
         return "gemini-2.5-pro-preview-05-06"
 
-    # Ordina in modo decrescente: versioni più recenti prima
-    pro.sort(reverse=True)
+    # Preferisci modelli senza suffissi sperimentali, poi i più recenti
+    def sort_key(name):
+        # Nomi "puliti" (senza preview) prima, poi per nome decrescente
+        is_stable = "preview" not in name
+        return (is_stable, name)
+    pro.sort(key=sort_key, reverse=True)
     return pro[0]
 
 
@@ -227,8 +233,18 @@ def generate_forecast(weather_data, model_used, target_date, api_key):
         },
     }
 
-    resp = requests.post(url, json=payload, timeout=60)
-    resp.raise_for_status()
+    # Retry con backoff per errori 429 (rate limit)
+    max_retries = 4
+    for attempt in range(1, max_retries + 1):
+        resp = requests.post(url, json=payload, timeout=90)
+        if resp.status_code == 429 and attempt < max_retries:
+            wait = 15 * attempt
+            print(f"  ⚠ Rate limit (429), attendo {wait}s (tentativo {attempt}/{max_retries})...")
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        break
+
     result = resp.json()
 
     candidates = result.get("candidates", [])
