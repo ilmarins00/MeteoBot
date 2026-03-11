@@ -223,7 +223,6 @@ def generate_forecast(weather_data, model_used, target_date, api_key):
         f"Scrivi le previsioni seguendo rigorosamente le istruzioni fornite."
     )
 
-    url = f"{GEMINI_API_BASE}/models/{gemini_model}:generateContent?key={api_key}"
     payload = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
@@ -233,17 +232,30 @@ def generate_forecast(weather_data, model_used, target_date, api_key):
         },
     }
 
-    # Retry con backoff per errori 429 (rate limit)
-    max_retries = 4
-    for attempt in range(1, max_retries + 1):
-        resp = requests.post(url, json=payload, timeout=90)
-        if resp.status_code == 429 and attempt < max_retries:
-            wait = 15 * attempt
-            print(f"  ⚠ Rate limit (429), attendo {wait}s (tentativo {attempt}/{max_retries})...")
-            time.sleep(wait)
-            continue
-        resp.raise_for_status()
-        break
+    # Prova Pro, se rate-limited fallback su Flash
+    models_to_try = [gemini_model, "gemini-2.5-flash"]
+    for model in models_to_try:
+        url = f"{GEMINI_API_BASE}/models/{model}:generateContent?key={api_key}"
+        max_retries = 3 if model == gemini_model else 2
+        success = False
+        for attempt in range(1, max_retries + 1):
+            resp = requests.post(url, json=payload, timeout=90)
+            if resp.status_code == 429 and attempt < max_retries:
+                wait = 15 * attempt
+                print(f"  ⚠ Rate limit (429) su {model}, attendo {wait}s ({attempt}/{max_retries})...")
+                time.sleep(wait)
+                continue
+            if resp.status_code == 429:
+                print(f"  ✗ {model} rate-limited, provo modello successivo...")
+                break
+            resp.raise_for_status()
+            success = True
+            break
+        if success:
+            gemini_model = model
+            break
+    else:
+        raise RuntimeError("Tutti i modelli Gemini sono rate-limited")
 
     result = resp.json()
 
