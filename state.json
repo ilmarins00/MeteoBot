@@ -172,64 +172,37 @@
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-03-12T10:17:30.166840+01:00",
+        "last_check_ts": "2026-03-12T10:32:43.762638+01:00",
         "recent_strikes": [
             {
-                "lat": 44.1255,
-                "lon": 9.7606,
-                "time": "2026-03-12T10:00:00+01:00",
-                "distance_km": 2.9,
+                "lat": 44.0606,
+                "lon": 9.8348,
+                "time": "2026-03-12T10:31:00+01:00",
+                "distance_km": 7.8,
                 "signal": 0,
                 "source": "openmeteo",
                 "wmo_code": 95
             },
             {
-                "lat": 44.1233,
-                "lon": 9.6635,
-                "time": "2026-03-12T10:00:00+01:00",
-                "distance_km": 10.6,
+                "lat": 44.1337,
+                "lon": 9.9563,
+                "time": "2026-03-12T10:18:00+01:00",
+                "distance_km": 12.7,
                 "signal": 0,
                 "source": "openmeteo",
                 "wmo_code": 95
             },
             {
-                "lat": 44.1034,
-                "lon": 9.7753,
-                "time": "2026-03-12T10:00:00+01:00",
-                "distance_km": 3.0,
-                "signal": 0,
-                "source": "openmeteo",
-                "wmo_code": 95
-            },
-            {
-                "lat": 44.0599,
-                "lon": 9.7443,
-                "time": "2026-03-12T10:00:00+01:00",
-                "distance_km": 8.4,
-                "signal": 0,
-                "source": "openmeteo",
-                "wmo_code": 95
-            },
-            {
-                "lat": 44.1791,
-                "lon": 9.8957,
-                "time": "2026-03-12T10:02:00+01:00",
-                "distance_km": 9.9,
-                "signal": 0,
-                "source": "openmeteo",
-                "wmo_code": 95
-            },
-            {
-                "lat": 44.2312,
-                "lon": 9.7038,
-                "time": "2026-03-12T10:00:00+01:00",
-                "distance_km": 13.9,
+                "lat": 44.188,
+                "lon": 9.7616,
+                "time": "2026-03-12T10:30:00+01:00",
+                "distance_km": 7.5,
                 "signal": 0,
                 "source": "openmeteo",
                 "wmo_code": 95
             }
         ],
-        "total_in_window": 6,
+        "total_in_window": 3,
         "status": "alert",
         "last_send_ts": "2026-03-12T10:17:31.982905+01:00",
         "last_strike_count": 6
