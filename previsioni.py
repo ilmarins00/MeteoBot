@@ -35,6 +35,9 @@ MESI_IT = [
 
 # ── Open-Meteo: variabili richieste ─────────────────────────────────────
 
+STATE_FILE = "state.json"
+STORICO_FILE = "storico_24h.json"
+
 HOURLY_VARS = [
     "temperature_2m", "relative_humidity_2m", "dew_point_2m",
     "apparent_temperature", "precipitation", "rain", "showers",
@@ -97,6 +100,85 @@ def format_date_it(dt):
 
 
 # ── Open-Meteo ───────────────────────────────────────────────────────────
+
+def load_ground_conditions():
+    """Carica condizioni del terreno e dati termodinamici attuali da state.json e storico_24h."""
+    ground = {}
+    import os
+    base = os.path.dirname(os.path.abspath(__file__))
+
+    # state.json
+    state_path = os.path.join(base, STATE_FILE)
+    try:
+        with open(state_path) as f:
+            state = json.load(f)
+
+        meteo = state.get("meteo", {})
+        if meteo:
+            ground["suolo"] = {
+                "api_mm": meteo.get("api_ultimo_valore"),
+                "saturazione_perc": meteo.get("ultima_saturazione_perc"),
+                "capacita_campo_mm": 200,
+                "pioggia_24h_stazione": None,
+                "t_min_oggi": meteo.get("t_min_oggi"),
+                "t_max_oggi": meteo.get("t_max_oggi"),
+                "pressione_msl": meteo.get("ultima_pressione"),
+                "etp_giornaliera": meteo.get("ultimo_etp_giornaliera"),
+                "etr_giornaliera": meteo.get("ultimo_etr_giornaliera"),
+                "stress_idrico_ks": meteo.get("ultimo_ks"),
+                "data_aggiornamento": meteo.get("ultimo_update_ora"),
+            }
+
+        sbcape = state.get("sbcape", {})
+        if sbcape:
+            ground["termodinamica_attuale"] = {
+                "sbcape_jkg": sbcape.get("sbcape"),
+                "mucape_jkg": sbcape.get("mucape"),
+                "cin_jkg": sbcape.get("cin"),
+                "lifted_index": sbcape.get("lifted_index"),
+                "bulk_shear_ms": sbcape.get("bulk_shear"),
+                "lcl_hpa": sbcape.get("lcl_pressure"),
+                "lfc_hpa": sbcape.get("lfc_pressure"),
+                "el_hpa": sbcape.get("el_pressure"),
+                "severe_score": sbcape.get("severe_score"),
+                "timestamp": sbcape.get("timestamp"),
+            }
+
+        arpal = state.get("arpal", {})
+        if arpal:
+            ground["allerta_arpal_attuale"] = {
+                "max_livello": arpal.get("max_livello"),
+                "dettaglio": arpal.get("dettaglio"),
+                "vigilanza": arpal.get("vigilanza"),
+            }
+    except Exception as e:
+        print(f"  ⚠ Impossibile caricare state.json: {e}")
+
+    # storico_24h.json — ultimo record
+    storico_path = os.path.join(base, STORICO_FILE)
+    try:
+        with open(storico_path) as f:
+            storico = json.load(f)
+        if storico:
+            ultimo = storico[-1]
+            ground["suolo"]["pioggia_24h_stazione"] = ultimo.get("pioggia_24h")
+            ground["osservazioni_recenti"] = {
+                "temp": ultimo.get("temp"),
+                "umidita": ultimo.get("umidita"),
+                "pressione": ultimo.get("pressione"),
+                "pioggia_1h": ultimo.get("pioggia_1h"),
+                "pioggia_24h": ultimo.get("pioggia_24h"),
+                "vento_kmh": ultimo.get("vento"),
+                "raffica_kmh": ultimo.get("raffica"),
+                "dew_point": ultimo.get("dew_point"),
+                "api": ultimo.get("api"),
+                "timestamp": ultimo.get("ts"),
+            }
+    except Exception as e:
+        print(f"  ⚠ Impossibile caricare storico_24h.json: {e}")
+
+    return ground if ground else None
+
 
 def _fetch_openmeteo(date_str, model_name, hourly_vars):
     """Singola richiesta a Open-Meteo. Solleva eccezione in caso di errore."""
@@ -269,22 +351,36 @@ DEVI iniziare la sezione con ESATTAMENTE una di queste quattro righe (senza virg
 - ARANCIONE se c'è un rischio probabile
 - ROSSO se il rischio è molto probabile o severo
 
-Dopo la riga del colore, descrivi i rischi in modo REALISTICO basandoti esclusivamente sui dati numerici. Non esagerare, non minimizzare. Sii oggettivo.
+SOGLIE DI RIFERIMENTO ARPAL (Agenzia Regionale Protezione Ambiente Liguria):
+- Pioggia oraria: Giallo >= 15 mm/h, Arancione >= 30 mm/h, Rosso >= 50 mm/h
+- Pioggia cumulata 24h: Giallo >= 80 mm, Arancione >= 150 mm, Rosso >= 250 mm
+- Vento/raffiche: Giallo >= 50 km/h, Arancione >= 80 km/h, Rosso >= 100 km/h
+- Caldo: Giallo >= 35°C, Arancione >= 38°C, Rosso >= 40°C
+- Gelo: Giallo <= 0°C, Arancione <= -5°C, Rosso <= -10°C
+- Neve: Giallo >= 5 cm, Arancione >= 15 cm, Rosso >= 30 cm
+- Mareggiata (pressione): Giallo <= 998 hPa, Arancione <= 995 hPa, Rosso <= 990 hPa
+- Suolo molto saturo (API): >= 185 mm → rischio idrogeologico elevato
 
-Rischi da valutare (SOLO se supportati dai dati):
-- Precipitazioni intense (accumuli > 20 mm in poche ore)
-- Temporali (CAPE elevato, Lifted Index negativo)
-- Vento forte (raffiche > 50 km/h)
-- Neve a bassa quota (zero termico basso + precipitazioni)
-- Gelate (temperature minime sotto 0°C)
-- Nebbia (umidità alta + vento debole + inversione termica)
-- Ondate di calore (temperature molto sopra media + UHI)
-- Visibilità ridotta
-- Rischio idrogeologico (precipitazioni prolungate su terreno saturo)
+DATI INTEGRATIVI disponibili nel prompt:
+- Se presenti i dati del terreno: usa la saturazione del suolo (%) e l'API (mm) per valutare il rischio idrogeologico. Un terreno saturo (>85%) amplifica enormemente il rischio di allagamenti e frane anche con piogge moderate.
+- Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo. Confrontali con i valori previsti dal modello.
+- Se presente l'allerta ARPAL attuale: menzionala come contesto.
 
-Se NON ci sono rischi significativi (giornata tranquilla, senza fenomeni rilevanti), scrivi "VERDE" come colore e poi "Nessun rischio previsto." come descrizione.
+FORMATO DEI RISCHI — IMPORTANTISSIMO:
+NON elencare dati grezzi o soglie numeriche nel messaggio. Scrivi in modo DISCORSIVO e REALISTICO, come farebbe un meteorologo esperto che spiega i rischi a un cittadino. Spiega il PERCHÉ del rischio basandoti sui dati, indicando probabilità approssimative.
 
-IMPORTANTE: sii REALISTICO. Un po' di pioggia non è un rischio. Vento a 20 km/h non è un rischio. Valuta con equilibrio professionale.
+Esempi di stile corretto (NON copiarli, servono solo per capire il tono):
+- "Data la temperatura a 850 hPa particolarmente rigida e l'elevata instabilità convettiva, nella fascia pomeridiana sono probabili temporali di forte intensità, con una probabilità stimata intorno al 60-70%."
+- "Il terreno risulta già molto saturo (oltre 85%): anche precipitazioni moderate di 15-20 mm potrebbero causare locali allagamenti nei punti di raccolta delle acque."
+- "Le raffiche previste nelle ore centrali, associate al gradiente barico in aumento, potrebbero raggiungere valori significativi lungo la costa."
+
+Esempi di stile SBAGLIATO (da evitare assolutamente):
+- "CAPE: 500 J/kg. Precipitazione prevista: 25 mm. Vento: 45 km/h." ← troppo tecnico e freddo
+- "Soglia ARPAL giallo superata per pioggia oraria." ← non dire che superi soglie, SPIEGA cosa succede
+
+Se NON ci sono rischi significativi, scrivi "VERDE" come colore e poi "Nessun rischio previsto." come descrizione.
+
+IMPORTANTE: sii REALISTICO. Un po' di pioggia non è un rischio. Vento a 20 km/h non è un rischio. Valuta con equilibrio professionale usando le soglie ARPAL come guida.
 
 ═══ REGOLE GENERALI ═══
 
@@ -298,7 +394,7 @@ IMPORTANTE: sii REALISTICO. Un po' di pioggia non è un rischio. Vento a 20 km/h
 GEMINI_MODEL = "gemini-2.5-flash"
 
 
-def generate_forecast(weather_data, model_used, target_date, api_key):
+def generate_forecast(weather_data, model_used, target_date, api_key, ground_data=None):
     """Invia i dati meteo a Gemini e ottiene le previsioni in linguaggio naturale."""
     print(f"  Modello Gemini: {GEMINI_MODEL}")
 
@@ -313,8 +409,15 @@ def generate_forecast(weather_data, model_used, target_date, api_key):
         f"{json.dumps(hourly, indent=2, ensure_ascii=False)}\n\n"
         f"DATI GIORNALIERI AGGREGATI:\n"
         f"{json.dumps(daily, indent=2, ensure_ascii=False)}\n\n"
-        f"Scrivi le previsioni seguendo rigorosamente le istruzioni fornite."
     )
+
+    if ground_data:
+        user_prompt += (
+            f"CONDIZIONI ATTUALI DEL TERRENO E TERMODINAMICA (dati della stazione locale):\n"
+            f"{json.dumps(ground_data, indent=2, ensure_ascii=False)}\n\n"
+        )
+
+    user_prompt += "Scrivi le previsioni seguendo rigorosamente le istruzioni fornite."
 
     payload = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
@@ -420,10 +523,20 @@ def main(target_chat_id=None):
     print("\n📡 Scaricamento dati Open-Meteo...")
     weather_data, model_used = fetch_forecast_data(target_dt)
 
+    # 1b. Carica condizioni terreno e termodinamica attuale
+    print("\n🌱 Caricamento condizioni terreno...")
+    ground_data = load_ground_conditions()
+    if ground_data:
+        sat = ground_data.get("suolo", {}).get("saturazione_perc")
+        api_val = ground_data.get("suolo", {}).get("api_mm")
+        print(f"  ✓ Saturazione: {sat}% | API: {api_val} mm")
+    else:
+        print("  ⚠ Dati terreno non disponibili")
+
     # 2. Genera previsioni con AI
     print("\n🤖 Generazione previsioni con AI...")
     forecast_text, gemini_model = generate_forecast(
-        weather_data, model_used, target_dt, GEMINI_API_KEY
+        weather_data, model_used, target_dt, GEMINI_API_KEY, ground_data
     )
 
     print(f"\n--- Previsioni ({len(forecast_text)} caratteri) ---")
