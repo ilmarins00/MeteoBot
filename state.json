@@ -172,7 +172,7 @@
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-03-12T06:47:32.629077+01:00",
+        "last_check_ts": "2026-03-12T07:02:51.572667+01:00",
         "recent_strikes": [
             {
                 "lat": 44.0944,
@@ -195,7 +195,7 @@
         ],
         "total_in_window": 2,
         "status": "alert",
-        "last_send_ts": "2026-03-12T06:32:41.031436+01:00",
+        "last_send_ts": "2026-03-12T07:02:53.879807+01:00",
         "last_strike_count": 2
     }
 }
