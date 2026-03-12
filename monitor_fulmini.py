@@ -33,7 +33,6 @@ from config import (
     TELEGRAM_CHAT_IDS as LISTA_CHAT,
     LATITUDE, LONGITUDE,
     BLITZORTUNG_WS_URLS,
-    RAINVIEWER_API,
     LIGHTNINGMAPS_URL,
     load_state_section,
     save_state_section,
@@ -44,6 +43,45 @@ TZ_ROME = ZoneInfo("Europe/Rome")
 
 # Raggio terrestre medio (km)
 EARTH_RADIUS_KM = 6371.0
+
+
+def reverse_geocode(lat: float, lon: float) -> str:
+    """Ottiene il nome della località dalle coordinate usando Nominatim (OpenStreetMap).
+    Restituisce il nome del luogo o le coordinate formattate come fallback."""
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={
+                "lat": lat, "lon": lon,
+                "format": "json", "zoom": 14,
+                "accept-language": "it",
+            },
+            headers={"User-Agent": "MeteoBot/1.0"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        addr = data.get("address", {})
+        # Prova diversi livelli di dettaglio
+        name = (
+            addr.get("village")
+            or addr.get("town")
+            or addr.get("hamlet")
+            or addr.get("suburb")
+            or addr.get("city")
+            or addr.get("municipality")
+            or addr.get("county")
+        )
+        if name:
+            # Aggiungi il comune se diverso e disponibile
+            comune = addr.get("city") or addr.get("town") or addr.get("municipality")
+            if comune and comune != name:
+                return f"{name} ({comune})"
+            return name
+    except Exception as e:
+        print(f"Errore reverse geocoding: {e}")
+
+    return f"{lat:.3f}°N, {lon:.3f}°E"
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -311,45 +349,115 @@ def collect_strikes_from_state() -> List[Dict[str, Any]]:
     return valid
 
 
-def fetch_rainviewer_image() -> Tuple[Optional[bytes], Optional[str]]:
-    """Scarica l'immagine radar composita più recente centrata su La Spezia.
-    Restituisce (image_bytes, radar_time_str) o (None, None)."""
+def generate_lightning_map(
+    strikes: List[Dict[str, Any]],
+    radius_km: float = 30.0,
+) -> Optional[bytes]:
+    """Genera una mappa statica con i fulmini rilevati e cerchi di distanza.
+    Restituisce l'immagine PNG come bytes, o None in caso di errore."""
     try:
-        r = requests.get(RAINVIEWER_API, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        radar_list = data.get("radar", {}).get("past", [])
-        if not radar_list:
-            return None, None
-        latest = radar_list[-1]
-        ts = latest.get("time", 0)
-        # Timestamp radar in ora locale
-        radar_dt = datetime.fromtimestamp(ts, tz=TZ_ROME)
-        radar_time_str = radar_dt.strftime("%d/%m/%Y %H:%M")
-        z = 7
-        n = 2 ** z
-        x_tile = int((LONGITUDE + 180.0) / 360.0 * n)
-        lat_rad = math.radians(LATITUDE)
-        y_tile = int(
-            (1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi)
-            / 2.0
-            * n
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
+    except ImportError:
+        print("matplotlib/numpy non disponibili, skip mappa")
+        return None
+
+    try:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=120)
+        fig.patch.set_facecolor('#1a1a2e')
+        ax.set_facecolor('#16213e')
+
+        # Cerchi di distanza (5, 10, 20, 30 km)
+        # Conversione km → gradi (approssimata alla latitudine locale)
+        km_per_deg_lat = 111.0
+        km_per_deg_lon = 111.0 * math.cos(math.radians(LATITUDE))
+
+        circle_radii_km = [5, 10, 20, 30]
+        for r_km in circle_radii_km:
+            if r_km > radius_km:
+                continue
+            theta = np.linspace(0, 2 * np.pi, 100)
+            cx = LONGITUDE + (r_km / km_per_deg_lon) * np.cos(theta)
+            cy = LATITUDE + (r_km / km_per_deg_lat) * np.sin(theta)
+            ax.plot(cx, cy, color='#4a90d9', linewidth=0.8, alpha=0.6)
+            # Etichetta distanza
+            ax.text(
+                LONGITUDE, LATITUDE + r_km / km_per_deg_lat,
+                f"{r_km} km", color='#7eb8da', fontsize=7,
+                ha='center', va='bottom', alpha=0.8,
+            )
+
+        # Punto di osservazione
+        ax.plot(LONGITUDE, LATITUDE, 'o', color='#00ff88', markersize=8, zorder=10)
+        ax.plot(LONGITUDE, LATITUDE, 'o', color='#00ff88', markersize=14,
+                alpha=0.3, zorder=9)
+
+        # Fulmini
+        if strikes:
+            lats = [s["lat"] for s in strikes]
+            lons = [s["lon"] for s in strikes]
+            dists = [s["distance_km"] for s in strikes]
+
+            # Colora per distanza: rosso = vicino, giallo = lontano
+            colors = []
+            for d in dists:
+                ratio = min(d / radius_km, 1.0)
+                if ratio < 0.33:
+                    colors.append('#ff3333')  # rosso - vicino
+                elif ratio < 0.66:
+                    colors.append('#ffaa00')  # arancione - medio
+                else:
+                    colors.append('#ffff00')  # giallo - lontano
+
+            ax.scatter(lons, lats, c=colors, s=25, marker='$⚡$',
+                       zorder=8, alpha=0.9)
+
+        # Limiti mappa: cerchio più grande + margine 10%
+        margin_km = radius_km * 1.15
+        ax.set_xlim(
+            LONGITUDE - margin_km / km_per_deg_lon,
+            LONGITUDE + margin_km / km_per_deg_lon,
         )
-        tile_url = (
-            f"https://tilecache.rainviewer.com/v2/radar/{ts}/512/{z}/{x_tile}/{y_tile}/2/1_1.png"
+        ax.set_ylim(
+            LATITUDE - margin_km / km_per_deg_lat,
+            LATITUDE + margin_km / km_per_deg_lat,
         )
-        img_resp = requests.get(tile_url, timeout=15)
-        img_resp.raise_for_status()
-        if len(img_resp.content) < 500:
-            return None, radar_time_str
-        return img_resp.content, radar_time_str
+
+        ax.set_aspect('equal')
+        ax.tick_params(colors='#888888', labelsize=7)
+        ax.set_xlabel('Longitudine', color='#888888', fontsize=8)
+        ax.set_ylabel('Latitudine', color='#888888', fontsize=8)
+
+        n = len(strikes)
+        closest = min((s["distance_km"] for s in strikes), default=0)
+        ax.set_title(
+            f"Fulmini rilevati: {n} scariche (min. {closest:.1f} km)",
+            color='#e0e0e0', fontsize=10, pad=10,
+        )
+
+        # Griglia leggera
+        ax.grid(True, alpha=0.15, color='#4a90d9', linewidth=0.5)
+        for spine in ax.spines.values():
+            spine.set_color('#333355')
+
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight',
+                    facecolor=fig.get_facecolor(), edgecolor='none')
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+
     except Exception as e:
-        print(f"Errore fetch radar: {e}")
-        return None, None
+        print(f"Errore generazione mappa fulmini: {e}")
+        return None
 
 
 def build_message(
-    strikes: List[Dict], window_minutes: int, radar_time: Optional[str] = None
+    strikes: List[Dict], window_minutes: int
 ) -> str:
     """Costruisce il messaggio Telegram per allerta fulmini."""
     now_str = datetime.now(TZ_ROME).strftime("%d/%m/%Y %H:%M")
@@ -360,6 +468,7 @@ def build_message(
     min_dist = min(distances)
     avg_dist = sum(distances) / len(distances)
     closest = min(strikes, key=lambda s: s["distance_km"])
+    closest_location = reverse_geocode(closest["lat"], closest["lon"])
 
     # Raggruppa per fasce
     entro_5 = sum(1 for d in distances if d <= 5)
@@ -396,7 +505,7 @@ def build_message(
         f"Rilevate *{n}* scariche elettriche entro {int(thresholds.LIGHTNING_RADIUS_KM)} km "
         f"negli ultimi {window_minutes} minuti, "
         f"la più vicina registrata a *{min_dist:.1f} km* dal punto di osservazione "
-        f"({closest['lat']:.3f}°N, {closest['lon']:.3f}°E), "
+        f"nei pressi di {closest_location}, "
         f"distanza media {avg_dist:.1f} km. "
         f"Distribuzione: {distrib_text}."
     )
@@ -412,11 +521,7 @@ def build_message(
     else:
         msg += f" Fonte: Blitzortung.org, rete europea di rilevamento fulmini."
 
-    radar_label = f"RainViewer · {radar_time}" if radar_time else "RainViewer"
-    msg += (
-        f"\n\n🗺️ [Mappa fulmini in tempo reale]({LIGHTNINGMAPS_URL})\n"
-        f"📡 Radar: {radar_label}"
-    )
+    msg += f"\n\n🗺️ [Mappa fulmini in tempo reale]({LIGHTNINGMAPS_URL})"
     return msg
 
 
@@ -461,7 +566,7 @@ def send_telegram(text: str, image: Optional[bytes] = None):
         try:
             if image:
                 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-                files = {"photo": ("radar_fulmini.png", io.BytesIO(image), "image/png")}
+                files = {"photo": ("mappa_fulmini.png", io.BytesIO(image), "image/png")}
                 data = {"chat_id": chat_id, "caption": text, "parse_mode": "Markdown"}
                 resp = requests.post(url, data=data, files=files, timeout=15)
             else:
@@ -566,14 +671,13 @@ def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dic
         save_state(state)
         return None
 
-    radar_img, radar_time = fetch_rainviewer_image()
-    msg = build_message(recent_valid, window_min, radar_time)
+    radar_img = generate_lightning_map(recent_valid, radius_km=radius)
+    msg = build_message(recent_valid, window_min)
     save_state(state)
 
     return {
         "message": msg,
         "image": radar_img,
-        "radar_time": radar_time,
         "strikes": recent_valid,
         "n": n,
     }

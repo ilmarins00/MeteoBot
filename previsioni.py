@@ -42,9 +42,15 @@ HOURLY_VARS = [
     "surface_pressure", "cloud_cover", "cloud_cover_low",
     "cloud_cover_mid", "cloud_cover_high", "visibility",
     "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
-    "uv_index", "cape", "sunshine_duration",
+    "uv_index", "cape", "lifted_index", "convective_inhibition",
+    "sunshine_duration",
     "shortwave_radiation", "direct_radiation", "diffuse_radiation",
     "freezing_level_height", "vapour_pressure_deficit", "is_day",
+    # Livelli di pressione supportati da AROME HD
+    "temperature_850hPa", "temperature_500hPa",
+    "wind_speed_850hPa", "wind_speed_500hPa",
+    "wind_direction_850hPa", "wind_direction_500hPa",
+    "geopotential_height_850hPa", "geopotential_height_500hPa",
 ]
 
 HOURLY_VARS_CORE = [
@@ -52,6 +58,17 @@ HOURLY_VARS_CORE = [
     "apparent_temperature", "precipitation", "rain", "snowfall",
     "weather_code", "pressure_msl", "cloud_cover",
     "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "is_day",
+]
+
+# Variabili aggiuntive a livelli di pressione (richieste con modello GFS)
+PRESSURE_LEVEL_VARS = [
+    "temperature_925hPa", "temperature_700hPa", "temperature_300hPa",
+    "wind_speed_925hPa", "wind_speed_700hPa", "wind_speed_300hPa",
+    "wind_direction_925hPa", "wind_direction_700hPa", "wind_direction_300hPa",
+    "geopotential_height_1000hPa", "geopotential_height_700hPa",
+    "geopotential_height_300hPa",
+    "relative_humidity_850hPa", "relative_humidity_700hPa",
+    "relative_humidity_500hPa",
 ]
 
 DAILY_VARS = [
@@ -68,7 +85,6 @@ DAILY_VARS = [
 MODELS = [
     ("meteofrance_arome_france_hd", "AROME HD", 3),
     ("meteofrance_arome_france", "AROME", 3),
-    # MOLOCH non è disponibile su Open-Meteo
     ("icon_eu", "ICON-EU", 1),
 ]
 
@@ -104,8 +120,61 @@ def _fetch_openmeteo(date_str, model_name, hourly_vars):
     return data
 
 
+def _strip_null_vars(data):
+    """Rimuove dalle hourly le variabili che hanno tutti valori None (non supportate)."""
+    hourly = data.get("hourly", {})
+    keys_to_remove = []
+    for key, vals in hourly.items():
+        if key == "time":
+            continue
+        if isinstance(vals, list) and all(v is None for v in vals):
+            keys_to_remove.append(key)
+    for key in keys_to_remove:
+        del hourly[key]
+    if keys_to_remove:
+        print(f"  ⚠ Rimosse {len(keys_to_remove)} variabili senza dati")
+    return data
+
+
+def _fetch_pressure_levels(date_str):
+    """Chiamata supplementare senza modello specifico (best_match/GFS) per dati
+    a livelli di pressione aggiuntivi (925, 700, 300 hPa, umidità in quota)."""
+    try:
+        params = {
+            "latitude": LATITUDE,
+            "longitude": LONGITUDE,
+            "hourly": ",".join(PRESSURE_LEVEL_VARS),
+            "start_date": date_str,
+            "end_date": date_str,
+            "timezone": "Europe/Rome",
+        }
+        resp = requests.get(
+            "https://api.open-meteo.com/v1/forecast", params=params, timeout=30
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("error"):
+            print(f"  ⚠ Errore livelli pressione supplementari: {data.get('reason')}")
+            return {}
+        hourly = data.get("hourly", {})
+        # Restituisci solo le variabili con dati validi
+        result = {}
+        for key, vals in hourly.items():
+            if key == "time":
+                continue
+            if isinstance(vals, list) and any(v is not None for v in vals):
+                result[key] = vals
+        if result:
+            print(f"  ✓ Livelli pressione supplementari: {len(result)} variabili ottenute")
+        return result
+    except Exception as e:
+        print(f"  ⚠ Errore fetch supplementare: {e}")
+        return {}
+
+
 def fetch_forecast_data(target_date):
-    """Scarica dati orari da Open-Meteo provando i modelli in ordine di preferenza."""
+    """Scarica dati orari da Open-Meteo provando i modelli in ordine di preferenza.
+    Integra automaticamente dati a livelli di pressione supplementari da GFS."""
     date_str = target_date.strftime("%Y-%m-%d")
 
     for model_name, display, max_retries in MODELS:
@@ -126,7 +195,20 @@ def fetch_forecast_data(target_date):
                         continue
                     break  # Dati incompleti, prova modello successivo
 
-                print(f"  ✓ {display}: {len(hours)} ore ottenute")
+                # Rimuovi variabili senza dati
+                data = _strip_null_vars(data)
+
+                # Integra livelli di pressione supplementari (GFS/best_match)
+                print("  📊 Richiesta livelli di pressione supplementari...")
+                extra = _fetch_pressure_levels(date_str)
+                if extra:
+                    hourly = data.get("hourly", {})
+                    for key, vals in extra.items():
+                        if key not in hourly:
+                            hourly[key] = vals
+
+                print(f"  ✓ {display}: {len(hours)} ore, "
+                      f"{len([k for k in data.get('hourly', {}) if k != 'time'])} variabili totali")
                 return data, display
             except Exception as e:
                 print(f"  ✗ Errore: {e}")
@@ -144,28 +226,48 @@ GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 SYSTEM_PROMPT = f"""Sei un meteorologo professionista italiano. Ricevi dati meteo orari e giornalieri per {LOCATION_NAME} e devi scrivere le previsioni per la giornata indicata.
 
-FORMATO OBBLIGATORIO — segui SEMPRE queste regole senza eccezioni:
+Il tuo output DEVE contenere DUE sezioni separate dal marcatore "---SEZIONE TECNICA---" (esattamente così, su una riga a sé).
 
-Il testo deve essere un UNICO BLOCCO CONTINUO, senza andare a capo, senza elenchi puntati, senza trattini, senza numerazioni, senza sezioni separate. Un paragrafo unico e fluido dall'inizio alla fine.
+═══ PRIMA SEZIONE: PREVISIONI SEMPLICI ═══
 
-Struttura del testo:
+Un testo discorsivo in un UNICO BLOCCO CONTINUO, senza andare a capo, senza elenchi puntati, senza trattini, senza numerazioni, senza sezioni separate. Un paragrafo unico e fluido dall'inizio alla fine, comprensibile da chiunque.
+
+Struttura:
 - Inizia con "Previsioni per {LOCATION_NAME}, [giorno della settimana] [giorno] [mese] [anno]."
 - Prosegui descrivendo in sequenza: la notte (00-06), la mattina (06-12), il pomeriggio (12-18), la sera (18-24).
 - Per ogni fascia indica: condizioni del cielo, temperatura, vento (velocità e direzione), umidità relativa, e precipitazioni se presenti.
 - Indica alba e tramonto con gli orari esatti dai dati.
 - Concludi con una frase riepilogativa sulla giornata.
 
-Regole sul contenuto:
+Regole:
 - Temperature arrotondate a un decimale (esempio: 14.2°C).
-- Precipitazioni in millimetri.
-- Vento in km/h con direzione cardinale (N, NE, E, SE, S, SW, W, NW).
-- Umidità relativa in percentuale.
-- Nuvolosità descritta a parole: sereno (0-10%), poco nuvoloso (10-30%), parzialmente nuvoloso (30-60%), nuvoloso (60-80%), molto nuvoloso (80-95%), coperto (95-100%).
-- NON usare emoji.
-- NON usare formattazione Markdown (no asterischi, no underscore, no backtick).
+- Precipitazioni in mm. Vento in km/h con direzione cardinale.
+- Nuvolosità a parole: sereno (0-10%), poco nuvoloso (10-30%), parzialmente nuvoloso (30-60%), nuvoloso (60-80%), molto nuvoloso (80-95%), coperto (95-100%).
+- NON usare emoji. NON usare formattazione Markdown. Tono professionale ma accessibile.
+
+═══ SECONDA SEZIONE: ANALISI TECNICA ═══
+
+Dopo il marcatore "---SEZIONE TECNICA---", scrivi un'analisi meteorologica tecnica dettagliata, anche questa in formato testo continuo (un unico blocco senza andare a capo). Questa sezione è rivolta a un appassionato di meteorologia e deve includere:
+
+- Temperature ai diversi livelli di pressione disponibili (925, 850, 700, 500, 300 hPa) con le relative variazioni nel corso della giornata.
+- Venti in quota (850, 500, 300 hPa): velocità, direzione e eventuali variazioni significative che indicano avvezione calda/fredda o rotazione.
+- Altezze geopotenziali (1000, 850, 700, 500, 300 hPa) e spessori derivati (es. 500-1000 hPa) con implicazioni per la massa d'aria.
+- Analisi termodinamica: CAPE (J/kg), Lifted Index, CIN (Convective Inhibition). Se CAPE > 0 commenta il potenziale convettivo; se Lifted Index < 0 il grado di instabilità.
+- Livello dello zero termico (freezing level height) e implicazioni per neve/pioggia.
+- Umidità relativa ai vari livelli e implicazioni per la formazione di nubi a diverse quote.
+- Gradiente termico verticale (differenza temperatura tra livelli) per valutare stabilità/instabilità.
+- Deficit di pressione di vapore (VPD) e implicazioni per evapotraspirazione.
+- Se ci sono dati di radiazione: analisi radiativa breve.
+
+Usa terminologia tecnica appropriata (avvezione, gradiente adiabatico, baroclinia, etc.) ma rimani comprensibile per un appassionato.
+
+═══ REGOLE GENERALI ═══
+
 - Basati SOLO sui dati numerici forniti, non inventare nulla.
-- Scrivi un testo completo che copra TUTTE e quattro le fasce orarie. Non troncare mai a metà frase.
-- Tono professionale ma accessibile a tutti."""
+- Se un dato di quota non è disponibile (null/None), non menzionarlo.
+- Scrivi testi completi, non troncare mai a metà frase.
+- NON usare emoji in nessuna delle due sezioni.
+- NON usare formattazione Markdown (no asterischi, no underscore, no backtick)."""
 
 
 def get_latest_gemini_model(api_key):
@@ -228,7 +330,7 @@ def generate_forecast(weather_data, model_used, target_date, api_key):
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
         "generationConfig": {
             "temperature": 0.2,
-            "maxOutputTokens": 4096,
+            "maxOutputTokens": 8192,
             "thinkingConfig": {"thinkingBudget": 2048},
         },
     }
@@ -352,13 +454,37 @@ def main(target_chat_id=None):
         f"📅 {target_dt.strftime('%d/%m/%Y')} ({GIORNI_IT[target_dt.weekday()]})\n"
         f"🔬 Modello: {model_used} | AI: {gemini_model}\n\n"
     )
-    full_msg = header + forecast_text
 
-    if send_telegram(full_msg, target_chat_id=target_chat_id):
-        print("\n✅ Previsioni inviate con successo")
+    # Dividi in sezione semplice e tecnica
+    SEPARATOR = "---SEZIONE TECNICA---"
+    if SEPARATOR in forecast_text:
+        simple_part, tech_part = forecast_text.split(SEPARATOR, 1)
+        simple_part = simple_part.strip()
+        tech_part = tech_part.strip()
     else:
-        print("\n⚠️ Invio fallito")
+        simple_part = forecast_text
+        tech_part = None
+
+    # Messaggio 1: previsioni semplici (a tutti)
+    msg_simple = header + simple_part
+    if send_telegram(msg_simple, target_chat_id=target_chat_id):
+        print("\n✅ Previsioni semplici inviate con successo")
+    else:
+        print("\n⚠️ Invio previsioni semplici fallito")
         sys.exit(1)
+
+    # Messaggio 2: analisi tecnica (a tutti)
+    if tech_part:
+        tech_header = (
+            f"📊 Analisi Tecnica\n"
+            f"📍 {LOCATION_NAME}\n"
+            f"📅 {target_dt.strftime('%d/%m/%Y')} ({GIORNI_IT[target_dt.weekday()]})\n\n"
+        )
+        msg_tech = tech_header + tech_part
+        if send_telegram(msg_tech, target_chat_id=target_chat_id):
+            print("✅ Analisi tecnica inviata con successo")
+        else:
+            print("⚠️ Invio analisi tecnica fallito")
 
 
 if __name__ == "__main__":
