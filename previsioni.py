@@ -455,36 +455,20 @@ def main(target_chat_id=None):
         f"🔬 Modello: {model_used} | AI: {gemini_model}\n\n"
     )
 
-    # Dividi in sezione semplice e tecnica
+    # Unisci sezione semplice e tecnica in un unico messaggio
     SEPARATOR = "---SEZIONE TECNICA---"
     if SEPARATOR in forecast_text:
         simple_part, tech_part = forecast_text.split(SEPARATOR, 1)
-        simple_part = simple_part.strip()
-        tech_part = tech_part.strip()
+        body = simple_part.strip() + "\n\n📊 Analisi Tecnica\n\n" + tech_part.strip()
     else:
-        simple_part = forecast_text
-        tech_part = None
+        body = forecast_text
 
-    # Messaggio 1: previsioni semplici (a tutti)
-    msg_simple = header + simple_part
-    if send_telegram(msg_simple, target_chat_id=target_chat_id):
-        print("\n✅ Previsioni semplici inviate con successo")
+    full_msg = header + body
+    if send_telegram(full_msg, target_chat_id=target_chat_id):
+        print("\n✅ Previsioni inviate con successo")
     else:
-        print("\n⚠️ Invio previsioni semplici fallito")
+        print("\n⚠️ Invio fallito")
         sys.exit(1)
-
-    # Messaggio 2: analisi tecnica (a tutti)
-    if tech_part:
-        tech_header = (
-            f"📊 Analisi Tecnica\n"
-            f"📍 {LOCATION_NAME}\n"
-            f"📅 {target_dt.strftime('%d/%m/%Y')} ({GIORNI_IT[target_dt.weekday()]})\n\n"
-        )
-        msg_tech = tech_header + tech_part
-        if send_telegram(msg_tech, target_chat_id=target_chat_id):
-            print("✅ Analisi tecnica inviata con successo")
-        else:
-            print("⚠️ Invio analisi tecnica fallito")
 
 
 if __name__ == "__main__":
