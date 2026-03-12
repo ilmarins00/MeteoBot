@@ -230,20 +230,18 @@ Il tuo output DEVE contenere TRE sezioni separate dai marcatori "---SEZIONE TECN
 
 ═══ PRIMA SEZIONE: PREVISIONI SEMPLICI ═══
 
-Un testo discorsivo in un UNICO BLOCCO CONTINUO, senza andare a capo, senza elenchi puntati, senza trattini, senza numerazioni, senza sezioni separate. Un paragrafo unico e fluido dall'inizio alla fine, comprensibile da chiunque.
+Scrivi un testo BREVE e CONCISO (massimo 600-800 caratteri), in un UNICO BLOCCO CONTINUO senza andare a capo, comprensibile da chiunque.
 
 Struttura:
 - Inizia con "Previsioni per {LOCATION_NAME}, [giorno della settimana] [giorno] [mese] [anno]."
-- Prosegui descrivendo in sequenza: la notte (00-06), la mattina (06-12), il pomeriggio (12-18), la sera (18-24).
-- Per ogni fascia indica: condizioni del cielo, temperatura, vento (velocità e direzione), umidità relativa, e precipitazioni se presenti.
-- Indica alba e tramonto con gli orari esatti dai dati.
-- Concludi con una frase riepilogativa sulla giornata.
+- Descrivi in sequenza le 4 fasce orarie (notte, mattina, pomeriggio, sera) in modo sintetico: cielo, temperature min/max, vento e precipitazioni solo se presenti.
+- Indica alba e tramonto.
+- Concludi con una frase riepilogativa.
 
 Regole:
-- Temperature arrotondate a un decimale (esempio: 14.2°C).
-- Precipitazioni in mm. Vento in km/h con direzione cardinale.
-- Nuvolosità a parole: sereno (0-10%), poco nuvoloso (10-30%), parzialmente nuvoloso (30-60%), nuvoloso (60-80%), molto nuvoloso (80-95%), coperto (95-100%).
-- NON usare emoji. NON usare formattazione Markdown. Tono professionale ma accessibile.
+- Temperature arrotondate a un decimale. Precipitazioni in mm. Vento in km/h con direzione cardinale.
+- Nuvolosità a parole: sereno, poco nuvoloso, parzialmente nuvoloso, nuvoloso, molto nuvoloso, coperto.
+- NON usare emoji. NON usare formattazione Markdown. Sii sintetico ma completo.
 
 ═══ SECONDA SEZIONE: ANALISI TECNICA ═══
 
@@ -409,7 +407,8 @@ def generate_forecast(weather_data, model_used, target_date, api_key):
 # ── Telegram ─────────────────────────────────────────────────────────────
 
 def send_telegram(text, target_chat_id=None):
-    """Invia le previsioni ai chat Telegram configurati (o a uno specifico)."""
+    """Invia le previsioni ai chat Telegram configurati (o a uno specifico).
+    Restituisce True se l'invio è riuscito per almeno un chat."""
     if not TELEGRAM_TOKEN:
         print("Telegram non configurato")
         return False
@@ -422,41 +421,22 @@ def send_telegram(text, target_chat_id=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     any_ok = False
 
-    # Telegram ha un limite di 4096 caratteri per messaggio
-    MAX_LEN = 4096
-    if len(text) <= MAX_LEN:
-        chunks = [text]
-    else:
-        # Spezza su doppio a-capo più vicino al limite
-        chunks = []
-        remaining = text
-        while remaining:
-            if len(remaining) <= MAX_LEN:
-                chunks.append(remaining)
-                break
-            cut = remaining.rfind("\n\n", 0, MAX_LEN)
-            if cut == -1:
-                cut = remaining.rfind("\n", 0, MAX_LEN)
-            if cut == -1:
-                cut = MAX_LEN
-            chunks.append(remaining[:cut])
-            remaining = remaining[cut:].lstrip("\n")
-
     for chat_id in chat_ids:
         try:
-            for chunk in chunks:
-                resp = requests.post(
-                    url,
-                    data={"chat_id": chat_id, "text": chunk},
-                    timeout=15,
-                )
-                resp.raise_for_status()
-                if not resp.json().get("ok"):
-                    print(f"✗ Errore per {chat_id}: {resp.json()}")
-                    break
-            else:
-                print(f"✓ Previsioni inviate a {chat_id} ({len(chunks)} parte/i)")
+            resp = requests.post(
+                url,
+                data={"chat_id": chat_id, "text": text},
+                timeout=15,
+            )
+            if resp.status_code == 400:
+                print(f"  ⚠ Messaggio troppo lungo per {chat_id} ({len(text)} char)")
+                return False
+            resp.raise_for_status()
+            if resp.json().get("ok"):
+                print(f"✓ Inviato a {chat_id}")
                 any_ok = True
+            else:
+                print(f"✗ Errore per {chat_id}: {resp.json()}")
         except Exception as e:
             print(f"✗ Errore invio a {chat_id}: {e}")
 
@@ -525,11 +505,7 @@ def main(target_chat_id=None):
     tech_part = tech_part.strip()
     risk_part = risk_part.strip()
 
-    body = simple_part
-    if tech_part:
-        body += "\n\n📊 Analisi Tecnica\n\n" + tech_part
-
-    # Sezione rischi con pallino colorato
+    # Componi la sezione rischi
     RISK_COLORS = {
         "VERDE": "🟢", "GIALLO": "🟡",
         "ARANCIONE": "🟠", "ROSSO": "🔴",
@@ -539,16 +515,38 @@ def main(target_chat_id=None):
         color_word = lines[0].strip().upper()
         emoji = RISK_COLORS.get(color_word, "🟢")
         risk_desc = lines[1].strip() if len(lines) > 1 else "Nessun rischio previsto."
-        body += f"\n\n{emoji} RISCHI POSSIBILI\n\n{risk_desc}"
+        risk_block = f"{emoji} RISCHI POSSIBILI\n\n{risk_desc}"
     else:
-        body += "\n\n🟢 RISCHI POSSIBILI\n\nNessun rischio previsto."
+        risk_block = "🟢 RISCHI POSSIBILI\n\nNessun rischio previsto."
 
+    # Prova prima messaggio unico
+    body = simple_part
+    if tech_part:
+        body += "\n\n📊 Analisi Tecnica\n\n" + tech_part
+    body += "\n\n" + risk_block
     full_msg = header + body
+
     if send_telegram(full_msg, target_chat_id=target_chat_id):
-        print("\n✅ Previsioni inviate con successo")
+        print("\n✅ Previsioni inviate con successo (messaggio unico)")
     else:
-        print("\n⚠️ Invio fallito")
-        sys.exit(1)
+        # Messaggio troppo lungo → dividi in 3 messaggi logici
+        print("  ⚠ Messaggio unico troppo lungo, invio in 3 parti...")
+        date_line = f"📅 {target_dt.strftime('%d/%m/%Y')} ({GIORNI_IT[target_dt.weekday()]})"
+
+        msg1 = header + simple_part
+        msg2 = f"📊 Analisi Tecnica\n📍 {LOCATION_NAME} · {date_line}\n\n{tech_part}" if tech_part else None
+        msg3 = f"{risk_block}"
+
+        ok = send_telegram(msg1, target_chat_id=target_chat_id)
+        if msg2:
+            ok = send_telegram(msg2, target_chat_id=target_chat_id) and ok
+        ok = send_telegram(msg3, target_chat_id=target_chat_id) and ok
+
+        if ok:
+            print("\n✅ Previsioni inviate con successo (3 messaggi)")
+        else:
+            print("\n⚠️ Invio fallito")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
