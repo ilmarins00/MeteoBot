@@ -226,7 +226,7 @@ GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 SYSTEM_PROMPT = f"""Sei un meteorologo professionista italiano. Ricevi dati meteo orari e giornalieri per {LOCATION_NAME} e devi scrivere le previsioni per la giornata indicata.
 
-Il tuo output DEVE contenere DUE sezioni separate dal marcatore "---SEZIONE TECNICA---" (esattamente così, su una riga a sé).
+Il tuo output DEVE contenere TRE sezioni separate dai marcatori "---SEZIONE TECNICA---" e "---SEZIONE RISCHI---" (esattamente così, ciascuno su una riga a sé).
 
 ═══ PRIMA SEZIONE: PREVISIONI SEMPLICI ═══
 
@@ -261,12 +261,39 @@ Dopo il marcatore "---SEZIONE TECNICA---", scrivi un'analisi meteorologica tecni
 
 Usa terminologia tecnica appropriata (avvezione, gradiente adiabatico, baroclinia, etc.) ma rimani comprensibile per un appassionato.
 
+═══ TERZA SEZIONE: VALUTAZIONE RISCHI ═══
+
+Dopo il marcatore "---SEZIONE RISCHI---", scrivi una valutazione dei possibili rischi meteorologici per la giornata.
+
+DEVI iniziare la sezione con ESATTAMENTE una di queste quattro righe (senza virgolette), a seconda del livello di rischio che emerge dai dati:
+- VERDE se non ci sono rischi significativi o il rischio è molto basso/trascurabile
+- GIALLO se c'è un possibile rischio locale o moderato
+- ARANCIONE se c'è un rischio probabile
+- ROSSO se il rischio è molto probabile o severo
+
+Dopo la riga del colore, descrivi i rischi in modo REALISTICO basandoti esclusivamente sui dati numerici. Non esagerare, non minimizzare. Sii oggettivo.
+
+Rischi da valutare (SOLO se supportati dai dati):
+- Precipitazioni intense (accumuli > 20 mm in poche ore)
+- Temporali (CAPE elevato, Lifted Index negativo)
+- Vento forte (raffiche > 50 km/h)
+- Neve a bassa quota (zero termico basso + precipitazioni)
+- Gelate (temperature minime sotto 0°C)
+- Nebbia (umidità alta + vento debole + inversione termica)
+- Ondate di calore (temperature molto sopra media + UHI)
+- Visibilità ridotta
+- Rischio idrogeologico (precipitazioni prolungate su terreno saturo)
+
+Se NON ci sono rischi significativi (giornata tranquilla, senza fenomeni rilevanti), scrivi "VERDE" come colore e poi "Nessun rischio previsto." come descrizione.
+
+IMPORTANTE: sii REALISTICO. Un po' di pioggia non è un rischio. Vento a 20 km/h non è un rischio. Valuta con equilibrio professionale.
+
 ═══ REGOLE GENERALI ═══
 
 - Basati SOLO sui dati numerici forniti, non inventare nulla.
 - Se un dato di quota non è disponibile (null/None), non menzionarlo.
 - Scrivi testi completi, non troncare mai a metà frase.
-- NON usare emoji in nessuna delle due sezioni.
+- NON usare emoji in nessuna delle tre sezioni.
 - NON usare formattazione Markdown (no asterischi, no underscore, no backtick)."""
 
 
@@ -455,13 +482,44 @@ def main(target_chat_id=None):
         f"🔬 Modello: {model_used} | AI: {gemini_model}\n\n"
     )
 
-    # Unisci sezione semplice e tecnica in un unico messaggio
-    SEPARATOR = "---SEZIONE TECNICA---"
-    if SEPARATOR in forecast_text:
-        simple_part, tech_part = forecast_text.split(SEPARATOR, 1)
-        body = simple_part.strip() + "\n\n📊 Analisi Tecnica\n\n" + tech_part.strip()
+    # Componi messaggio unico: semplice + tecnica + rischi
+    SEP_TECH = "---SEZIONE TECNICA---"
+    SEP_RISK = "---SEZIONE RISCHI---"
+
+    remaining = forecast_text
+    # Estrai sezione semplice
+    if SEP_TECH in remaining:
+        simple_part, remaining = remaining.split(SEP_TECH, 1)
     else:
-        body = forecast_text
+        simple_part, remaining = remaining, ""
+
+    # Estrai sezione tecnica e rischi
+    if SEP_RISK in remaining:
+        tech_part, risk_part = remaining.split(SEP_RISK, 1)
+    else:
+        tech_part, risk_part = remaining, ""
+
+    simple_part = simple_part.strip()
+    tech_part = tech_part.strip()
+    risk_part = risk_part.strip()
+
+    body = simple_part
+    if tech_part:
+        body += "\n\n📊 Analisi Tecnica\n\n" + tech_part
+
+    # Sezione rischi con pallino colorato
+    RISK_COLORS = {
+        "VERDE": "🟢", "GIALLO": "🟡",
+        "ARANCIONE": "🟠", "ROSSO": "🔴",
+    }
+    if risk_part:
+        lines = risk_part.split("\n", 1)
+        color_word = lines[0].strip().upper()
+        emoji = RISK_COLORS.get(color_word, "🟢")
+        risk_desc = lines[1].strip() if len(lines) > 1 else "Nessun rischio previsto."
+        body += f"\n\n{emoji} RISCHI POSSIBILI\n\n{risk_desc}"
+    else:
+        body += "\n\n🟢 RISCHI POSSIBILI\n\nNessun rischio previsto."
 
     full_msg = header + body
     if send_telegram(full_msg, target_chat_id=target_chat_id):
