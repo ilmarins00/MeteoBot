@@ -422,19 +422,41 @@ def send_telegram(text, target_chat_id=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     any_ok = False
 
+    # Telegram ha un limite di 4096 caratteri per messaggio
+    MAX_LEN = 4096
+    if len(text) <= MAX_LEN:
+        chunks = [text]
+    else:
+        # Spezza su doppio a-capo più vicino al limite
+        chunks = []
+        remaining = text
+        while remaining:
+            if len(remaining) <= MAX_LEN:
+                chunks.append(remaining)
+                break
+            cut = remaining.rfind("\n\n", 0, MAX_LEN)
+            if cut == -1:
+                cut = remaining.rfind("\n", 0, MAX_LEN)
+            if cut == -1:
+                cut = MAX_LEN
+            chunks.append(remaining[:cut])
+            remaining = remaining[cut:].lstrip("\n")
+
     for chat_id in chat_ids:
         try:
-            resp = requests.post(
-                url,
-                data={"chat_id": chat_id, "text": text},
-                timeout=15,
-            )
-            resp.raise_for_status()
-            if resp.json().get("ok"):
-                print(f"✓ Previsioni inviate a {chat_id}")
-                any_ok = True
+            for chunk in chunks:
+                resp = requests.post(
+                    url,
+                    data={"chat_id": chat_id, "text": chunk},
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                if not resp.json().get("ok"):
+                    print(f"✗ Errore per {chat_id}: {resp.json()}")
+                    break
             else:
-                print(f"✗ Errore per {chat_id}: {resp.json()}")
+                print(f"✓ Previsioni inviate a {chat_id} ({len(chunks)} parte/i)")
+                any_ok = True
         except Exception as e:
             print(f"✗ Errore invio a {chat_id}: {e}")
 
