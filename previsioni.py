@@ -358,7 +358,7 @@ SOGLIE DI RIFERIMENTO ARPAL (Agenzia Regionale Protezione Ambiente Liguria):
 - Caldo: Giallo >= 35°C, Arancione >= 38°C, Rosso >= 40°C
 - Gelo: Giallo <= 0°C, Arancione <= -5°C, Rosso <= -10°C
 - Neve: Giallo >= 5 cm, Arancione >= 15 cm, Rosso >= 30 cm
-- Mareggiata (pressione): Giallo <= 998 hPa, Arancione <= 995 hPa, Rosso <= 990 hPa
+- Mareggiata (pressione): Giallo <= 995 hPa, Arancione <= 990 hPa, Rosso <= 985 hPa
 - Suolo molto saturo (API): >= 185 mm → rischio idrogeologico elevato
 
 DATI INTEGRATIVI disponibili nel prompt:
