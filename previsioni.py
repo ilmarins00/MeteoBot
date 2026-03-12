@@ -295,46 +295,12 @@ IMPORTANTE: sii REALISTICO. Un po' di pioggia non è un rischio. Vento a 20 km/h
 - NON usare formattazione Markdown (no asterischi, no underscore, no backtick)."""
 
 
-def get_latest_gemini_model(api_key):
-    """Interroga l'API Gemini per trovare il modello flash più recente."""
-    url = f"{GEMINI_API_BASE}/models?key={api_key}"
-    try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        models = resp.json().get("models", [])
-    except Exception as e:
-        print(f"  ⚠ Impossibile listare modelli Gemini ({e}), uso default")
-        return "gemini-2.5-pro-preview-05-06"
-
-    # Filtra modelli pro che supportano generateContent
-    # Escludi vecchi gemini-pro 1.0 e varianti specializzate (tts, embedding, etc.)
-    EXCLUDE = {"tts", "embedding", "image", "vision", "tuning"}
-    pro = []
-    for m in models:
-        name = m.get("name", "").replace("models/", "")
-        methods = m.get("supportedGenerationMethods", [])
-        if ("generateContent" in methods
-                and "pro" in name
-                and "gemini-2" in name
-                and not any(x in name for x in EXCLUDE)):
-            pro.append(name)
-
-    if not pro:
-        return "gemini-2.5-pro-preview-05-06"
-
-    # Preferisci modelli senza suffissi sperimentali, poi i più recenti
-    def sort_key(name):
-        # Nomi "puliti" (senza preview) prima, poi per nome decrescente
-        is_stable = "preview" not in name
-        return (is_stable, name)
-    pro.sort(key=sort_key, reverse=True)
-    return pro[0]
+GEMINI_MODEL = "gemini-2.5-flash"
 
 
 def generate_forecast(weather_data, model_used, target_date, api_key):
     """Invia i dati meteo a Gemini e ottiene le previsioni in linguaggio naturale."""
-    gemini_model = get_latest_gemini_model(api_key)
-    print(f"  Modello Gemini selezionato: {gemini_model}")
+    print(f"  Modello Gemini: {GEMINI_MODEL}")
 
     date_it = format_date_it(target_date)
     hourly = weather_data.get("hourly", {})
@@ -360,31 +326,20 @@ def generate_forecast(weather_data, model_used, target_date, api_key):
         },
     }
 
-    # Prova Pro (3 tentativi, 60s tra uno e l'altro → ~3 min max)
-    # Se Pro è rate-limited, usa Flash (stesso thinking)
-    models_to_try = [gemini_model, "gemini-2.5-flash"]
-    for model in models_to_try:
-        url = f"{GEMINI_API_BASE}/models/{model}:generateContent?key={api_key}"
-        max_retries = 3 if model == gemini_model else 2
-        success = False
-        for attempt in range(1, max_retries + 1):
-            resp = requests.post(url, json=payload, timeout=120)
-            if resp.status_code == 429 and attempt < max_retries:
-                wait = 60
-                print(f"  ⚠ Rate limit (429) su {model}, attendo {wait}s ({attempt}/{max_retries})...")
-                time.sleep(wait)
-                continue
-            if resp.status_code == 429:
-                print(f"  ✗ {model} rate-limited, provo modello successivo...")
-                break
-            resp.raise_for_status()
-            success = True
-            gemini_model = model
-            break
-        if success:
-            break
-    else:
-        raise RuntimeError("Tutti i modelli Gemini sono rate-limited, riprova più tardi")
+    # Usa Gemini Flash con retry
+    url = f"{GEMINI_API_BASE}/models/{GEMINI_MODEL}:generateContent?key={api_key}"
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        resp = requests.post(url, json=payload, timeout=120)
+        if resp.status_code == 429 and attempt < max_retries:
+            wait = 60
+            print(f"  ⚠ Rate limit (429), attendo {wait}s ({attempt}/{max_retries})...")
+            time.sleep(wait)
+            continue
+        if resp.status_code == 429:
+            raise RuntimeError("Gemini Flash rate-limited dopo tutti i tentativi")
+        resp.raise_for_status()
+        break
 
     result = resp.json()
 
@@ -401,7 +356,7 @@ def generate_forecast(weather_data, model_used, target_date, api_key):
     if not text:
         raise ValueError(f"Risposta Gemini vuota (finishReason: {finish_reason})")
 
-    return text.strip(), gemini_model
+    return text.strip(), GEMINI_MODEL
 
 
 # ── Telegram ─────────────────────────────────────────────────────────────
