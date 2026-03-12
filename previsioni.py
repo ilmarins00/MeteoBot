@@ -366,21 +366,23 @@ DATI INTEGRATIVI disponibili nel prompt:
 - Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo. Confrontali con i valori previsti dal modello.
 - Se presente l'allerta ARPAL attuale: menzionala come contesto.
 
-FORMATO DEI RISCHI — IMPORTANTISSIMO:
-NON elencare dati grezzi o soglie numeriche nel messaggio. Scrivi in modo DISCORSIVO e REALISTICO, come farebbe un meteorologo esperto che spiega i rischi a un cittadino. Spiega il PERCHÉ del rischio basandoti sui dati, indicando probabilità approssimative.
+REGOLA FONDAMENTALE SULLA BREVITÀ:
+- Se NON ci sono rischi significativi (nessuna soglia ARPAL si avvicina o viene superata), scrivi SOLO:
+  VERDE
+  Nessun rischio significativo previsto.
+  E BASTA. Non aggiungere NIENTE altro. Non commentare i dati, non dire che il vento è sotto soglia, non dire che il terreno è in buone condizioni, non menzionare l'allerta ARPAL verde. NIENTE. Solo quelle due righe.
 
-Esempi di stile corretto (NON copiarli, servono solo per capire il tono):
+- Se CI SONO rischi significativi (una o più soglie ARPAL vicine o superate), menziona ESCLUSIVAMENTE i fenomeni che raggiungono o superano le soglie. Non parlare dei parametri che sono nella norma. Scrivi in modo DISCORSIVO, spiegando il perché del rischio e indicando probabilità approssimative. NON elencare dati grezzi o soglie numeriche.
+
+Esempio di stile corretto per rischi presenti (NON copiarlo):
 - "Data la temperatura a 850 hPa particolarmente rigida e l'elevata instabilità convettiva, nella fascia pomeridiana sono probabili temporali di forte intensità, con una probabilità stimata intorno al 60-70%."
-- "Il terreno risulta già molto saturo (oltre 85%): anche precipitazioni moderate di 15-20 mm potrebbero causare locali allagamenti nei punti di raccolta delle acque."
-- "Le raffiche previste nelle ore centrali, associate al gradiente barico in aumento, potrebbero raggiungere valori significativi lungo la costa."
 
-Esempi di stile SBAGLIATO (da evitare assolutamente):
-- "CAPE: 500 J/kg. Precipitazione prevista: 25 mm. Vento: 45 km/h." ← troppo tecnico e freddo
-- "Soglia ARPAL giallo superata per pioggia oraria." ← non dire che superi soglie, SPIEGA cosa succede
+Esempio di stile SBAGLIATO (da evitare assolutamente):
+- Elencare tutti i parametri dicendo che sono sotto soglia ← VIETATO
+- Commentare dati non rilevanti (tipo "il vento è debole", "le temperature sono miti") ← INUTILE, NON FARLO
+- "CAPE: 500 J/kg. Precipitazione prevista: 25 mm." ← troppo tecnico
 
-Se NON ci sono rischi significativi, scrivi "VERDE" come colore e poi "Nessun rischio previsto." come descrizione.
-
-IMPORTANTE: sii REALISTICO. Un po' di pioggia non è un rischio. Vento a 20 km/h non è un rischio. Valuta con equilibrio professionale usando le soglie ARPAL come guida.
+IMPORTANTE: sii REALISTICO e SINTETICO. Solo rischi reali basati sulle soglie ARPAL.
 
 ═══ REGOLE GENERALI ═══
 
