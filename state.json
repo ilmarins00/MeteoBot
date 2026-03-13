@@ -59,7 +59,18 @@
         "max_livello": "Verde",
         "max_criterio": "",
         "emoji": "🟢",
-        "bacini_piccoli_hours": [],
+        "bacini_piccoli_hours": [
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "20",
+            "21",
+            "22",
+            "23"
+        ],
         "bacini_piccoli_timeline": [
             {
                 "ora": "00",
@@ -119,43 +130,43 @@
             },
             {
                 "ora": "14",
-                "livello": "Verde"
+                "livello": "Giallo"
             },
             {
                 "ora": "15",
-                "livello": "Verde"
+                "livello": "Giallo"
             },
             {
                 "ora": "16",
-                "livello": "Verde"
+                "livello": "Giallo"
             },
             {
                 "ora": "17",
-                "livello": "Verde"
+                "livello": "Giallo"
             },
             {
                 "ora": "18",
-                "livello": "Verde"
+                "livello": "Giallo"
             },
             {
                 "ora": "19",
-                "livello": "Verde"
+                "livello": "Giallo"
             },
             {
                 "ora": "20",
-                "livello": "Verde"
+                "livello": "Giallo"
             },
             {
                 "ora": "21",
-                "livello": "Verde"
+                "livello": "Giallo"
             },
             {
                 "ora": "22",
-                "livello": "Verde"
+                "livello": "Giallo"
             },
             {
                 "ora": "23",
-                "livello": "Verde"
+                "livello": "Giallo"
             }
         ],
         "sotto_zone": {},
@@ -163,7 +174,7 @@
         "notifica_inviata": false,
         "data_ultima_notifica": "",
         "ultimo_max_notificato": "Verde",
-        "vigilanza": "PREVISIONI METEO Data emissione: 12 marzo 2026 ore 11:05 Consulta il Bollettino di Vigilanza/Avviso Meteorologico regionale per i dettagli previsionali."
+        "vigilanza": "PREVISIONI METEO Data emissione: 13 marzo 2026 ore 11:51 Consulta il Bollettino di Vigilanza/Avviso Meteorologico regionale per i dettagli previsionali."
     },
     "omirl": {
         "last_check_ts": "2026-03-09T16:47:35.137851+01:00",
