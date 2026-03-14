@@ -22,6 +22,7 @@ from config import (
     GEMINI_API_KEY,
     LATITUDE, LONGITUDE,
 )
+from utils import fetch_omirl_hourly_max_gust_laspezia
 
 TZ_ROME = ZoneInfo("Europe/Rome")
 LOCATION_NAME = "La Spezia"
@@ -144,13 +145,6 @@ def load_ground_conditions():
                 "timestamp": sbcape.get("timestamp"),
             }
 
-        arpal = state.get("arpal", {})
-        if arpal:
-            ground["allerta_arpal_attuale"] = {
-                "max_livello": arpal.get("max_livello"),
-                "dettaglio": arpal.get("dettaglio"),
-                "vigilanza": arpal.get("vigilanza"),
-            }
     except Exception as e:
         print(f"  ⚠ Impossibile caricare state.json: {e}")
 
@@ -180,7 +174,7 @@ def load_ground_conditions():
     return ground if ground else None
 
 
-def _fetch_openmeteo(date_str, model_name, hourly_vars):
+def _fetch_openmeteo(start_date_str, end_date_str, model_name, hourly_vars):
     """Singola richiesta a Open-Meteo. Solleva eccezione in caso di errore."""
     params = {
         "latitude": LATITUDE,
@@ -188,8 +182,8 @@ def _fetch_openmeteo(date_str, model_name, hourly_vars):
         "hourly": ",".join(hourly_vars),
         "daily": ",".join(DAILY_VARS),
         "models": model_name,
-        "start_date": date_str,
-        "end_date": date_str,
+        "start_date": start_date_str,
+        "end_date": end_date_str,
         "timezone": "Europe/Rome",
     }
     resp = requests.get(
@@ -218,7 +212,7 @@ def _strip_null_vars(data):
     return data
 
 
-def _fetch_pressure_levels(date_str):
+def _fetch_pressure_levels(start_date_str, end_date_str):
     """Chiamata supplementare senza modello specifico (best_match/GFS) per dati
     a livelli di pressione aggiuntivi (925, 700, 300 hPa, umidità in quota)."""
     try:
@@ -226,8 +220,8 @@ def _fetch_pressure_levels(date_str):
             "latitude": LATITUDE,
             "longitude": LONGITUDE,
             "hourly": ",".join(PRESSURE_LEVEL_VARS),
-            "start_date": date_str,
-            "end_date": date_str,
+            "start_date": start_date_str,
+            "end_date": end_date_str,
             "timezone": "Europe/Rome",
         }
         resp = requests.get(
@@ -254,20 +248,21 @@ def _fetch_pressure_levels(date_str):
         return {}
 
 
-def fetch_forecast_data(target_date):
+def fetch_forecast_data(start_date, end_date):
     """Scarica dati orari da Open-Meteo provando i modelli in ordine di preferenza.
     Integra automaticamente dati a livelli di pressione supplementari da GFS."""
-    date_str = target_date.strftime("%Y-%m-%d")
+    start_str = start_date.strftime("%Y-%m-%d")
+    end_str = end_date.strftime("%Y-%m-%d")
 
     for model_name, display, max_retries in MODELS:
         for attempt in range(1, max_retries + 1):
             print(f"  [{display}] Tentativo {attempt}/{max_retries}...")
             try:
                 try:
-                    data = _fetch_openmeteo(date_str, model_name, HOURLY_VARS)
+                    data = _fetch_openmeteo(start_str, end_str, model_name, HOURLY_VARS)
                 except Exception:
                     # Se il set completo fallisce, riprova con variabili essenziali
-                    data = _fetch_openmeteo(date_str, model_name, HOURLY_VARS_CORE)
+                    data = _fetch_openmeteo(start_str, end_str, model_name, HOURLY_VARS_CORE)
 
                 hours = data.get("hourly", {}).get("time", [])
                 if len(hours) < 24:
@@ -282,7 +277,7 @@ def fetch_forecast_data(target_date):
 
                 # Integra livelli di pressione supplementari (GFS/best_match)
                 print("  📊 Richiesta livelli di pressione supplementari...")
-                extra = _fetch_pressure_levels(date_str)
+                extra = _fetch_pressure_levels(start_str, end_str)
                 if extra:
                     hourly = data.get("hourly", {})
                     for key, vals in extra.items():
@@ -306,7 +301,8 @@ def fetch_forecast_data(target_date):
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-SYSTEM_PROMPT = f"""Sei un meteorologo professionista italiano. Ricevi dati meteo orari e giornalieri per {LOCATION_NAME} e devi scrivere le previsioni per la giornata indicata.
+SYSTEM_PROMPT = f"""Sei un meteorologo professionista italiano. Ricevi dati meteo orari e giornalieri per {LOCATION_NAME} e devi scrivere le previsioni per il periodo indicato.
+I dati possono coprire le ore rimanenti della giornata corrente e l'intera giornata successiva.
 
 Il tuo output DEVE contenere TRE sezioni separate dai marcatori "---SEZIONE TECNICA---" e "---SEZIONE RISCHI---" (esattamente così, ciascuno su una riga a sé).
 
@@ -315,15 +311,17 @@ Il tuo output DEVE contenere TRE sezioni separate dai marcatori "---SEZIONE TECN
 Scrivi un testo BREVE e CONCISO (massimo 600-800 caratteri), in un UNICO BLOCCO CONTINUO senza andare a capo, comprensibile da chiunque.
 
 Struttura:
-- Inizia con "Previsioni per {LOCATION_NAME}, [giorno della settimana] [giorno] [mese] [anno]."
-- Descrivi in sequenza le 4 fasce orarie (notte, mattina, pomeriggio, sera) in modo sintetico: cielo, temperature min/max, vento e precipitazioni solo se presenti.
-- Indica alba e tramonto.
+- Inizia con "Previsioni per {LOCATION_NAME}, [periodo coperto dai dati]."
+- Per le ore rimanenti di oggi: descrivi brevemente cosa aspettarsi.
+- Per domani: descrivi in sequenza le 4 fasce orarie (notte, mattina, pomeriggio, sera) in modo sintetico: cielo, temperature min/max, vento e precipitazioni solo se presenti.
+- Indica alba e tramonto di domani.
 - Concludi con una frase riepilogativa.
 
 Regole:
 - Temperature arrotondate a un decimale. Precipitazioni in mm. Vento in km/h con direzione cardinale.
 - Nuvolosità a parole: sereno, poco nuvoloso, parzialmente nuvoloso, nuvoloso, molto nuvoloso, coperto.
 - NON usare emoji. NON usare formattazione Markdown. Sii sintetico ma completo.
+- Se nel testo citi avvisi o segnalazioni, indica SOLO il tipo di fenomeno SENZA valori numerici tra parentesi (es. scrivi "pioggia forte" e NON "pioggia forte (14 mm/h)").
 
 ═══ SECONDA SEZIONE: ANALISI TECNICA ═══
 
@@ -343,46 +341,34 @@ Usa terminologia tecnica appropriata (avvezione, gradiente adiabatico, baroclini
 
 ═══ TERZA SEZIONE: VALUTAZIONE RISCHI ═══
 
-Dopo il marcatore "---SEZIONE RISCHI---", scrivi una valutazione dei possibili rischi meteorologici per la giornata.
+Dopo il marcatore "---SEZIONE RISCHI---", scrivi una valutazione dei possibili rischi meteorologici.
 
 DEVI iniziare la sezione con ESATTAMENTE una di queste quattro righe (senza virgolette), a seconda del livello di rischio che emerge dai dati:
-- VERDE se non ci sono rischi significativi o il rischio è molto basso/trascurabile
+- VERDE se non ci sono rischi significativi
 - GIALLO se c'è un possibile rischio locale o moderato
 - ARANCIONE se c'è un rischio probabile
 - ROSSO se il rischio è molto probabile o severo
 
-SOGLIE DI RIFERIMENTO ARPAL (Agenzia Regionale Protezione Ambiente Liguria):
-- Pioggia oraria: Giallo >= 15 mm/h, Arancione >= 30 mm/h, Rosso >= 50 mm/h
-- Pioggia cumulata 24h: Giallo >= 80 mm, Arancione >= 150 mm, Rosso >= 250 mm
-- Vento/raffiche: Giallo >= 50 km/h, Arancione >= 80 km/h, Rosso >= 100 km/h
-- Caldo: Giallo >= 35°C, Arancione >= 38°C, Rosso >= 40°C
-- Gelo: Giallo <= 0°C, Arancione <= -5°C, Rosso <= -10°C
-- Neve: Giallo >= 5 cm, Arancione >= 15 cm, Rosso >= 30 cm
-- Mareggiata (pressione): Giallo <= 995 hPa, Arancione <= 990 hPa, Rosso <= 985 hPa
-- Suolo molto saturo (API): >= 185 mm → rischio idrogeologico elevato
+SOGLIE DI RIFERIMENTO:
+- Precipitazione intensa: >= 15 mm/h moderata, >= 30 mm/h forte, >= 50 mm/h molto forte
+- Accumulo 24h significativo: >= 80 mm
+- Vento forte: >= 50 km/h, burrasca: >= 80 km/h
+- Caldo estremo: >= 35°C
+- Gelo: <= 0°C
+- Neve significativa: >= 5 cm
+- Suolo molto saturo (API >= 185 mm): rischio idrogeologico elevato
 
 DATI INTEGRATIVI disponibili nel prompt:
-- Se presenti i dati del terreno: usa la saturazione del suolo (%) e l'API (mm) per valutare il rischio idrogeologico. Un terreno saturo (>85%) amplifica enormemente il rischio di allagamenti e frane anche con piogge moderate.
-- Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo. Confrontali con i valori previsti dal modello.
-- Se presente l'allerta ARPAL attuale: menzionala come contesto.
+- Se presenti i dati del terreno: usa la saturazione del suolo (%) e l'API (mm) per valutare il rischio idrogeologico.
+- Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo.
 
 REGOLA FONDAMENTALE SULLA BREVITÀ:
-- Se NON ci sono rischi significativi (nessuna soglia ARPAL si avvicina o viene superata), scrivi SOLO:
+- Se NON ci sono rischi significativi, scrivi SOLO:
   VERDE
   Nessun rischio significativo previsto.
-  E BASTA. Non aggiungere NIENTE altro. Non commentare i dati, non dire che il vento è sotto soglia, non dire che il terreno è in buone condizioni, non menzionare l'allerta ARPAL verde. NIENTE. Solo quelle due righe.
+  E BASTA. Non aggiungere NIENTE altro. NIENTE. Solo quelle due righe.
 
-- Se CI SONO rischi significativi (una o più soglie ARPAL vicine o superate), menziona ESCLUSIVAMENTE i fenomeni che raggiungono o superano le soglie. Non parlare dei parametri che sono nella norma. Scrivi in modo DISCORSIVO, spiegando il perché del rischio e indicando probabilità approssimative. NON elencare dati grezzi o soglie numeriche.
-
-Esempio di stile corretto per rischi presenti (NON copiarlo):
-- "Data la temperatura a 850 hPa particolarmente rigida e l'elevata instabilità convettiva, nella fascia pomeridiana sono probabili temporali di forte intensità, con una probabilità stimata intorno al 60-70%."
-
-Esempio di stile SBAGLIATO (da evitare assolutamente):
-- Elencare tutti i parametri dicendo che sono sotto soglia ← VIETATO
-- Commentare dati non rilevanti (tipo "il vento è debole", "le temperature sono miti") ← INUTILE, NON FARLO
-- "CAPE: 500 J/kg. Precipitazione prevista: 25 mm." ← troppo tecnico
-
-IMPORTANTE: sii REALISTICO e SINTETICO. Solo rischi reali basati sulle soglie ARPAL.
+- Se CI SONO rischi significativi, menziona ESCLUSIVAMENTE i fenomeni rilevanti. NON parlare dei parametri nella norma. Scrivi in modo DISCORSIVO, spiegando il perché del rischio e indicando probabilità approssimative. NON elencare dati grezzi, NON citare valori numerici tra parentesi negli avvisi.
 
 ═══ REGOLE GENERALI ═══
 
@@ -390,24 +376,24 @@ IMPORTANTE: sii REALISTICO e SINTETICO. Solo rischi reali basati sulle soglie AR
 - Se un dato di quota non è disponibile (null/None), non menzionarlo.
 - Scrivi testi completi, non troncare mai a metà frase.
 - NON usare emoji in nessuna delle tre sezioni.
-- NON usare formattazione Markdown (no asterischi, no underscore, no backtick)."""
+- NON usare formattazione Markdown (no asterischi, no underscore, no backtick).
+- Negli avvisi o segnalazioni: indica SOLO il tipo di fenomeno, MAI i valori numerici tra parentesi."""
 
 
 GEMINI_MODEL = "gemini-2.5-flash"
 
 
-def generate_forecast(weather_data, model_used, target_date, api_key, ground_data=None):
+def generate_forecast(weather_data, model_used, date_range_info, api_key, ground_data=None):
     """Invia i dati meteo a Gemini e ottiene le previsioni in linguaggio naturale."""
     print(f"  Modello Gemini: {GEMINI_MODEL}")
 
-    date_it = format_date_it(target_date)
     hourly = weather_data.get("hourly", {})
     daily = weather_data.get("daily", {})
 
     user_prompt = (
-        f"Dati meteo per {LOCATION_NAME}, {date_it}. "
+        f"Dati meteo per {LOCATION_NAME}. {date_range_info}. "
         f"Modello meteorologico utilizzato: {model_used}.\n\n"
-        f"DATI ORARI (dalle 00:00 alle 23:00):\n"
+        f"DATI ORARI:\n"
         f"{json.dumps(hourly, indent=2, ensure_ascii=False)}\n\n"
         f"DATI GIORNALIERI AGGREGATI:\n"
         f"{json.dumps(daily, indent=2, ensure_ascii=False)}\n\n"
@@ -515,15 +501,32 @@ def main(target_chat_id=None):
         sys.exit(1)
 
     now = datetime.now(TZ_ROME)
-    target = (now + timedelta(days=1)).date()
-    target_dt = datetime.combine(target, datetime.min.time()).replace(tzinfo=TZ_ROME)
+    today = now.date()
+    tomorrow = today + timedelta(days=1)
+    today_dt = datetime.combine(today, datetime.min.time()).replace(tzinfo=TZ_ROME)
+    tomorrow_dt = datetime.combine(tomorrow, datetime.min.time()).replace(tzinfo=TZ_ROME)
 
-    print(f"\nData target: {format_date_it(target_dt)}")
+    print(f"\nPeriodo: dalle {now.strftime('%H:%M')} di {format_date_it(today_dt)} a fine {format_date_it(tomorrow_dt)}")
     print(f"Località: {LOCATION_NAME} ({LATITUDE}°N, {LONGITUDE}°E)")
 
-    # 1. Scarica dati meteo
+    # 1. Scarica dati meteo (oggi + domani)
     print("\n📡 Scaricamento dati Open-Meteo...")
-    weather_data, model_used = fetch_forecast_data(target_dt)
+    weather_data, model_used = fetch_forecast_data(today_dt, tomorrow_dt)
+
+    # 1a. Filtra dati orari: dalle ore correnti in poi
+    hourly = weather_data.get("hourly", {})
+    times = hourly.get("time", [])
+    current_hour_str = now.strftime("%Y-%m-%dT%H:00")
+    start_idx = 0
+    for i, t in enumerate(times):
+        if t >= current_hour_str:
+            start_idx = i
+            break
+    if start_idx > 0:
+        for key in hourly:
+            if isinstance(hourly[key], list):
+                hourly[key] = hourly[key][start_idx:]
+        print(f"  ✓ Dati filtrati: da {times[start_idx] if start_idx < len(times) else '?'} ({len(hourly.get('time', []))} ore)")
 
     # 1b. Carica condizioni terreno e termodinamica attuale
     print("\n🌱 Caricamento condizioni terreno...")
@@ -535,10 +538,36 @@ def main(target_chat_id=None):
     else:
         print("  ⚠ Dati terreno non disponibili")
 
+    # 1c. Logica avvisi vento
+    wind_speeds = [v for v in hourly.get("wind_speed_10m", []) if v is not None]
+    max_mean_wind = max(wind_speeds) if wind_speeds else 0
+    wind_alert = ""
+    if max_mean_wind >= 25:
+        wind_alert = "⚠️ AVVISO: VENTO DI BURRASCA FORTE"
+    elif max_mean_wind >= 20:
+        wind_alert = "⚠️ AVVISO: VENTO DI BURRASCA"
+    elif max_mean_wind >= 15:
+        wind_alert = "⚠️ AVVISO: VENTO FORTE"
+
+    # Raffica dalla stazione OMIRL La Spezia centro
+    gust_line = ""
+    omirl_gust = fetch_omirl_hourly_max_gust_laspezia()
+    if omirl_gust is not None:
+        gust_line = f"💨 Raffica La Spezia centro: {omirl_gust} km/h"
+
+    if wind_alert:
+        print(f"  🌬 {wind_alert} (max vento medio previsto: {max_mean_wind:.1f} km/h)")
+    if gust_line:
+        print(f"  {gust_line}")
+
     # 2. Genera previsioni con AI
     print("\n🤖 Generazione previsioni con AI...")
+    date_range_info = (
+        f"Periodo: dalle ore {now.strftime('%H:00')} di {format_date_it(today_dt)} "
+        f"fino alle 23:00 di {format_date_it(tomorrow_dt)}"
+    )
     forecast_text, gemini_model = generate_forecast(
-        weather_data, model_used, target_dt, GEMINI_API_KEY, ground_data
+        weather_data, model_used, date_range_info, GEMINI_API_KEY, ground_data
     )
 
     print(f"\n--- Previsioni ({len(forecast_text)} caratteri) ---")
@@ -550,9 +579,14 @@ def main(target_chat_id=None):
     header = (
         f"🌤 Previsioni Meteo\n"
         f"📍 {LOCATION_NAME}\n"
-        f"📅 {target_dt.strftime('%d/%m/%Y')} ({GIORNI_IT[target_dt.weekday()]})\n"
-        f"🔬 Modello: {model_used} | AI: {gemini_model}\n\n"
+        f"📅 {today_dt.strftime('%d/%m/%Y')} – {tomorrow_dt.strftime('%d/%m/%Y')}\n"
+        f"🔬 Modello: {model_used} | AI: {gemini_model}\n"
     )
+    if wind_alert:
+        header += f"\n{wind_alert}\n"
+    if gust_line:
+        header += f"{gust_line}\n"
+    header += "\n"
 
     # Componi messaggio unico: semplice + tecnica + rischi
     SEP_TECH = "---SEZIONE TECNICA---"
@@ -601,7 +635,7 @@ def main(target_chat_id=None):
     else:
         # Messaggio troppo lungo → dividi in 3 messaggi logici
         print("  ⚠ Messaggio unico troppo lungo, invio in 3 parti...")
-        date_line = f"📅 {target_dt.strftime('%d/%m/%Y')} ({GIORNI_IT[target_dt.weekday()]})"
+        date_line = f"📅 {today_dt.strftime('%d/%m/%Y')} – {tomorrow_dt.strftime('%d/%m/%Y')}"
 
         msg1 = header + simple_part
         msg2 = f"📊 Analisi Tecnica\n📍 {LOCATION_NAME} · {date_line}\n\n{tech_part}" if tech_part else None
