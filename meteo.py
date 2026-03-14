@@ -47,7 +47,7 @@ from config import (
     TUYA_RAIN_CALIBRATION,
     TUYA_RAIN_RATE_CALIBRATION,
 )
-from utils import extract_pressure_hpa, fetch_wmo_station_data_laspezia, fetch_omirl_hourly_max_gust_laspezia
+from utils import extract_pressure_hpa, fetch_omirl_hourly_max_gust_laspezia
 def carica_storico():
     """Carica lo storico delle ultime 24h di misurazioni."""
     if os.path.exists(FILE_STORICO):
@@ -424,8 +424,8 @@ _CACHE_DURATION = 600
 def fetch_station_data_with_retry(max_retries=3):
     """Legge i dati reali dalla stazione meteo Tuya con retry logic."""
     if not ACCESS_ID or not ACCESS_SECRET or not DEVICE_ID:
-        print("✗ TUYA non configurato: provo fallback stazione esterna WMO")
-        return fetch_wmo_station_data_laspezia()
+        print("✗ TUYA non configurato")
+        return None
     for attempt in range(max_retries):
         try:
             token_url = "/v1.0/token?grant_type=1"
@@ -476,8 +476,8 @@ def fetch_station_data_with_retry(max_retries=3):
               f"Td={station_data['dewpoint']:.1f}°C, P={station_data['pressure']:.1f}hPa, "
               f"RH={station_data['humidity']}%")
         return station_data
-    print("⚠️  Tuya non disponibile dopo i retry, provo fallback stazione esterna WMO")
-    return fetch_wmo_station_data_laspezia()
+    print("⚠️  Tuya non disponibile dopo tutti i tentativi")
+    return None
 def fetch_profile_cached():
     """Scarica profilo verticale da Open-Meteo con cache.
     Usa AROME France (Météo-France, 2.5 km) con fallback best_match."""
@@ -957,57 +957,54 @@ def esegui_report(force_send=False, target_chat_id=None):
         target_chat_id: Se fornito, invia solo a questa chat.
     """
     _send_to = [str(target_chat_id)] if target_chat_id else LISTA_CHAT
-    external_station_data = None
     source_info_line = ""
-    def _build_virtual_tuya_payload_from_external(station):
-        return {
-            'temp_current_external': int(round((station.get('temperature') or 0) * 10)),
-            'humidity_outdoor': int(round(station.get('humidity') or 0)),
-            'pressure': float(station.get('pressure') or 1013.0),
-            'windspeed_avg': 0,
-            'dew_point_temp': int(round((station.get('dewpoint') or 0) * 10)),
-            'feellike_temp': int(round((station.get('temperature') or 0) * 10)),
-            'heat_index': int(round((station.get('temperature') or 0) * 10)),
-            'windchill_index': int(round((station.get('temperature') or 0) * 10)),
-            'rain_24h': 0,
-            'rain_1h': 0,
-            'uv_index': 0,
-            'battery_percentage': 0,
-        }
     d = None
+    tuya_retries = 4  # 1 tentativo iniziale + 3 retry
     if ACCESS_ID and ACCESS_SECRET and DEVICE_ID:
-        token_url = "/v1.0/token?grant_type=1"
-        try:
-            r = requests.get(ENDPOINT + token_url, headers=get_auth_headers("GET", token_url), timeout=10).json()
-        except Exception as e:
-            print(f"Errore connessione Tuya (token): {e}")
-            r = None
-        if r and r.get("success") and "result" in r and "access_token" in r["result"]:
+        for attempt in range(tuya_retries):
+            try:
+                token_url = "/v1.0/token?grant_type=1"
+                r = requests.get(ENDPOINT + token_url, headers=get_auth_headers("GET", token_url), timeout=10).json()
+            except Exception as e:
+                print(f"Errore connessione Tuya (token, tentativo {attempt+1}/{tuya_retries}): {e}")
+                if attempt < tuya_retries - 1:
+                    time.sleep(2 ** attempt)
+                continue
+            if not r or not r.get("success") or "result" not in r or "access_token" not in r["result"]:
+                print(f"Errore Token Tuya (tentativo {attempt+1}/{tuya_retries}): {r}")
+                if attempt < tuya_retries - 1:
+                    time.sleep(2 ** attempt)
+                continue
             token = r["result"]["access_token"]
             status_url = f"/v1.0/devices/{DEVICE_ID}/status"
             try:
                 res = requests.get(ENDPOINT + status_url, headers=get_auth_headers("GET", status_url, token), timeout=10).json()
             except Exception as e:
-                print(f"Errore connessione Tuya (status): {e}")
-                res = None
+                print(f"Errore connessione Tuya (status, tentativo {attempt+1}/{tuya_retries}): {e}")
+                if attempt < tuya_retries - 1:
+                    time.sleep(2 ** attempt)
+                continue
             if res and res.get("success") and "result" in res:
                 d = {item['code']: item['value'] for item in res.get("result", [])}
+                break
             else:
-                print(f"Errore lettura device Tuya: risposta non valida. Dettaglio: {res}")
-        else:
-            print(f"Errore Token Tuya: risposta non valida o credenziali errate. Dettaglio: {r}")
+                print(f"Errore lettura device Tuya (tentativo {attempt+1}/{tuya_retries}): {res}")
+                if attempt < tuya_retries - 1:
+                    time.sleep(2 ** attempt)
     else:
-        print("✗ TUYA non configurato: uso fallback stazione esterna WMO")
+        print("✗ TUYA non configurato")
     if d is None:
-        external_station_data = fetch_wmo_station_data_laspezia()
-        if not external_station_data:
-            print("✗ Nessun dato disponibile né da Tuya né da stazioni WMO esterne")
-            return
-        d = _build_virtual_tuya_payload_from_external(external_station_data)
-        source_info_line = (
-            "⚠️ *Dati da stazione meteo esterna WMO*\n"
-            f"Fonte: {external_station_data.get('station_id')} — {external_station_data.get('station_name')}\n"
-        )
+        print("✗ Impossibile ricevere dati dalla stazione Tuya dopo tutti i tentativi")
+        # Invia messaggio di errore via Telegram
+        if TELEGRAM_TOKEN and _send_to:
+            err_msg = "⚠️ Errore nel resoconto meteo orario: impossibile ricevere dati dalla stazione meteorologica."
+            url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+            for chat_id in _send_to:
+                try:
+                    requests.post(url_tg, data={'chat_id': chat_id, 'text': err_msg}, timeout=10)
+                except Exception:
+                    pass
+        return
     print("DATI GREZZI RICEVUTI:", json.dumps(d, indent=4))
     temp_ext = d.get('temp_current_external', 0) / 10
     umid_ext = d.get('humidity_outdoor', 0)
