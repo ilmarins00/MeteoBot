@@ -22,7 +22,6 @@ from config import (
     GEMINI_API_KEY,
     LATITUDE, LONGITUDE,
 )
-from utils import fetch_omirl_hourly_max_gust_laspezia
 
 TZ_ROME = ZoneInfo("Europe/Rome")
 LOCATION_NAME = "La Spezia"
@@ -145,6 +144,13 @@ def load_ground_conditions():
                 "timestamp": sbcape.get("timestamp"),
             }
 
+        arpal = state.get("arpal", {})
+        if arpal:
+            ground["allerta_arpal_attuale"] = {
+                "max_livello": arpal.get("max_livello"),
+                "dettaglio": arpal.get("dettaglio"),
+                "vigilanza": arpal.get("vigilanza"),
+            }
     except Exception as e:
         print(f"  ⚠ Impossibile caricare state.json: {e}")
 
@@ -349,18 +355,20 @@ DEVI iniziare la sezione con ESATTAMENTE una di queste quattro righe (senza virg
 - ARANCIONE se c'è un rischio probabile
 - ROSSO se il rischio è molto probabile o severo
 
-SOGLIE DI RIFERIMENTO:
-- Precipitazione intensa: >= 15 mm/h moderata, >= 30 mm/h forte, >= 50 mm/h molto forte
-- Accumulo 24h significativo: >= 80 mm
-- Vento forte: >= 50 km/h, burrasca: >= 80 km/h
-- Caldo estremo: >= 35°C
-- Gelo: <= 0°C
-- Neve significativa: >= 5 cm
-- Suolo molto saturo (API >= 185 mm): rischio idrogeologico elevato
+SOGLIE DI RIFERIMENTO ARPAL (Agenzia Regionale Protezione Ambiente Liguria):
+- Pioggia oraria: Giallo >= 15 mm/h, Arancione >= 30 mm/h, Rosso >= 50 mm/h
+- Pioggia cumulata 24h: Giallo >= 80 mm, Arancione >= 150 mm, Rosso >= 250 mm
+- Vento/raffiche: Giallo >= 50 km/h, Arancione >= 80 km/h, Rosso >= 100 km/h
+- Caldo: Giallo >= 35°C, Arancione >= 38°C, Rosso >= 40°C
+- Gelo: Giallo <= 0°C, Arancione <= -5°C, Rosso <= -10°C
+- Neve: Giallo >= 5 cm, Arancione >= 15 cm, Rosso >= 30 cm
+- Mareggiata (pressione): Giallo <= 998 hPa, Arancione <= 995 hPa, Rosso <= 990 hPa
+- Suolo molto saturo (API): >= 185 mm → rischio idrogeologico elevato
 
 DATI INTEGRATIVI disponibili nel prompt:
-- Se presenti i dati del terreno: usa la saturazione del suolo (%) e l'API (mm) per valutare il rischio idrogeologico.
-- Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo.
+- Se presenti i dati del terreno: usa la saturazione del suolo (%) e l'API (mm) per valutare il rischio idrogeologico. Un terreno saturo (>85%) amplifica enormemente il rischio di allagamenti e frane anche con piogge moderate.
+- Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo. Confrontali con i valori previsti dal modello.
+- Se presente l'allerta ARPAL attuale: menzionala come contesto.
 
 REGOLA FONDAMENTALE SULLA BREVITÀ:
 - Se NON ci sono rischi significativi, scrivi SOLO:
@@ -538,28 +546,6 @@ def main(target_chat_id=None):
     else:
         print("  ⚠ Dati terreno non disponibili")
 
-    # 1c. Logica avvisi vento
-    wind_speeds = [v for v in hourly.get("wind_speed_10m", []) if v is not None]
-    max_mean_wind = max(wind_speeds) if wind_speeds else 0
-    wind_alert = ""
-    if max_mean_wind >= 25:
-        wind_alert = "⚠️ AVVISO: VENTO DI BURRASCA FORTE"
-    elif max_mean_wind >= 20:
-        wind_alert = "⚠️ AVVISO: VENTO DI BURRASCA"
-    elif max_mean_wind >= 15:
-        wind_alert = "⚠️ AVVISO: VENTO FORTE"
-
-    # Raffica dalla stazione OMIRL La Spezia centro
-    gust_line = ""
-    omirl_gust = fetch_omirl_hourly_max_gust_laspezia()
-    if omirl_gust is not None:
-        gust_line = f"💨 Raffica La Spezia centro: {omirl_gust} km/h"
-
-    if wind_alert:
-        print(f"  🌬 {wind_alert} (max vento medio previsto: {max_mean_wind:.1f} km/h)")
-    if gust_line:
-        print(f"  {gust_line}")
-
     # 2. Genera previsioni con AI
     print("\n🤖 Generazione previsioni con AI...")
     date_range_info = (
@@ -580,13 +566,8 @@ def main(target_chat_id=None):
         f"🌤 Previsioni Meteo\n"
         f"📍 {LOCATION_NAME}\n"
         f"📅 {today_dt.strftime('%d/%m/%Y')} – {tomorrow_dt.strftime('%d/%m/%Y')}\n"
-        f"🔬 Modello: {model_used} | AI: {gemini_model}\n"
+        f"🔬 Modello: {model_used} | AI: {gemini_model}\n\n"
     )
-    if wind_alert:
-        header += f"\n{wind_alert}\n"
-    if gust_line:
-        header += f"{gust_line}\n"
-    header += "\n"
 
     # Componi messaggio unico: semplice + tecnica + rischi
     SEP_TECH = "---SEZIONE TECNICA---"
