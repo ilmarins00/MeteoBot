@@ -1,37 +1,35 @@
 {
     "meteo": {
-        "api_ultimo_valore": 149.09,
+        "api_ultimo_valore": 149.06,
         "sat_base_oggi": 149.1123925037648,
         "etp_accumulata_ieri": 0.66,
         "data_calcolo": "2026-03-14",
-        "ultimo_update_ora": "2026-03-14 00:58:29.171478+01:00",
-        "ultimo_etp_giornaliera": 0.69,
-        "ultimo_etr_giornaliera": 0.66,
+        "ultimo_update_ora": "2026-03-14 01:58:30.536990+01:00",
+        "ultimo_etp_giornaliera": 0.68,
+        "ultimo_etr_giornaliera": 0.65,
         "ultima_saturazione_perc": 74.5,
-        "t_min_oggi": 8.9,
+        "t_min_oggi": 8.3,
         "t_max_oggi": 8.9,
         "ultima_pressione": 1013.2,
         "ultimi_avvisi": [],
-        "n_run_oggi": 1,
+        "n_run_oggi": 2,
         "etp_media_oggi": 0.66,
         "ultimo_kc": 0.45,
         "ultimo_ke": 0.19,
         "ultimo_kcb": 0.25,
-        "ultimo_ks": 0.96,
-        "ultimo_invio_slot": "event:47a5dc8e5f2d",
-        "ultimo_invio_ts": "2026-03-14T00:58:29.171478+01:00"
+        "ultimo_ks": 0.96
     },
     "sbcape": {
-        "sbcape": 0.0,
-        "mucape": null,
-        "mu_level": null,
-        "cin": 0.0,
-        "lifted_index": 8.7,
-        "lcl_pressure": 970.8,
-        "lfc_pressure": null,
-        "el_pressure": null,
-        "bulk_shear": 0.1,
-        "timestamp": "2026-03-13T23:58:29.905171",
+        "sbcape": 2.19,
+        "mucape": 23.9,
+        "mu_level": 950.4,
+        "cin": -968.18,
+        "lifted_index": 8.07,
+        "lcl_pressure": 977.8,
+        "lfc_pressure": 940.4,
+        "el_pressure": 930.4,
+        "bulk_shear": 0.2,
+        "timestamp": "2026-03-14T00:58:31.199153",
         "location": "La Spezia (44.12514, 9.79706) - 100m",
         "unit": "J/kg",
         "calculation_method": "Advanced thermodynamic integration v2.0",
@@ -39,14 +37,17 @@
         "profile_model": "AROME France (2.5km)",
         "parameters": {
             "temperature_surface": 7.8,
-            "dewpoint_surface": 5.8,
-            "rh_surface": 87.0,
-            "pressure_surface": 1000.9,
-            "mixing_ratio_surface": 5.78,
+            "dewpoint_surface": 6.3,
+            "rh_surface": 90.0,
+            "pressure_surface": 1000.4,
+            "mixing_ratio_surface": 5.99,
             "profile_levels": 51,
             "interpolated": true
         },
-        "severe_score": 2
+        "warnings": [
+            "⚠️  CIN molto forte (-968 J/kg) - convezione fortemente inibita"
+        ],
+        "severe_score": 0
     },
     "arpal": {
         "dettaglio": {
