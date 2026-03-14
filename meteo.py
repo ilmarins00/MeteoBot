@@ -1315,7 +1315,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             "pioggia_24h": pioggia_24h,
             "umidita": umid_ext,
             "vento": v_medio,
-            "raffica": _raffica_attuale,
+            "raffica": raffica,
             "dew_point": dew_point,
             "api": sat_visualizzato,
             "sbcape": sbcape_value,
@@ -1462,7 +1462,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             f"Pioggia 24h: {pioggia_24h} mm\n\n"
             f"🌬️ *VENTO*\n"
             f"Velocità media: {v_medio} km/h\n"
-            f"Raffica max (1h): {raffica} km/h ({raffica_source})\n\n"
+            f"Raffica max (1h): {raffica} km/h\n\n"
             f"🔵 *PRESSIONE ATMOSFERICA*\n"
             f"Livello mare: {pressione_msl} hPa {simbolo_baro}\n\n"
             f"☀️ *RADIAZIONE*\n"
