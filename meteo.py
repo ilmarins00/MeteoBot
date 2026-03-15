@@ -1019,22 +1019,44 @@ def esegui_report(force_send=False, target_chat_id=None):
         T_k = temp_ext + 273.15 if -50 < temp_ext < 60 else 288.15
         pressione_msl = round(pressione_locale * math.exp(g_val * h / (Rd * T_k)), 1)
         v_medio = d.get('windspeed_avg', 0) / 10
+        raffica_istantanea_tuya = d.get('windspeed_gust', 0) / 10
         # Raffica max oraria dalla stazione OMIRL La Spezia centro
         _omirl_gust = fetch_omirl_hourly_max_gust_laspezia()
         if _omirl_gust is not None:
             raffica = _omirl_gust
             raffica_source = "OMIRL La Spezia"
         else:
-            # Fallback: istantanea Tuya
-            raffica = d.get('windspeed_gust', 0) / 10
-            raffica_source = "Tuya (istantanea)"
-            print(f"⚠️  OMIRL non disponibile, uso raffica istantanea Tuya: {raffica} km/h")
+            # Fallback temporaneo: verrà calcolata max ultima ora da storico Tuya
+            raffica = raffica_istantanea_tuya
+            raffica_source = "Tuya (max ultima ora da storico)"
         pioggia_24h_sensore = (d.get('rain_24h', 0) / 10) * TUYA_RAIN_CALIBRATION
         pioggia_1h = (d.get('rain_1h', 0) / 10) * TUYA_RAIN_CALIBRATION
         rain_rate = (d.get('rain_rate', 0) / 10) * TUYA_RAIN_RATE_CALIBRATION
         print(f"  Precipitazioni (calibrate): pioggia_1h={pioggia_1h} mm, rain_rate={rain_rate} mm/h, sensore_24h={pioggia_24h_sensore} mm")
         now_it = datetime.now(TZ_ROME)
         _storico_tmp = carica_storico()
+        if _omirl_gust is None:
+            _cutoff_1h = now_it - timedelta(hours=1)
+            _raffiche_1h = [max(0.0, float(raffica_istantanea_tuya))]
+            for _s in sorted(_storico_tmp, key=lambda x: x.get("ts", "")):
+                _ts_str = _s.get("ts")
+                if not _ts_str:
+                    continue
+                try:
+                    _ts_dt = datetime.fromisoformat(_ts_str)
+                    if _ts_dt.tzinfo is None:
+                        _ts_dt = _ts_dt.replace(tzinfo=TZ_ROME)
+                    if _ts_dt >= _cutoff_1h:
+                        _raffica_sample = _s.get("raffica_istantanea")
+                        if isinstance(_raffica_sample, (int, float)) and _raffica_sample >= 0:
+                            _raffiche_1h.append(float(_raffica_sample))
+                except Exception:
+                    continue
+            raffica = round(max(_raffiche_1h), 1)
+            print(
+                f"⚠️  OMIRL non disponibile, uso raffica max ultima ora da Tuya/storico: "
+                f"{raffica} km/h"
+            )
         _cutoff_24h = now_it - timedelta(hours=24)
         _pioggia_24h_somma = 0.0
         _ts_precedente = None
@@ -1316,6 +1338,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             "umidita": umid_ext,
             "vento": v_medio,
             "raffica": raffica,
+            "raffica_istantanea": round(raffica_istantanea_tuya, 1),
             "dew_point": dew_point,
             "api": sat_visualizzato,
             "sbcape": sbcape_value,
@@ -1481,7 +1504,7 @@ def esegui_report(force_send=False, target_chat_id=None):
         )
         ora_corrente = now_it.hour
         minuto_corrente = now_it.minute
-        orari_report = [5, 11, 17, 23]
+        orari_report = [5, 9, 11, 15, 20]
         minuti_report = [58, 59]
         e_orario_programmato = ora_corrente in orari_report and minuto_corrente in minuti_report
         eventi_significativi = []
@@ -1489,6 +1512,8 @@ def esegui_report(force_send=False, target_chat_id=None):
         ultimo_invio_ts_raw = dati_salvati.get("ultimo_invio_ts")
         if pioggia_1h >= thresholds.RAIN_SIGNIFICANT:
             eventi_significativi.append(f"Pioggia: {pioggia_1h} mm/h")
+        if raffica >= 40:
+            eventi_significativi.append(f"Raffica forte (1h): {raffica} km/h")
         if temp_ext <= thresholds.TEMP_FREEZING:
             eventi_significativi.append(f"Temperatura bassa: {temp_ext}°C")
         if temp_ext >= thresholds.TEMP_HOT:

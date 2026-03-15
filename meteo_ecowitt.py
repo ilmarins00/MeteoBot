@@ -1058,6 +1058,7 @@ def esegui_report(force_send=False, target_chat_id=None):
     _send_to = [str(target_chat_id)] if target_chat_id else LISTA_CHAT
     source_info_line = ""
     ecowitt = fetch_ecowitt_data()
+    ecowitt_disponibile = ecowitt is not None
     if ecowitt is None:
         external_station_data = fetch_wmo_station_data_laspezia()
         if not external_station_data:
@@ -1074,12 +1075,19 @@ def esegui_report(force_send=False, target_chat_id=None):
     umid_ext = ecowitt['humidity']
     pressione_locale = ecowitt['pressure']
     v_medio = ecowitt['wind_speed']
-    raffica_1h = fetch_ecowitt_hourly_max_gust()
-    if raffica_1h is not None:
-        raffica = raffica_1h
+    raffica_ecowitt_valida = False
+    if ecowitt_disponibile:
+        raffica_1h = fetch_ecowitt_hourly_max_gust()
+        if raffica_1h is not None:
+            raffica = raffica_1h
+            raffica_ecowitt_valida = True
+        else:
+            raffica = ecowitt['wind_gust']
+            raffica_ecowitt_valida = True
+            print(f"⚠️  Uso raffica istantanea Ecowitt (history non disponibile): {raffica} km/h")
     else:
-        raffica = ecowitt['wind_gust']  
-        print(f"⚠️  Uso raffica istantanea Ecowitt (history non disponibile): {raffica} km/h")
+        raffica = 0.0
+        print("⚠️  Ecowitt non disponibile: raffica smart disabilitata per sorgente esterna")
     dew_point = ecowitt['dewpoint']
     feel_like = ecowitt['feels_like']
     heat_index = ecowitt['heat_index']
@@ -1513,7 +1521,7 @@ def esegui_report(force_send=False, target_chat_id=None):
     )
     ora_corrente = now_it.hour
     minuto_corrente = now_it.minute
-    orari_report = [5, 11, 17, 23]
+    orari_report = [5, 9, 11, 15, 20]
     minuti_report = [58, 59]
     e_orario_programmato = ora_corrente in orari_report and minuto_corrente in minuti_report
     eventi_significativi = []
@@ -1521,6 +1529,8 @@ def esegui_report(force_send=False, target_chat_id=None):
     ultimo_invio_ts_raw = dati_salvati.get("ultimo_invio_ts")
     if pioggia_1h >= thresholds.RAIN_SIGNIFICANT:
         eventi_significativi.append(f"Pioggia: {pioggia_1h} mm/h")
+    if raffica_ecowitt_valida and raffica >= 40:
+        eventi_significativi.append(f"Raffica forte (1h): {raffica} km/h")
     if temp_ext <= thresholds.TEMP_FREEZING:
         eventi_significativi.append(f"Temperatura bassa: {temp_ext}°C")
     if temp_ext >= thresholds.TEMP_HOT:

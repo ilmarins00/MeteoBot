@@ -161,7 +161,7 @@ def load_ground_conditions():
             storico = json.load(f)
         if storico:
             ultimo = storico[-1]
-            ground["suolo"]["pioggia_24h_stazione"] = ultimo.get("pioggia_24h")
+            ground.setdefault("suolo", {})["pioggia_24h_stazione"] = ultimo.get("pioggia_24h")
             ground["osservazioni_recenti"] = {
                 "temp": ultimo.get("temp"),
                 "umidita": ultimo.get("umidita"),
