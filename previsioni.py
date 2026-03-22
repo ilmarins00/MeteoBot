@@ -91,6 +91,14 @@ MODELS = [
     ("icon_eu", "ICON-EU", 1),
 ]
 
+MODEL_HORIZONS = {
+    "meteofrance_arome_france_hd": 3,   # ~51h → richiedi 3 gg, restituisce ciò che ha
+    "meteofrance_arome_france":     3,   # ~48h
+    "icon_eu":                      5,   # ~120h
+}
+
+MIN_FUTURE_HOURS = 24   # soglia minima di copertura futura considerata "fresca"
+MAX_START_LAG_H  = 6    # ore massime di ritardo sull'inizio dei dati
 
 # ── Utilità ──────────────────────────────────────────────────────────────
 
@@ -253,21 +261,60 @@ def _fetch_pressure_levels(start_date_str, end_date_str):
         print(f"  ⚠ Errore fetch supplementare: {e}")
         return {}
 
+def check_data_freshness(data, model_used, now):
+    """
+    Controlla che i dati non siano obsoleti.
+    Restituisce (ok: bool, messaggio: str).
+    """
+    times = data.get("hourly", {}).get("time", [])
+    if not times:
+        return False, "Nessun dato orario disponibile"
 
-def fetch_forecast_data(start_date, end_date):
-    """Scarica dati orari da Open-Meteo provando i modelli in ordine di preferenza.
-    Integra automaticamente dati a livelli di pressione supplementari da GFS."""
+    # Parsing primo e ultimo timestamp
+    fmt = "%Y-%m-%dT%H:%M"
+    try:
+        first_dt = datetime.strptime(times[0],  fmt).replace(tzinfo=TZ_ROME)
+        last_dt  = datetime.strptime(times[-1], fmt).replace(tzinfo=TZ_ROME)
+    except ValueError:
+        # Prova senza minuti (formato "2025-03-22T06:00")
+        fmt = "%Y-%m-%dT%H:%M"
+        first_dt = datetime.fromisoformat(times[0]).replace(tzinfo=TZ_ROME)
+        last_dt  = datetime.fromisoformat(times[-1]).replace(tzinfo=TZ_ROME)
+
+    hours_ahead  = (last_dt  - now).total_seconds() / 3600
+    hours_behind = (now - first_dt).total_seconds() / 3600
+
+    if hours_behind > MAX_START_LAG_H:
+        return False, (
+            f"Dati potenzialmente obsoleti [{model_used}]: "
+            f"primo dato {hours_behind:.0f}h fa ({times[0]})"
+        )
+    if hours_ahead < MIN_FUTURE_HOURS:
+        return False, (
+            f"Copertura insufficiente [{model_used}]: "
+            f"solo {hours_ahead:.0f}h di previsione futura (min. {MIN_FUTURE_HOURS}h)"
+        )
+
+    return True, (
+        f"Run aggiornata: {len(times)} ore totali, "
+        f"copertura futura {hours_ahead:.0f}h (fino a {times[-1]})"
+    )
+
+def fetch_forecast_data(start_date):
+    """Scarica dati da Open-Meteo usando l'orizzonte massimo per ogni modello."""
     start_str = start_date.strftime("%Y-%m-%d")
-    end_str = end_date.strftime("%Y-%m-%d")
 
     for model_name, display, max_retries in MODELS:
+        horizon_days = MODEL_HORIZONS.get(model_name, 2)
+        end_str = (start_date + timedelta(days=horizon_days)).strftime("%Y-%m-%d")
+        print(f"  [{display}] Orizzonte richiesto: {horizon_days} giorni → {end_str}")
+
         for attempt in range(1, max_retries + 1):
             print(f"  [{display}] Tentativo {attempt}/{max_retries}...")
             try:
                 try:
                     data = _fetch_openmeteo(start_str, end_str, model_name, HOURLY_VARS)
                 except Exception:
-                    # Se il set completo fallisce, riprova con variabili essenziali
                     data = _fetch_openmeteo(start_str, end_str, model_name, HOURLY_VARS_CORE)
 
                 hours = data.get("hourly", {}).get("time", [])
@@ -276,12 +323,10 @@ def fetch_forecast_data(start_date, end_date):
                     if attempt < max_retries:
                         time.sleep(2)
                         continue
-                    break  # Dati incompleti, prova modello successivo
+                    break
 
-                # Rimuovi variabili senza dati
                 data = _strip_null_vars(data)
 
-                # Integra livelli di pressione supplementari (GFS/best_match)
                 print("  📊 Richiesta livelli di pressione supplementari...")
                 extra = _fetch_pressure_levels(start_str, end_str)
                 if extra:
@@ -293,6 +338,7 @@ def fetch_forecast_data(start_date, end_date):
                 print(f"  ✓ {display}: {len(hours)} ore, "
                       f"{len([k for k in data.get('hourly', {}) if k != 'time'])} variabili totali")
                 return data, display
+
             except Exception as e:
                 print(f"  ✗ Errore: {e}")
                 if attempt < max_retries:
@@ -519,7 +565,14 @@ def main(target_chat_id=None):
 
     # 1. Scarica dati meteo (oggi + domani)
     print("\n📡 Scaricamento dati Open-Meteo...")
-    weather_data, model_used = fetch_forecast_data(today_dt, tomorrow_dt)
+    weather_data, model_used = fetch_forecast_data(today_dt)
+
+    print("\n🔍 Verifica aggiornamento dati...")
+fresh_ok, fresh_msg = check_data_freshness(weather_data, model_used, now)
+if fresh_ok:
+    print(f"  ✓ {fresh_msg}")
+else:
+    print(f"  ⚠ ATTENZIONE: {fresh_msg}")
 
     # 1a. Filtra dati orari: dalle ore correnti in poi
     hourly = weather_data.get("hourly", {})
