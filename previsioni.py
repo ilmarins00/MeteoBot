@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 """
 Previsioni Meteo – Generazione automatica con AI
-
-Scarica dati meteo orari da Open-Meteo per il giorno successivo
-(modello AROME, fallback ICON-EU) e li invia a Google Gemini
-per generare previsioni in linguaggio naturale.
-
-Uso:
-    python previsioni.py          # Esecuzione standard (workflow manuale)
 """
 import json
 import sys
@@ -32,9 +25,6 @@ MESI_IT = [
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
 ]
 
-
-# ── Open-Meteo: variabili richieste ─────────────────────────────────────
-
 STATE_FILE = "state.json"
 STORICO_FILE = "storico_24h.json"
 
@@ -49,7 +39,6 @@ HOURLY_VARS = [
     "sunshine_duration",
     "shortwave_radiation", "direct_radiation", "diffuse_radiation",
     "freezing_level_height", "vapour_pressure_deficit", "is_day",
-    # Livelli di pressione supportati da AROME HD
     "temperature_850hPa", "temperature_500hPa",
     "wind_speed_850hPa", "wind_speed_500hPa",
     "wind_direction_850hPa", "wind_direction_500hPa",
@@ -63,7 +52,6 @@ HOURLY_VARS_CORE = [
     "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "is_day",
 ]
 
-# Variabili aggiuntive a livelli di pressione (richieste con modello GFS)
 PRESSURE_LEVEL_VARS = [
     "temperature_925hPa", "temperature_700hPa", "temperature_300hPa",
     "wind_speed_925hPa", "wind_speed_700hPa", "wind_speed_300hPa",
@@ -84,38 +72,43 @@ DAILY_VARS = [
     "wind_direction_10m_dominant",
 ]
 
-# Modelli in ordine di preferenza: (nome API, nome display, tentativi max)
 MODELS = [
     ("meteofrance_arome_france_hd", "AROME HD", 3),
     ("meteofrance_arome_france", "AROME", 3),
     ("icon_eu", "ICON-EU", 1),
 ]
 
+# Finestra di richiesta in giorni. Deve superare l'orizzonte nominale
+# del modello per permettere l'inferenza dell'orario di run tramite i null di coda.
 MODEL_HORIZONS = {
-    "meteofrance_arome_france_hd": 3,   # ~51h → richiedi 3 gg, restituisce ciò che ha
-    "meteofrance_arome_france":     3,   # ~48h
-    "icon_eu":                      5,   # ~120h
+    "meteofrance_arome_france_hd": 3,   # 72h richiesti > 51h nominali
+    "meteofrance_arome_france":     3,   # 72h richiesti > 48h nominali
+    "icon_eu":                      5,   # 120h richiesti = orizzonte nominale
 }
 
-MIN_FUTURE_HOURS = 24   # soglia minima di copertura futura considerata "fresca"
-MAX_START_LAG_H  = 6    # ore massime di ritardo sull'inizio dei dati
+# Orizzonti nominali in ore. Usati per inferire run_init:
+#   run_init ≈ last_valid_timestamp − horizon_hours
+MODEL_HORIZONS_HOURS = {
+    "meteofrance_arome_france_hd": 51,
+    "meteofrance_arome_france":    48,
+    "icon_eu":                     120,
+}
 
-# ── Utilità ──────────────────────────────────────────────────────────────
+# Soglia di obsolescenza. AROME gira ogni 6h con ~3-4h di latenza → 12h margine ok.
+MAX_RUN_AGE_H = 12
+
+MIN_FUTURE_HOURS = 24
+
 
 def format_date_it(dt):
-    """Formatta una data in italiano (es. 'mercoledì 12 marzo 2025')."""
     return f"{GIORNI_IT[dt.weekday()]} {dt.day} {MESI_IT[dt.month - 1]} {dt.year}"
 
 
-# ── Open-Meteo ───────────────────────────────────────────────────────────
-
 def load_ground_conditions():
-    """Carica condizioni del terreno e dati termodinamici attuali da state.json e storico_24h."""
     ground = {}
     import os
     base = os.path.dirname(os.path.abspath(__file__))
 
-    # state.json
     state_path = os.path.join(base, STATE_FILE)
     try:
         with open(state_path) as f:
@@ -162,7 +155,6 @@ def load_ground_conditions():
     except Exception as e:
         print(f"  ⚠ Impossibile caricare state.json: {e}")
 
-    # storico_24h.json — ultimo record
     storico_path = os.path.join(base, STORICO_FILE)
     try:
         with open(storico_path) as f:
@@ -189,7 +181,6 @@ def load_ground_conditions():
 
 
 def _fetch_openmeteo(start_date_str, end_date_str, model_name, hourly_vars):
-    """Singola richiesta a Open-Meteo. Solleva eccezione in caso di errore."""
     params = {
         "latitude": LATITUDE,
         "longitude": LONGITUDE,
@@ -211,7 +202,6 @@ def _fetch_openmeteo(start_date_str, end_date_str, model_name, hourly_vars):
 
 
 def _strip_null_vars(data):
-    """Rimuove dalle hourly le variabili che hanno tutti valori None (non supportate)."""
     hourly = data.get("hourly", {})
     keys_to_remove = []
     for key, vals in hourly.items():
@@ -227,8 +217,6 @@ def _strip_null_vars(data):
 
 
 def _fetch_pressure_levels(start_date_str, end_date_str):
-    """Chiamata supplementare senza modello specifico (best_match/GFS) per dati
-    a livelli di pressione aggiuntivi (925, 700, 300 hPa, umidità in quota)."""
     try:
         params = {
             "latitude": LATITUDE,
@@ -247,7 +235,6 @@ def _fetch_pressure_levels(start_date_str, end_date_str):
             print(f"  ⚠ Errore livelli pressione supplementari: {data.get('reason')}")
             return {}
         hourly = data.get("hourly", {})
-        # Restituisci solo le variabili con dati validi
         result = {}
         for key, vals in hourly.items():
             if key == "time":
@@ -262,43 +249,82 @@ def _fetch_pressure_levels(start_date_str, end_date_str):
         return {}
 
 
-def check_data_freshness(data, model_used, now):
+def check_data_freshness(data, model_api_name, model_display, now):
     """
-    Controlla che i dati non siano obsoleti.
+    Inferisce l'orario di inizializzazione della run NWP dall'ultimo timestamp
+    non-null di temperature_2m, poi verifica che la run non sia obsoleta.
+
+    Principio: la finestra richiesta (MODEL_HORIZONS in giorni) è volutamente
+    più larga dell'orizzonte nominale del modello (MODEL_HORIZONS_HOURS).
+    Le ore oltre il cutoff reale della run tornano come None in temperature_2m.
+    L'ultimo indice non-null è la fine effettiva della previsione; da lì:
+
+        run_init ≈ last_valid_timestamp − orizzonte_nominale_ore
+
+    Se (now − run_init) > MAX_RUN_AGE_H la run è considerata obsoleta.
+
     Restituisce (ok: bool, messaggio: str).
     """
-    times = data.get("hourly", {}).get("time", [])
+    hourly = data.get("hourly", {})
+    times = hourly.get("time", [])
     if not times:
         return False, "Nessun dato orario disponibile"
 
+    temps = hourly.get("temperature_2m", [])
+    if not temps:
+        return False, "temperature_2m non disponibile, impossibile verificare freshness"
+
+    # Trova l'ultimo indice con valore non-null
+    last_valid_idx = None
+    for i in range(len(temps) - 1, -1, -1):
+        if temps[i] is not None:
+            last_valid_idx = i
+            break
+
+    if last_valid_idx is None:
+        return False, "Tutti i valori di temperature_2m sono null"
+
     try:
-        first_dt = datetime.fromisoformat(times[0]).replace(tzinfo=TZ_ROME)
-        last_dt  = datetime.fromisoformat(times[-1]).replace(tzinfo=TZ_ROME)
+        last_valid_dt = datetime.fromisoformat(times[last_valid_idx]).replace(tzinfo=TZ_ROME)
     except ValueError:
-        return False, f"Formato timestamp non riconosciuto: {times[0]}"
+        return False, f"Formato timestamp non riconosciuto: {times[last_valid_idx]}"
 
-    hours_ahead  = (last_dt  - now).total_seconds() / 3600
-    hours_behind = (now - first_dt).total_seconds() / 3600
+    hours_ahead = (last_valid_dt - now).total_seconds() / 3600
 
-    if hours_behind > MAX_START_LAG_H:
-        return False, (
-            f"Dati potenzialmente obsoleti [{model_used}]: "
-            f"primo dato {hours_behind:.0f}h fa ({times[0]})"
-        )
     if hours_ahead < MIN_FUTURE_HOURS:
         return False, (
-            f"Copertura insufficiente [{model_used}]: "
-            f"solo {hours_ahead:.0f}h di previsione futura (min. {MIN_FUTURE_HOURS}h)"
+            f"Copertura insufficiente [{model_display}]: "
+            f"solo {hours_ahead:.0f}h future (ultimo dato valido: {times[last_valid_idx]})"
+        )
+
+    horizon_h = MODEL_HORIZONS_HOURS.get(model_api_name)
+    if horizon_h is None:
+        return True, (
+            f"Copertura futura {hours_ahead:.0f}h [{model_display}] "
+            f"(orizzonte nominale non noto, età run non verificabile)"
+        )
+
+    run_dt = last_valid_dt - timedelta(hours=horizon_h)
+    age_h = (now - run_dt).total_seconds() / 3600
+
+    if age_h > MAX_RUN_AGE_H:
+        return False, (
+            f"Run obsoleta [{model_display}]: "
+            f"inizializzata ~{run_dt.strftime('%d/%m %H:%M')} ({age_h:.0f}h fa), "
+            f"attesa run più recente (orizzonte {horizon_h}h, "
+            f"ultimo dato valido: {times[last_valid_idx]})"
         )
 
     return True, (
-        f"Run aggiornata: {len(times)} ore totali, "
-        f"copertura futura {hours_ahead:.0f}h (fino a {times[-1]})"
+        f"Run aggiornata [{model_display}]: "
+        f"inizializzata ~{run_dt.strftime('%d/%m %H:%M')} ({age_h:.1f}h fa), "
+        f"copertura futura {hours_ahead:.0f}h (fino a {times[last_valid_idx]})"
     )
 
 
 def fetch_forecast_data(start_date):
-    """Scarica dati da Open-Meteo usando l'orizzonte massimo per ogni modello."""
+    """Scarica dati da Open-Meteo usando l'orizzonte massimo per ogni modello.
+    Restituisce (data, model_api_name, model_display_name)."""
     start_str = start_date.strftime("%Y-%m-%d")
 
     for model_name, display, max_retries in MODELS:
@@ -334,7 +360,7 @@ def fetch_forecast_data(start_date):
 
                 print(f"  ✓ {display}: {len(hours)} ore, "
                       f"{len([k for k in data.get('hourly', {}) if k != 'time'])} variabili totali")
-                return data, display
+                return data, model_name, display
 
             except Exception as e:
                 print(f"  ✗ Errore: {e}")
@@ -345,8 +371,6 @@ def fetch_forecast_data(start_date):
 
     raise RuntimeError("Impossibile ottenere dati meteo da nessun modello Open-Meteo")
 
-
-# ── Google Gemini ────────────────────────────────────────────────────────
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
@@ -435,7 +459,6 @@ GEMINI_MODEL = "gemini-2.5-flash"
 
 
 def generate_forecast(weather_data, model_used, date_range_info, api_key, ground_data=None):
-    """Invia i dati meteo a Gemini e ottiene le previsioni in linguaggio naturale."""
     print(f"  Modello Gemini: {GEMINI_MODEL}")
 
     hourly = weather_data.get("hourly", {})
@@ -468,7 +491,6 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
         },
     }
 
-    # Usa Gemini Flash con retry
     url = f"{GEMINI_API_BASE}/models/{GEMINI_MODEL}:generateContent?key={api_key}"
     max_retries = 3
     for attempt in range(1, max_retries + 1):
@@ -501,11 +523,7 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
     return text.strip(), GEMINI_MODEL
 
 
-# ── Telegram ─────────────────────────────────────────────────────────────
-
 def send_telegram(text, target_chat_id=None):
-    """Invia le previsioni ai chat Telegram configurati (o a uno specifico).
-    Restituisce True se l'invio è riuscito per almeno un chat."""
     if not TELEGRAM_TOKEN:
         print("Telegram non configurato")
         return False
@@ -540,8 +558,6 @@ def send_telegram(text, target_chat_id=None):
     return any_ok
 
 
-# ── Main ─────────────────────────────────────────────────────────────────
-
 def main(target_chat_id=None):
     print("=" * 50)
     print("  PREVISIONI METEO – GENERAZIONE AI")
@@ -562,11 +578,12 @@ def main(target_chat_id=None):
 
     # 1. Scarica dati meteo
     print("\n📡 Scaricamento dati Open-Meteo...")
-    weather_data, model_used = fetch_forecast_data(today_dt)
+    weather_data, model_api_name, model_used = fetch_forecast_data(today_dt)
 
-    # 1a. Verifica aggiornamento dati
-    print("\n🔍 Verifica aggiornamento dati...")
-    fresh_ok, fresh_msg = check_data_freshness(weather_data, model_used, now)
+    # 1a. Verifica aggiornamento run NWP (prima del filtro sull'ora corrente,
+    #     così temperature_2m è ancora integro con i null di coda oltre l'orizzonte)
+    print("\n🔍 Verifica aggiornamento run NWP...")
+    fresh_ok, fresh_msg = check_data_freshness(weather_data, model_api_name, model_used, now)
     if fresh_ok:
         print(f"  ✓ {fresh_msg}")
     else:
@@ -613,7 +630,7 @@ def main(target_chat_id=None):
 
     # 3. Componi e invia messaggio Telegram
     print("\n📤 Invio via Telegram...")
-    freshness_warning = "" if fresh_ok else f"⚠️ Dati potenzialmente obsoleti: {fresh_msg}\n"
+    freshness_warning = "" if fresh_ok else f"⚠️ {fresh_msg}\n"
     header = (
         f"🌤 Previsioni Meteo\n"
         f"📍 {LOCATION_NAME}\n"
@@ -622,7 +639,6 @@ def main(target_chat_id=None):
         f"{freshness_warning}\n"
     )
 
-    # Componi messaggio unico: semplice + tecnica + rischi
     SEP_TECH = "---SEZIONE TECNICA---"
     SEP_RISK = "---SEZIONE RISCHI---"
 
@@ -654,7 +670,6 @@ def main(target_chat_id=None):
     else:
         risk_block = "🟢 RISCHI POSSIBILI\n\nNessun rischio previsto."
 
-    # Prova prima messaggio unico
     body = simple_part
     if tech_part:
         body += "\n\n📊 Analisi Tecnica\n\n" + tech_part
@@ -664,7 +679,6 @@ def main(target_chat_id=None):
     if send_telegram(full_msg, target_chat_id=target_chat_id):
         print("\n✅ Previsioni inviate con successo (messaggio unico)")
     else:
-        # Messaggio troppo lungo → dividi in 3 messaggi logici
         print("  ⚠ Messaggio unico troppo lungo, invio in 3 parti...")
         date_line = f"📅 {today_dt.strftime('%d/%m/%Y')} – {tomorrow_dt.strftime('%d/%m/%Y')}"
 
