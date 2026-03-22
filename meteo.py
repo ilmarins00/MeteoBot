@@ -164,7 +164,7 @@ def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
                    * math.exp(r * (1 + 0.81 * r) * (3376.0 / T_LCL - 2.54)))
         theta_e_C = theta_e - 273.15
     except (ValueError, ZeroDivisionError, OverflowError):
-        theta_e_C = temp + 10  
+        theta_e_C = temp + 10
     if dew_point < -8:
         if spread > 10:
             tipo, nome, emoji = "cA", "Continentale Artica", "🧊"
@@ -235,14 +235,7 @@ def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
         "spread": round(spread, 1)
     }
 def calcola_theta_e_850hpa(data_openmeteo):
-    """Calcola la theta-e a 850 hPa usando i dati del modello Open-Meteo.
-    Questo è il parametro corretto per la classificazione della massa d'aria,
-    perché a 850 hPa non viene influenzato dal riscaldamento solare superficiale (diabatico).
-    Args:
-        data_openmeteo: dizionario con dati Open-Meteo inclusi i livelli di pressione
-    Returns:
-        theta_e_850 in °C, o None se i dati non sono disponibili
-    """
+    """Calcola la theta-e a 850 hPa usando i dati del modello Open-Meteo."""
     try:
         hourly = data_openmeteo.get("hourly", {})
         if not hourly:
@@ -269,7 +262,7 @@ def calcola_theta_e_850hpa(data_openmeteo):
         if T_850_C is None or RH_850 is None:
             print("⚠️  Dati 850 hPa null per ora corrente")
             return None
-        p_850 = 850.0  
+        p_850 = 850.0
         T_850_K = T_850_C + 273.15
         RH_850_frac = RH_850 / 100.0
         e_sat_850 = 6.112 * math.exp(17.67 * T_850_C / (T_850_C + 243.5))
@@ -278,7 +271,7 @@ def calcola_theta_e_850hpa(data_openmeteo):
         if e_850 > 0.01:
             Td_850_C = 243.5 * math.log(e_850 / 6.112) / (17.67 - math.log(e_850 / 6.112))
         else:
-            Td_850_C = T_850_C - 20  
+            Td_850_C = T_850_C - 20
         Td_850_K = Td_850_C + 273.15
         T_LCL = 1.0 / (1.0 / (Td_850_K - 56) + math.log(T_850_K / Td_850_K) / 800.0) + 56.0
         theta_e_850 = (T_850_K
@@ -413,14 +406,14 @@ def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, sev
         "li": li,
         "shear": shear,
     }
-_RD = 287.05      
-_RV = 461.5       
-_CP = 1005.0      
-_LV = 2.5e6       
-_G  = 9.80665     
-_EPSILON = 0.622  
+_RD = 287.05
+_RV = 461.5
+_CP = 1005.0
+_LV = 2.5e6
+_G  = 9.80665
+_EPSILON = 0.622
 _API_CACHE = {}
-_CACHE_DURATION = 600  
+_CACHE_DURATION = 600
 def fetch_station_data_with_retry(max_retries=3):
     """Legge i dati reali dalla stazione meteo Tuya con retry logic."""
     if not ACCESS_ID or not ACCESS_SECRET or not DEVICE_ID:
@@ -564,8 +557,7 @@ def moist_adiabatic_lapse_rate(T_kelvin, p_hPa):
     denominator = 1 + _EPSILON * _LV * _LV * ws / (_CP * _RD * T_kelvin * T_kelvin)
     return (_RD * T_kelvin / (_CP * p_hPa)) * (numerator / denominator)
 def lift_parcel(T_start_K, p_start_hPa, q_start, p_levels_hPa):
-    """Solleva una particella (secca fino al LCL, satura oltre).
-    Restituisce (T_parcel[], p_lcl)."""
+    """Solleva una particella (secca fino al LCL, satura oltre)."""
     T_parcel = np.zeros(len(p_levels_hPa))
     T_parcel[0] = T_start_K
     es_start = vapor_pressure(T_start_K - 273.15)
@@ -661,8 +653,7 @@ def calcola_cape_from_profile(T_parcel, p_env, T_env, RH_env, q_parcel_surface, 
         'buoyancy': buoyancy
     }
 def calcola_mucape(data, p_surface, T_env, p_env, RH_env):
-    """Calcola Most Unstable CAPE (MUCAPE) cercando la particella più instabile
-    nei primi 300 hPa dalla superficie."""
+    """Calcola Most Unstable CAPE (MUCAPE)."""
     max_cape = 0
     mu_result = None
     for p_idx in range(len(p_env)):
@@ -708,8 +699,7 @@ def _validate_sbcape_results(results, T_surface_C):
         warnings.append(f"⚠️  CIN molto forte ({results['cin']:.0f} J/kg) - convezione fortemente inibita")
     return warnings
 def calcola_sbcape_advanced(data, station_data=None):
-    """Calcola SBCAPE, MUCAPE, CIN e parametri convettivi avanzati.
-    Profilo umidità reale, interpolazione cubica, MUCAPE, wind shear."""
+    """Calcola SBCAPE, MUCAPE, CIN e parametri convettivi avanzati."""
     if not data:
         print("Errore: dati invalidi")
         return None
@@ -862,8 +852,7 @@ def calcola_sbcape_advanced(data, station_data=None):
         traceback.print_exc()
         return None
 def calcola_severe_score(results):
-    """Severe Weather Score combinando multipli parametri (score custom 0-12).
-    NON standardizzato; usare solo come indicatore qualitativo."""
+    """Severe Weather Score combinando multipli parametri (score custom 0-12)."""
     score = 0
     reasons = []
     sbcape = results.get('sbcape', 0)
@@ -897,8 +886,7 @@ def calcola_severe_score(results):
         level = None
     return {'score': score, 'level': level, 'reasons': reasons}
 def calcola_e_salva_sbcape():
-    """Entry-point standalone: calcola SBCAPE e salva su state.json (sezione 'sbcape').
-    Può essere invocato con `python meteo.py --sbcape`."""
+    """Entry-point standalone: calcola SBCAPE e salva su state.json (sezione 'sbcape')."""
     print("=" * 70)
     print("📊 CALCOLO AVANZATO SBCAPE/MUCAPE & PARAMETRI CONVETTIVI v2.0")
     print("=" * 70)
@@ -950,6 +938,11 @@ def get_auth_headers(method, url, token=None, body=""):
     headers = {'client_id': ACCESS_ID, 'sign': sign, 't': t, 'sign_method': 'HMAC-SHA256', 'Content-Type': 'application/json'}
     if token: headers['access_token'] = token
     return headers
+
+def _escape_html(text):
+    """Escapa caratteri speciali HTML per Telegram HTML parse mode."""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 def esegui_report(force_send=False, target_chat_id=None):
     """Genera e invia il report meteo.
     Args:
@@ -959,7 +952,7 @@ def esegui_report(force_send=False, target_chat_id=None):
     _send_to = [str(target_chat_id)] if target_chat_id else LISTA_CHAT
     source_info_line = ""
     d = None
-    tuya_retries = 4  # 1 tentativo iniziale + 3 retry
+    tuya_retries = 4
     if ACCESS_ID and ACCESS_SECRET and DEVICE_ID:
         for attempt in range(tuya_retries):
             try:
@@ -995,13 +988,12 @@ def esegui_report(force_send=False, target_chat_id=None):
         print("✗ TUYA non configurato")
     if d is None:
         print("✗ Impossibile ricevere dati dalla stazione Tuya dopo tutti i tentativi")
-        # Invia messaggio di errore via Telegram
         if TELEGRAM_TOKEN and _send_to:
             err_msg = "⚠️ Errore nel resoconto meteo orario: impossibile ricevere dati dalla stazione meteorologica."
             url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
             for chat_id in _send_to:
                 try:
-                    requests.post(url_tg, data={'chat_id': chat_id, 'text': err_msg}, timeout=10)
+                    requests.post(url_tg, data={'chat_id': chat_id, 'text': err_msg, 'parse_mode': 'HTML'}, timeout=10)
                 except Exception:
                     pass
         return
@@ -1013,20 +1005,18 @@ def esegui_report(force_send=False, target_chat_id=None):
         if pressione_locale is None:
             print("Pressione non disponibile da Tuya, uso fallback 1013.0 hPa")
             pressione_locale = 1013.0
-        h = ELEVATION  
+        h = ELEVATION
         Rd = 287.05
         g_val = 9.80665
         T_k = temp_ext + 273.15 if -50 < temp_ext < 60 else 288.15
         pressione_msl = round(pressione_locale * math.exp(g_val * h / (Rd * T_k)), 1)
         v_medio = d.get('windspeed_avg', 0) / 10
         raffica_istantanea_tuya = d.get('windspeed_gust', 0) / 10
-        # Raffica max oraria dalla stazione OMIRL La Spezia centro
         _omirl_gust = fetch_omirl_hourly_max_gust_laspezia()
         if _omirl_gust is not None:
             raffica = _omirl_gust
             raffica_source = "OMIRL La Spezia"
         else:
-            # Fallback temporaneo: verrà calcolata max ultima ora da storico Tuya
             raffica = raffica_istantanea_tuya
             raffica_source = "Tuya (max ultima ora da storico)"
         pioggia_24h_sensore = (d.get('rain_24h', 0) / 10) * TUYA_RAIN_CALIBRATION
@@ -1087,13 +1077,13 @@ def esegui_report(force_send=False, target_chat_id=None):
         oggi_str = now_it.strftime("%Y-%m-%d")
         giorno_anno = now_it.timetuple().tm_yday
         LAT = LATITUDE
-        lat_rad = (math.pi / 180.0) * LAT  
+        lat_rad = (math.pi / 180.0) * LAT
         delta = 0.409 * math.sin((2 * math.pi / 365) * giorno_anno - 1.39)
         dr = 1 + 0.033 * math.cos((2 * math.pi / 365) * giorno_anno)
         ws = math.acos(-math.tan(lat_rad) * math.tan(delta))
-        Gsc = 0.0820  
+        Gsc = 0.0820
         Ra = (24 * 60 / math.pi) * Gsc * dr * (
-            ws * math.sin(lat_rad) * math.sin(delta) + 
+            ws * math.sin(lat_rad) * math.sin(delta) +
             math.cos(lat_rad) * math.cos(delta) * math.sin(ws)
         )
         dati_salvati = load_state_section('meteo')
@@ -1112,89 +1102,89 @@ def esegui_report(force_send=False, target_chat_id=None):
         etp_base = 0.0023 * Ra * (t_media + 17.8) * math.sqrt(max(delta_t, 1.0))
         etp_base = round(etp_base, 2)
         kc_mensile = {
-            1: 0.35, 2: 0.35,    
-            3: 0.45, 4: 0.55,    
-            5: 0.65, 6: 0.70,    
-            7: 0.70, 8: 0.65,    
-            9: 0.55, 10: 0.50,   
-            11: 0.40, 12: 0.35   
+            1: 0.35, 2: 0.35,
+            3: 0.45, 4: 0.55,
+            5: 0.65, 6: 0.70,
+            7: 0.70, 8: 0.65,
+            9: 0.55, 10: 0.50,
+            11: 0.40, 12: 0.35
         }
         kc = kc_mensile.get(mese_corrente, 0.50)
         etp_giornaliera = round(etp_base * kc, 2)
         kcb_mensile = {
-            1: 0.15, 2: 0.15,    
-            3: 0.25, 4: 0.35,    
-            5: 0.50, 6: 0.55,    
-            7: 0.55, 8: 0.50,    
-            9: 0.40, 10: 0.30,   
-            11: 0.20, 12: 0.15   
+            1: 0.15, 2: 0.15,
+            3: 0.25, 4: 0.35,
+            5: 0.50, 6: 0.55,
+            7: 0.55, 8: 0.50,
+            9: 0.40, 10: 0.30,
+            11: 0.20, 12: 0.15
         }
         kcb = kcb_mensile.get(mese_corrente, 0.30)
-        capacita_campo = 200   
-        wilting_point = 80     
-        K_sat = 2.5            
-        beta_drenaggio = 3.5   
+        capacita_campo = 200
+        wilting_point = 80
+        K_sat = 2.5
+        beta_drenaggio = 3.5
         dati_salvati = load_state_section('meteo')
         print(f"state.json sezione 'meteo': {dati_salvati}")
         ultima_data = dati_salvati.get("data_calcolo", "")
-        api_ultimo_valore = dati_salvati.get("api_ultimo_valore", 179.45) 
+        api_ultimo_valore = dati_salvati.get("api_ultimo_valore", 179.45)
         sat_base_oggi = dati_salvati.get("sat_base_oggi", 0)
         etp_accumulata = dati_salvati.get("etp_accumulata_ieri", 0)
-        e_nuovo_giorno = (ultima_data != oggi_str)  
+        e_nuovo_giorno = (ultima_data != oggi_str)
         debug_api = f"API_DEBUG: data={ultima_data}, api_ultimo={api_ultimo_valore:.2f}, etp_acc={etp_accumulata:.2f}"
         print(debug_api)
         if ultima_data != oggi_str:
             if ultima_data == "":
                 sat_base_oggi = api_ultimo_valore
-                etp_accumulata = 0  
-                t_min_oggi = temp_ext  
+                etp_accumulata = 0
+                t_min_oggi = temp_ext
                 t_max_oggi = temp_ext
                 print(f"Prima esecuzione: seed iniziale = {sat_base_oggi:.2f}")
             else:
-                theta_prec = api_ultimo_valore / capacita_campo  
+                theta_prec = api_ultimo_valore / capacita_campo
                 if theta_prec > 0.4:
                     drenaggio_extra = K_sat * (theta_prec ** beta_drenaggio)
                 else:
-                    drenaggio_extra = 0  
+                    drenaggio_extra = 0
                 perdita_totale = etp_accumulata + drenaggio_extra
                 sat_base_oggi = max(0, api_ultimo_valore - perdita_totale)
                 print(f"Nuovo giorno: {api_ultimo_valore:.2f} - ETR({etp_accumulata:.2f}) - dren_Ksat({drenaggio_extra:.2f}) = {sat_base_oggi:.2f}")
-                etp_accumulata = 0  
-                t_min_oggi = temp_ext  
+                etp_accumulata = 0
+                t_min_oggi = temp_ext
                 t_max_oggi = temp_ext
             ultima_data = oggi_str
         saturazione_percentuale = (sat_base_oggi / capacita_campo) * 100
-        if pioggia_1h > 25:  
-            runoff_intensita = 0.5  
-        elif pioggia_1h > 15:  
-            runoff_intensita = 0.35  
-        elif pioggia_1h > 8:  
-            runoff_intensita = 0.20  
-        elif pioggia_1h > 3:  
-            runoff_intensita = 0.08  
-        else:  
-            runoff_intensita = 0.02  
+        if pioggia_1h > 25:
+            runoff_intensita = 0.5
+        elif pioggia_1h > 15:
+            runoff_intensita = 0.35
+        elif pioggia_1h > 8:
+            runoff_intensita = 0.20
+        elif pioggia_1h > 3:
+            runoff_intensita = 0.08
+        else:
+            runoff_intensita = 0.02
         if saturazione_percentuale > 95:
-            runoff_saturazione = 0.7  
+            runoff_saturazione = 0.7
         elif saturazione_percentuale > 85:
             runoff_saturazione = 0.4
         elif saturazione_percentuale > 70:
             runoff_saturazione = 0.15
         else:
-            runoff_saturazione = 0.0  
+            runoff_saturazione = 0.0
         runoff_totale = max(runoff_intensita, runoff_saturazione)
         efficienza_infiltrazione = 1 - runoff_totale
         pioggia_infiltrata = pioggia_24h * efficienza_infiltrazione
         theta_attuale = sat_base_oggi / capacita_campo if capacita_campo > 0 else 0
         theta_wp = wilting_point / capacita_campo
-        p_depletion = 0.60  
+        p_depletion = 0.60
         theta_critico = theta_wp + p_depletion * (1.0 - theta_wp)
         if theta_attuale >= theta_critico:
-            ks = 1.0  
+            ks = 1.0
         elif theta_attuale > theta_wp:
             ks = (theta_attuale - theta_wp) / (theta_critico - theta_wp)
         else:
-            ks = 0.0  
+            ks = 0.0
         evaporazione_suolo = 0.0
         ke = 0.0
         try:
@@ -1213,7 +1203,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             evaporazione_suolo = round(ke * etp_base, 2)
         except Exception:
             ke = 0.0
-        traspirazione = round(kcb * ks * etp_base, 2)      
+        traspirazione = round(kcb * ks * etp_base, 2)
         etr_giornaliera = round(traspirazione + evaporazione_suolo, 2)
         n_run_oggi = dati_salvati.get("n_run_oggi", 0)
         etp_media_oggi = dati_salvati.get("etp_media_oggi", 0)
@@ -1273,6 +1263,7 @@ def esegui_report(force_send=False, target_chat_id=None):
             'humidity': umid_ext,
             'wind_speed': v_medio,
         }
+        _om_data = None
         try:
             print("\n⚙️  Calcolo SBCAPE/MUCAPE inline...")
             _om_data = fetch_profile_cached()
@@ -1374,11 +1365,11 @@ def esegui_report(force_send=False, target_chat_id=None):
         if temp_ext > 25 and umid_ext > 60:
             avvisi.append("🥵 AVVISO: AFA")
         if pressione_msl < thresholds.ARPAL_STORM_SURGE_ROSSO:
-            avvisi.append(f"🔴🌊 AVVISO: MAREGGIATE GRAVI — {pressione_msl} hPa (soglia ARPAL 🔴 <{thresholds.ARPAL_STORM_SURGE_ROSSO:.0f} hPa)")
+            avvisi.append(f"🔴🌊 AVVISO: MAREGGIATE GRAVI — {pressione_msl} hPa (soglia ARPAL 🔴 &lt;{thresholds.ARPAL_STORM_SURGE_ROSSO:.0f} hPa)")
         elif pressione_msl < thresholds.ARPAL_STORM_SURGE_ARANCIONE:
-            avvisi.append(f"🟠🌊 AVVISO: MAREGGIATE — {pressione_msl} hPa (soglia ARPAL 🟠 <{thresholds.ARPAL_STORM_SURGE_ARANCIONE:.0f} hPa)")
+            avvisi.append(f"🟠🌊 AVVISO: MAREGGIATE — {pressione_msl} hPa (soglia ARPAL 🟠 &lt;{thresholds.ARPAL_STORM_SURGE_ARANCIONE:.0f} hPa)")
         elif pressione_msl < thresholds.ARPAL_STORM_SURGE_GIALLO:
-            avvisi.append(f"🟡🌊 AVVISO: ATTENZIONE MARE — {pressione_msl} hPa (soglia ARPAL 🟡 <{thresholds.ARPAL_STORM_SURGE_GIALLO:.0f} hPa)")
+            avvisi.append(f"🟡🌊 AVVISO: ATTENZIONE MARE — {pressione_msl} hPa (soglia ARPAL 🟡 &lt;{thresholds.ARPAL_STORM_SURGE_GIALLO:.0f} hPa)")
         if pioggia_1h >= thresholds.ARPAL_RAIN_1H_ROSSO:
             avvisi.append(f"🔴🌧️ AVVISO: NUBIFRAGIO — {pioggia_1h} mm/h (soglia ARPAL 🔴 ≥{thresholds.ARPAL_RAIN_1H_ROSSO:.0f} mm/h)")
         elif pioggia_1h >= thresholds.ARPAL_RAIN_1H_ARANCIONE:
@@ -1418,8 +1409,11 @@ def esegui_report(force_send=False, target_chat_id=None):
             sbcape_lines.append(f"Severe Score: {severe_score}/12")
         elif convective_risk["score"] > 0 and "severe score" not in avvisi_lower:
             sbcape_lines.append(f"Convective Score (fallback): {convective_risk['score']}/12")
-        sbcape_str = "\n".join(sbcape_lines) + ("\n" if sbcape_lines else "")
-        str_avvisi = "\n".join(avvisi) + "\n\n" if avvisi else ""
+        sbcape_str = "\n".join(sbcape_lines)
+        # ── Avvisi HTML ──────────────────────────────────────────────────────
+        str_avvisi = ""
+        if avvisi:
+            str_avvisi = "\n".join(avvisi) + "\n\n"
         massa_aria = classifica_massa_aria(temp_ext, dew_point, pressione_msl, mese_corrente)
         theta_e_850 = None
         temp_alti_livelli = None
@@ -1431,10 +1425,10 @@ def esegui_report(force_send=False, target_chat_id=None):
         else:
             theta_e_str = f"θe: {massa_aria['theta_e']}°C"
         massa_str = (
-            f"🌍 *MASSA D'ARIA*\n"
-            f"{massa_aria['emoji']} {massa_aria['nome']} ({massa_aria['tipo']})\n"
-            f"{massa_aria['desc']}\n"
-            f"{theta_e_str}\n"
+            f"🌍 <b>MASSA D'ARIA</b>\n"
+            f"{massa_aria['emoji']} {_escape_html(massa_aria['nome'])} ({_escape_html(massa_aria['tipo'])})\n"
+            f"{_escape_html(massa_aria['desc'])}\n"
+            f"{_escape_html(theta_e_str)}\n"
             f"Anomalia: {massa_aria['anomalia']:+.1f}°C\n"
             f"Spread T-Td: {massa_aria['spread']}°C\n"
         )
@@ -1446,20 +1440,20 @@ def esegui_report(force_send=False, target_chat_id=None):
         theta_e_display = theta_e_850 if theta_e_850 is not None else massa_aria['theta_e']
         print(f"Massa d'aria: {massa_aria['tipo']} ({massa_aria['nome']}) - θe_850={theta_e_850}°C, θe_sup={massa_aria['theta_e']}°C, anomalia={massa_aria['anomalia']:+.1f}°C")
         nuovi_dati = {
-            "api_ultimo_valore": sat_visualizzato,  
-            "sat_base_oggi": sat_base_oggi,        
-            "etp_accumulata_ieri": etp_accumulata, 
+            "api_ultimo_valore": sat_visualizzato,
+            "sat_base_oggi": sat_base_oggi,
+            "etp_accumulata_ieri": etp_accumulata,
             "data_calcolo": ultima_data,
             "ultimo_update_ora": str(now_it),
             "ultimo_etp_giornaliera": etp_giornaliera,
             "ultimo_etr_giornaliera": etr_giornaliera,
             "ultima_saturazione_perc": round(saturazione_percentuale, 1),
-            "t_min_oggi": t_min_oggi,              
-            "t_max_oggi": t_max_oggi,              
-            "ultima_pressione": pressione_msl,     
-            "ultimi_avvisi": avvisi,               
-            "n_run_oggi": n_run_oggi,              
-            "etp_media_oggi": round(etp_media_oggi, 2),  
+            "t_min_oggi": t_min_oggi,
+            "t_max_oggi": t_max_oggi,
+            "ultima_pressione": pressione_msl,
+            "ultimi_avvisi": avvisi,
+            "n_run_oggi": n_run_oggi,
+            "etp_media_oggi": round(etp_media_oggi, 2),
             "ultimo_kc": kc,
             "ultimo_ke": round(ke, 2),
             "ultimo_kcb": kcb,
@@ -1467,39 +1461,40 @@ def esegui_report(force_send=False, target_chat_id=None):
         }
         save_state_section('meteo', nuovi_dati)
         data_ora_it = now_it.strftime('%d/%m/%Y %H:%M')
+        # ── Composizione messaggio HTML ───────────────────────────────────────
         testo_meteo = (
-            f"📡 *STAZIONE METEO LA SPEZIA — FOCE*\n"
+            f"📡 <b>STAZIONE METEO LA SPEZIA — FOCE</b>\n"
             f"📅 {data_ora_it}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"{source_info_line}"
             f"{str_avvisi}"
-            f"🌡️ *TEMPERATURE*\n"
+            f"🌡️ <b>TEMPERATURE</b>\n"
             f"Aria: {temp_ext}°C\n"
             f"Percepita: {feel_like}°C\n"
             f"Heat Index: {heat_index}°C\n"
             f"Wind Chill: {wind_chill}°C\n"
             f"Punto di rugiada: {dew_point}°C\n\n"
-            f"💧 *UMIDITÀ E PRECIPITAZIONI*\n"
+            f"💧 <b>UMIDITÀ E PRECIPITAZIONI</b>\n"
             f"Umidità: {umid_ext}%\n"
             f"Pioggia ultima ora: {pioggia_1h} mm\n"
             f"Pioggia 24h: {pioggia_24h} mm\n\n"
-            f"🌬️ *VENTO*\n"
+            f"🌬️ <b>VENTO</b>\n"
             f"Velocità media: {v_medio} km/h\n"
             f"Raffica max (1h): {raffica} km/h\n\n"
-            f"🔵 *PRESSIONE ATMOSFERICA*\n"
+            f"🔵 <b>PRESSIONE ATMOSFERICA</b>\n"
             f"Livello mare: {pressione_msl} hPa {simbolo_baro}\n\n"
-            f"☀️ *RADIAZIONE*\n"
+            f"☀️ <b>RADIAZIONE</b>\n"
             f"Indice UV: {uv_idx}\n\n"
-            f"☁️ *NUVOLOSITÀ (Open-Meteo)*\n"
-            f"Bassa (<2 km): {cc_low}%\n"
+            f"☁️ <b>NUVOLOSITÀ (Open-Meteo)</b>\n"
+            f"Bassa (&lt;2 km): {cc_low}%\n"
             f"Media (2-6 km): {cc_mid}%\n"
-            f"Alta (>6 km): {cc_high}%\n\n"
-            f"🌱 *BILANCIO IDRICO SUOLO*\n"
+            f"Alta (&gt;6 km): {cc_high}%\n\n"
+            f"🌱 <b>BILANCIO IDRICO SUOLO</b>\n"
             f"API: {sat_visualizzato} mm ({saturazione_percentuale:.1f}%)\n"
             f"ETR: {etr_giornaliera} mm\n"
             f"ETP: {etp_giornaliera} mm\n\n"
-            f"⚡ *INSTABILITÀ CONVETTIVA*\n"
-            f"{sbcape_str}\n"
+            f"⚡ <b>INSTABILITÀ CONVETTIVA</b>\n"
+            f"<code>{sbcape_str}</code>\n\n"
             f"{massa_str}"
         )
         ora_corrente = now_it.hour
@@ -1583,7 +1578,7 @@ def esegui_report(force_send=False, target_chat_id=None):
                     try:
                         response = requests.post(
                             url_tg,
-                            data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'Markdown'},
+                            data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'HTML'},
                             timeout=10
                         )
                         response.raise_for_status()
