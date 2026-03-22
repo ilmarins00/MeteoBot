@@ -43,14 +43,19 @@ from config import (
     ECOWITT_RAIN_RATE_CALIBRATION,
 )
 from utils import fetch_wmo_station_data_laspezia
-_RD = 287.05      
-_RV = 461.5       
-_CP = 1005.0      
-_LV = 2.5e6       
-_G  = 9.80665     
-_EPSILON = 0.622  
+_RD = 287.05
+_RV = 461.5
+_CP = 1005.0
+_LV = 2.5e6
+_G  = 9.80665
+_EPSILON = 0.622
 _API_CACHE = {}
-_CACHE_DURATION = 600  
+_CACHE_DURATION = 600
+
+def _escape_html(text):
+    """Escapa caratteri speciali HTML per Telegram HTML parse mode."""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 def carica_storico():
     """Carica lo storico delle ultime 24h di misurazioni."""
     if os.path.exists(FILE_STORICO):
@@ -80,8 +85,7 @@ def salva_storico(storico):
     with open(FILE_STORICO, "w") as f:
         json.dump(filtered, f)
 def calcola_tendenza_barometrica(storico, pressione_attuale):
-    """Calcola la tendenza barometrica nelle ultime 3h.
-    Restituisce (simbolo, delta_hPa, descrizione)."""
+    """Calcola la tendenza barometrica nelle ultime 3h."""
     now = datetime.now(TZ_ROME)
     tre_ore_fa_dt = now - timedelta(hours=3)
     recenti = []
@@ -115,32 +119,6 @@ def calcola_tendenza_barometrica(storico, pressione_attuale):
 def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
     """Classifica la massa d'aria secondo Bergeron (1928).
     Discriminante primario: punto di rugiada (Td).
-    ──────────────────────────────────────────────
-    In meteorologia operativa la classificazione si basa su θe a 850 hPa
-    (da radiosondaggio o modello NWP), livello in cui il riscaldamento
-    solare superficiale non arriva.  Quando si dispone solo di dati di
-    superficie, θe mostra un **ciclo diurno spurio** (±10-15 °C) perché
-    la temperatura al suolo è dominata dal riscaldamento/raffreddamento
-    diabatico (radiativo), non adiabatico.  Ciò causa salti artificiosi
-    nella classificazione tra giorno e notte.
-    Il punto di rugiada (Td) non ha questo problema:
-      • variazione diurna tipica < 2 °C (quasi conservativo)
-      • rappresenta direttamente il contenuto d'umidità e la regione
-        sorgente della massa d'aria
-      • è il parametro standard usato da NWS, ECMWF, Météo-France
-        per l'identificazione delle masse d'aria da osservazioni al suolo
-    θe viene calcolata correttamente (Bolton 1980, con pressione alla
-    stazione anziché MSL) e riportata a scopo informativo / convettivo.
-    Discriminanti secondari:
-      • spread T−Td  → continentale vs marittima  (Stull 2017)
-      • anomalia T   → sottoclassificazione locale (ARPAL 1991-2020)
-    Soglie Td per il Mediterraneo nord-occidentale (La Spezia):
-      Td < −8 °C   → Artica  (cA / mA)
-      Td −8…0 °C   → Polare  (cP / mP)
-      Td  0…8 °C   → Polare modificata / transizione
-      Td  8…15 °C  → Mediterranea / temperata
-      Td 15…20 °C  → Subtropicale
-      Td ≥ 20 °C   → Tropicale
     Riferimenti:
       Bolton D.  (1980)  Mon. Wea. Rev., 108, 1046-1053
       Bergeron T. (1928) Geofysiske Publikasjoner, 5(6)
@@ -167,7 +145,7 @@ def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
                    * math.exp(r * (1 + 0.81 * r) * (3376.0 / T_LCL - 2.54)))
         theta_e_C = theta_e - 273.15
     except (ValueError, ZeroDivisionError, OverflowError):
-        theta_e_C = temp + 10  
+        theta_e_C = temp + 10
     if dew_point < -8:
         if spread > 10:
             tipo, nome, emoji = "cA", "Continentale Artica", "🧊"
@@ -235,14 +213,7 @@ def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
         "spread": round(spread, 1)
     }
 def calcola_theta_e_850hpa(data_openmeteo):
-    """Calcola la theta-e a 850 hPa usando i dati del modello Open-Meteo.
-    Questo è il parametro corretto per la classificazione della massa d'aria,
-    perché a 850 hPa non viene influenzato dal riscaldamento solare superficiale (diabatico).
-    Args:
-        data_openmeteo: dizionario con dati Open-Meteo inclusi i livelli di pressione
-    Returns:
-        theta_e_850 in °C, o None se i dati non sono disponibili
-    """
+    """Calcola la theta-e a 850 hPa usando i dati del modello Open-Meteo."""
     try:
         hourly = data_openmeteo.get("hourly", {})
         if not hourly:
@@ -269,7 +240,7 @@ def calcola_theta_e_850hpa(data_openmeteo):
         if T_850_C is None or RH_850 is None:
             print("⚠️  Dati 850 hPa null per ora corrente")
             return None
-        p_850 = 850.0  
+        p_850 = 850.0
         T_850_K = T_850_C + 273.15
         RH_850_frac = RH_850 / 100.0
         e_sat_850 = 6.112 * math.exp(17.67 * T_850_C / (T_850_C + 243.5))
@@ -278,7 +249,7 @@ def calcola_theta_e_850hpa(data_openmeteo):
         if e_850 > 0.01:
             Td_850_C = 243.5 * math.log(e_850 / 6.112) / (17.67 - math.log(e_850 / 6.112))
         else:
-            Td_850_C = T_850_C - 20  
+            Td_850_C = T_850_C - 20
         Td_850_K = Td_850_C + 273.15
         T_LCL = 1.0 / (1.0 / (Td_850_K - 56) + math.log(T_850_K / Td_850_K) / 800.0) + 56.0
         theta_e_850 = (T_850_K
@@ -468,33 +439,25 @@ def fetch_profile_cached():
         print(f"Errore fetch Open-Meteo: {e}")
         return None
 def vapor_pressure(T_celsius):
-    """Pressione di vapore saturo (hPa) — Bolton (1980)."""
     return 6.112 * np.exp(17.67 * T_celsius / (T_celsius + 243.5))
 def mixing_ratio(e, p):
-    """Rapporto di miscelanza (kg/kg) da pressione di vapore e pressione totale."""
     return _EPSILON * e / (p - e)
 def virtual_temperature(T_kelvin, q):
-    """Temperatura virtuale (K) da temperatura e rapporto di miscelanza."""
     return T_kelvin * (1 + q / _EPSILON) / (1 + q)
 def dewpoint_to_mixing_ratio(Td_celsius, p_hPa):
-    """Rapporto di miscelanza dal punto di rugiada."""
     es = vapor_pressure(Td_celsius)
     return mixing_ratio(es, p_hPa)
 def lcl_pressure(T_kelvin, Td_kelvin, p_hPa):
-    """Pressione al LCL (hPa) — approssimazione di Bolton."""
     Tl = 1 / (1 / (Td_kelvin - 56) + np.log(T_kelvin / Td_kelvin) / 800) + 56
     theta = T_kelvin * (1000 / p_hPa) ** (_RD / _CP)
     return 1000 * (Tl / theta) ** (_CP / _RD)
 def moist_adiabatic_lapse_rate(T_kelvin, p_hPa):
-    """Lapse rate adiabatico saturo (K/Pa)."""
     es = vapor_pressure(T_kelvin - 273.15)
     ws = mixing_ratio(es, p_hPa)
     numerator = 1 + _LV * ws / (_RD * T_kelvin)
     denominator = 1 + _EPSILON * _LV * _LV * ws / (_CP * _RD * T_kelvin * T_kelvin)
     return (_RD * T_kelvin / (_CP * p_hPa)) * (numerator / denominator)
 def lift_parcel(T_start_K, p_start_hPa, q_start, p_levels_hPa):
-    """Solleva una particella (secca fino al LCL, satura oltre).
-    Restituisce (T_parcel[], p_lcl)."""
     T_parcel = np.zeros(len(p_levels_hPa))
     T_parcel[0] = T_start_K
     es_start = vapor_pressure(T_start_K - 273.15)
@@ -531,7 +494,6 @@ def lift_parcel(T_start_K, p_start_hPa, q_start, p_levels_hPa):
             T_parcel[i] = T_temp
     return T_parcel, p_lcl
 def calcola_cape_from_profile(T_parcel, p_env, T_env, RH_env, q_parcel_surface, p_lcl):
-    """Calcola CAPE e CIN da profili di temperatura e umidità."""
     Tv_env = np.zeros(len(p_env))
     Tv_parcel = np.zeros(len(p_env))
     for i in range(len(p_env)):
@@ -588,8 +550,6 @@ def calcola_cape_from_profile(T_parcel, p_env, T_env, RH_env, q_parcel_surface, 
         'buoyancy': buoyancy
     }
 def calcola_mucape(data, p_surface, T_env, p_env, RH_env):
-    """Calcola Most Unstable CAPE (MUCAPE) cercando la particella più instabile
-    nei primi 300 hPa dalla superficie."""
     max_cape = 0
     mu_result = None
     for p_idx in range(len(p_env)):
@@ -612,7 +572,6 @@ def calcola_mucape(data, p_surface, T_env, p_env, RH_env):
             mu_result['mu_level'] = p_test
     return mu_result
 def calcola_wind_shear(data, current_hour_idx, station_data):
-    """Proxy wind shear 0-6 km (10 m → 120 m). Fortemente sottostimato."""
     try:
         hourly = data.get("hourly", {})
         if station_data and 'wind_speed' in station_data:
@@ -625,7 +584,6 @@ def calcola_wind_shear(data, current_hour_idx, station_data):
     except Exception:
         return None
 def _validate_sbcape_results(results, T_surface_C):
-    """Validazione fisica dei risultati SBCAPE."""
     warnings = []
     if results['sbcape'] > 6000:
         warnings.append(f"⚠️  SBCAPE molto elevato ({results['sbcape']:.0f} J/kg) - verifica dati")
@@ -635,8 +593,6 @@ def _validate_sbcape_results(results, T_surface_C):
         warnings.append(f"⚠️  CIN molto forte ({results['cin']:.0f} J/kg) - convezione fortemente inibita")
     return warnings
 def calcola_sbcape_advanced(data, station_data=None):
-    """Calcola SBCAPE, MUCAPE, CIN e parametri convettivi avanzati.
-    Profilo umidità reale, interpolazione cubica, MUCAPE, wind shear."""
     if not data:
         print("Errore: dati invalidi")
         return None
@@ -789,7 +745,6 @@ def calcola_sbcape_advanced(data, station_data=None):
         traceback.print_exc()
         return None
 def calcola_severe_score(results):
-    """Severe Weather Score combinando multipli parametri (score custom 0-12)."""
     score = 0
     reasons = []
     sbcape = results.get('sbcape', 0)
@@ -823,7 +778,6 @@ def calcola_severe_score(results):
         level = None
     return {'score': score, 'level': level, 'reasons': reasons}
 def calcola_e_salva_sbcape():
-    """Entry-point standalone: calcola SBCAPE e salva su state.json [sbcape]."""
     print("=" * 70)
     print("📊 CALCOLO AVANZATO SBCAPE/MUCAPE & PARAMETRI CONVETTIVI v2.0")
     print("=" * 70)
@@ -866,13 +820,11 @@ def calcola_e_salva_sbcape():
     print(f"\n✓ Risultati salvati in state.json [sbcape]")
     print("=" * 70)
 def _ecowitt_val(section, key, default=0.0):
-    """Estrae un valore numerico dalla risposta Ecowitt API v3."""
     try:
         return float(section.get(key, {}).get("value", default))
     except (TypeError, ValueError, AttributeError):
         return float(default)
 def calc_heat_index(temp_c, humidity):
-    """Calcola l'Heat Index (NWS / Rothfusz regression). Restituisce °C."""
     if temp_c < 27:
         return temp_c
     T = temp_c * 9.0 / 5.0 + 32.0
@@ -888,7 +840,6 @@ def calc_heat_index(temp_c, humidity):
            - 1.99e-6 * T ** 2 * RH ** 2)
     return round((HI - 32.0) * 5.0 / 9.0, 1)
 def calc_wind_chill(temp_c, wind_kmh):
-    """Calcola il Wind Chill (NWS). Applicabile sotto 10°C e vento > 4.8 km/h."""
     if temp_c > 10 or wind_kmh < 4.8:
         return temp_c
     WC = (13.12
@@ -897,11 +848,6 @@ def calc_wind_chill(temp_c, wind_kmh):
           + 0.3965 * temp_c * wind_kmh ** 0.16)
     return round(WC, 1)
 def fetch_ecowitt_hourly_max_gust():
-    """Recupera la raffica massima registrata dalla Ecowitt nell'ultima ora.
-    Usa l'API v3 history con intervallo di 1 ora.
-    L'endpoint history restituisce il valore MAX di wind_gust nel periodo.
-    Restituisce il valore in km/h oppure None se non disponibile.
-    """
     if not ECOWITT_APPLICATION_KEY or not ECOWITT_API_KEY or not ECOWITT_MAC:
         return None
     now_utc = datetime.now(timezone.utc)
@@ -916,7 +862,7 @@ def fetch_ecowitt_hourly_max_gust():
         "end_date": end_date,
         "call_back": "wind",
         "cycle_type": "auto",
-        "wind_speed_unitid": 6,  
+        "wind_speed_unitid": 6,
     }
     try:
         r = requests.get(url, params=params, timeout=15)
@@ -941,10 +887,6 @@ def fetch_ecowitt_hourly_max_gust():
         print(f"⚠️  Errore parsing history Ecowitt wind_gust: {e}")
         return None
 def fetch_ecowitt_data(max_retries=3):
-    """Legge i dati in tempo reale dalla stazione Ecowitt Wittboy.
-    Usa l'API v3 di Ecowitt (https://api.ecowitt.net/api/v3/device/real_time).
-    Restituisce un dizionario con campi normalizzati oppure None.
-    """
     if not ECOWITT_APPLICATION_KEY or not ECOWITT_API_KEY or not ECOWITT_MAC:
         print("✗ ECOWITT non configurato: provo fallback stazione esterna WMO")
         return None
@@ -954,10 +896,10 @@ def fetch_ecowitt_data(max_retries=3):
         "api_key": ECOWITT_API_KEY,
         "mac": ECOWITT_MAC,
         "call_back": "all",
-        "temp_unitid": 1,       
-        "pressure_unitid": 3,   
-        "wind_speed_unitid": 6, 
-        "rainfall_unitid": 12,  
+        "temp_unitid": 1,
+        "pressure_unitid": 3,
+        "wind_speed_unitid": 6,
+        "rainfall_unitid": 12,
     }
     for attempt in range(max_retries):
         try:
@@ -1030,7 +972,6 @@ def fetch_ecowitt_data(max_retries=3):
     print("⚠️  Ecowitt non disponibile dopo i retry, provo fallback stazione esterna WMO")
     return None
 def _build_ecowitt_dict_from_external(station):
-    """Converte i dati WMO fallback nel formato Ecowitt normalizzato."""
     temp = station.get('temperature', 0) or 0
     humidity = int(station.get('humidity', 0) or 0)
     return {
@@ -1050,11 +991,7 @@ def _build_ecowitt_dict_from_external(station):
         'battery': 0,
     }
 def esegui_report(force_send=False, target_chat_id=None):
-    """Genera e invia il report meteo.
-    Args:
-        force_send: Se True, invia sempre ignorando la logica smart.
-        target_chat_id: Se fornito, invia solo a questa chat.
-    """
+    """Genera e invia il report meteo."""
     _send_to = [str(target_chat_id)] if target_chat_id else LISTA_CHAT
     source_info_line = ""
     ecowitt = fetch_ecowitt_data()
@@ -1066,8 +1003,9 @@ def esegui_report(force_send=False, target_chat_id=None):
             return
         ecowitt = _build_ecowitt_dict_from_external(external_station_data)
         source_info_line = (
-            "⚠️ *Dati da stazione meteo esterna WMO*\n"
-            f"Fonte: {external_station_data.get('station_id')} — {external_station_data.get('station_name')}\n"
+            "⚠️ <b>Dati da stazione meteo esterna WMO</b>\n"
+            f"Fonte: {_escape_html(external_station_data.get('station_id', ''))} — "
+            f"{_escape_html(external_station_data.get('station_name', ''))}\n"
         )
     print("DATI GREZZI RICEVUTI:", json.dumps(ecowitt, indent=4))
     now_it = datetime.now(TZ_ROME)
@@ -1096,7 +1034,7 @@ def esegui_report(force_send=False, target_chat_id=None):
     pioggia_1h = ecowitt['rain_1h']
     uv_idx = ecowitt['uv_index']
     batt = ecowitt.get('battery', 0)
-    h = ELEVATION  
+    h = ELEVATION
     Rd = 287.05
     g_val = 9.80665
     T_k = temp_ext + 273.15 if -50 < temp_ext < 60 else 288.15
@@ -1290,13 +1228,7 @@ def esegui_report(force_send=False, target_chat_id=None):
         "event_label": "Instabilità convettiva", "event_trigger": False,
         "max_cape": 0.0, "cin_abs": 0.0, "li": None, "shear": 0.0,
     }
-    _station_data_for_sbcape = {
-        'temperature': temp_ext,
-        'dewpoint': dew_point,
-        'pressure': pressione_locale if pressione_locale else 1013.0,
-        'humidity': umid_ext,
-        'wind_speed': v_medio,
-    }
+    _om_data = None
     try:
         print("\n⚙️  Calcolo SBCAPE/MUCAPE inline...")
         _om_data = fetch_profile_cached()
@@ -1390,11 +1322,11 @@ def esegui_report(force_send=False, target_chat_id=None):
     if temp_ext > 25 and umid_ext > 60:
         avvisi.append("🥵 AVVISO: AFA")
     if pressione_msl < thresholds.ARPAL_STORM_SURGE_ROSSO:
-        avvisi.append(f"🔴🌊 AVVISO: MAREGGIATE GRAVI — {pressione_msl} hPa (soglia ARPAL 🔴 <{thresholds.ARPAL_STORM_SURGE_ROSSO:.0f} hPa)")
+        avvisi.append(f"🔴🌊 AVVISO: MAREGGIATE GRAVI — {pressione_msl} hPa (soglia ARPAL 🔴 &lt;{thresholds.ARPAL_STORM_SURGE_ROSSO:.0f} hPa)")
     elif pressione_msl < thresholds.ARPAL_STORM_SURGE_ARANCIONE:
-        avvisi.append(f"🟠🌊 AVVISO: MAREGGIATE — {pressione_msl} hPa (soglia ARPAL 🟠 <{thresholds.ARPAL_STORM_SURGE_ARANCIONE:.0f} hPa)")
+        avvisi.append(f"🟠🌊 AVVISO: MAREGGIATE — {pressione_msl} hPa (soglia ARPAL 🟠 &lt;{thresholds.ARPAL_STORM_SURGE_ARANCIONE:.0f} hPa)")
     elif pressione_msl < thresholds.ARPAL_STORM_SURGE_GIALLO:
-        avvisi.append(f"🟡🌊 AVVISO: ATTENZIONE MARE — {pressione_msl} hPa (soglia ARPAL 🟡 <{thresholds.ARPAL_STORM_SURGE_GIALLO:.0f} hPa)")
+        avvisi.append(f"🟡🌊 AVVISO: ATTENZIONE MARE — {pressione_msl} hPa (soglia ARPAL 🟡 &lt;{thresholds.ARPAL_STORM_SURGE_GIALLO:.0f} hPa)")
     if pioggia_1h >= thresholds.ARPAL_RAIN_1H_ROSSO:
         avvisi.append(f"🔴🌧️ AVVISO: NUBIFRAGIO — {pioggia_1h} mm/h (soglia ARPAL 🔴 ≥{thresholds.ARPAL_RAIN_1H_ROSSO:.0f} mm/h)")
     elif pioggia_1h >= thresholds.ARPAL_RAIN_1H_ARANCIONE:
@@ -1434,8 +1366,11 @@ def esegui_report(force_send=False, target_chat_id=None):
         sbcape_lines.append(f"Severe Score: {severe_score}/12")
     elif convective_risk["score"] > 0 and "severe score" not in avvisi_lower:
         sbcape_lines.append(f"Convective Score (fallback): {convective_risk['score']}/12")
-    sbcape_str = "\n".join(sbcape_lines) + ("\n" if sbcape_lines else "")
-    str_avvisi = "\n".join(avvisi) + "\n\n" if avvisi else ""
+    sbcape_str = "\n".join(sbcape_lines)
+    # ── Avvisi HTML ──────────────────────────────────────────────────────────
+    str_avvisi = ""
+    if avvisi:
+        str_avvisi = "\n".join(avvisi) + "\n\n"
     massa_aria = classifica_massa_aria(temp_ext, dew_point, pressione_msl, mese_corrente)
     theta_e_850 = None
     temp_alti_livelli = None
@@ -1447,10 +1382,10 @@ def esegui_report(force_send=False, target_chat_id=None):
     else:
         theta_e_str = f"θe: {massa_aria['theta_e']}°C"
     massa_str = (
-        f"🌍 *MASSA D'ARIA*\n"
-        f"{massa_aria['emoji']} {massa_aria['nome']} ({massa_aria['tipo']})\n"
-        f"{massa_aria['desc']}\n"
-        f"{theta_e_str}\n"
+        f"🌍 <b>MASSA D'ARIA</b>\n"
+        f"{massa_aria['emoji']} {_escape_html(massa_aria['nome'])} ({_escape_html(massa_aria['tipo'])})\n"
+        f"{_escape_html(massa_aria['desc'])}\n"
+        f"{_escape_html(theta_e_str)}\n"
         f"Anomalia: {massa_aria['anomalia']:+.1f}°C\n"
         f"Spread T-Td: {massa_aria['spread']}°C\n"
     )
@@ -1483,40 +1418,41 @@ def esegui_report(force_send=False, target_chat_id=None):
     }
     save_state_section('meteo', nuovi_dati)
     data_ora_it = now_it.strftime('%d/%m/%Y %H:%M')
+    # ── Composizione messaggio HTML ───────────────────────────────────────────
     testo_meteo = (
-        f"📡 *STAZIONE METEO ECOWITT WITTBOY — LA SPEZIA*\n"
+        f"📡 <b>STAZIONE METEO ECOWITT WITTBOY — LA SPEZIA</b>\n"
         f"📅 {data_ora_it}\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"{source_info_line}"
         f"{str_avvisi}"
-        f"🌡️ *TEMPERATURE*\n"
+        f"🌡️ <b>TEMPERATURE</b>\n"
         f"Aria: {temp_ext}°C\n"
         f"Percepita: {feel_like}°C\n"
         f"Heat Index: {heat_index}°C\n"
         f"Wind Chill: {wind_chill}°C\n"
         f"Punto di rugiada: {dew_point}°C\n\n"
-        f"💧 *UMIDITÀ E PRECIPITAZIONI*\n"
+        f"💧 <b>UMIDITÀ E PRECIPITAZIONI</b>\n"
         f"Umidità: {umid_ext}%\n"
         f"Pioggia ultima ora: {pioggia_1h} mm\n"
         f"Pioggia 24h: {pioggia_24h} mm\n"
         f"Rain rate: {rain_rate} mm/h\n\n"
-        f"🌬️ *VENTO*\n"
+        f"🌬️ <b>VENTO</b>\n"
         f"Velocità media: {v_medio} km/h\n"
         f"Raffica max (1h): {raffica} km/h\n\n"
-        f"🔵 *PRESSIONE ATMOSFERICA*\n"
+        f"🔵 <b>PRESSIONE ATMOSFERICA</b>\n"
         f"Livello mare: {pressione_msl} hPa {simbolo_baro}\n\n"
-        f"☀️ *RADIAZIONE*\n"
+        f"☀️ <b>RADIAZIONE</b>\n"
         f"Indice UV: {uv_idx}\n\n"
-        f"☁️ *NUVOLOSITÀ (Open-Meteo)*\n"
-        f"Bassa (<2 km): {cc_low}%\n"
+        f"☁️ <b>NUVOLOSITÀ (Open-Meteo)</b>\n"
+        f"Bassa (&lt;2 km): {cc_low}%\n"
         f"Media (2-6 km): {cc_mid}%\n"
-        f"Alta (>6 km): {cc_high}%\n\n"
-        f"🌱 *BILANCIO IDRICO SUOLO*\n"
+        f"Alta (&gt;6 km): {cc_high}%\n\n"
+        f"🌱 <b>BILANCIO IDRICO SUOLO</b>\n"
         f"API: {sat_visualizzato} mm ({saturazione_percentuale:.1f}%)\n"
         f"ETR: {etr_giornaliera} mm\n"
         f"ETP: {etp_giornaliera} mm\n\n"
-        f"⚡ *INSTABILITÀ CONVETTIVA*\n"
-        f"{sbcape_str}\n"
+        f"⚡ <b>INSTABILITÀ CONVETTIVA</b>\n"
+        f"<code>{sbcape_str}</code>\n\n"
         f"{massa_str}"
     )
     ora_corrente = now_it.hour
@@ -1600,7 +1536,7 @@ def esegui_report(force_send=False, target_chat_id=None):
                 try:
                     response = requests.post(
                         url_tg,
-                        data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'Markdown'},
+                        data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'HTML'},
                         timeout=10,
                     )
                     response.raise_for_status()
