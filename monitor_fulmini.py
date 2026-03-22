@@ -41,13 +41,16 @@ from config import (
 
 TZ_ROME = ZoneInfo("Europe/Rome")
 
-# Raggio terrestre medio (km)
 EARTH_RADIUS_KM = 6371.0
 
 
+def _escape_html(text):
+    """Escapa caratteri speciali HTML per Telegram HTML parse mode."""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def reverse_geocode(lat: float, lon: float) -> str:
-    """Ottiene il nome della località dalle coordinate usando Nominatim (OpenStreetMap).
-    Restituisce il nome del luogo o le coordinate formattate come fallback."""
+    """Ottiene il nome della località dalle coordinate usando Nominatim (OpenStreetMap)."""
     try:
         resp = requests.get(
             "https://nominatim.openstreetmap.org/reverse",
@@ -62,7 +65,6 @@ def reverse_geocode(lat: float, lon: float) -> str:
         resp.raise_for_status()
         data = resp.json()
         addr = data.get("address", {})
-        # Prova diversi livelli di dettaglio
         name = (
             addr.get("village")
             or addr.get("town")
@@ -73,7 +75,6 @@ def reverse_geocode(lat: float, lon: float) -> str:
             or addr.get("county")
         )
         if name:
-            # Aggiungi il comune se diverso e disponibile
             comune = addr.get("city") or addr.get("town") or addr.get("municipality")
             if comune and comune != name:
                 return f"{name} ({comune})"
@@ -98,8 +99,7 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def _lzw_decode(text: str) -> str:
-    """Decomprime un messaggio LZW usato dal protocollo Blitzortung WebSocket.
-    Ogni carattere Unicode nel testo rappresenta un codice LZW."""
+    """Decomprime un messaggio LZW usato dal protocollo Blitzortung WebSocket."""
     if not text:
         return ''
     chars = list(text)
@@ -131,8 +131,6 @@ def collect_strikes_websocket(
     """
     Si connette al WebSocket Blitzortung e raccoglie le scariche
     entro il raggio specificato per la durata indicata.
-
-    Restituisce lista di dict con lat, lon, time, distance_km.
     """
     try:
         import websocket
@@ -256,15 +254,6 @@ def collect_strikes_websocket(
 def collect_strikes_openmeteo(radius_km: float = 20.0) -> List[Dict[str, Any]]:
     """
     Fallback: usa Open-Meteo per rilevare temporali in corso tramite WMO weather code.
-
-    WMO codes rilevanti:
-      95 = Temporale lieve/moderato
-      96 = Temporale con grandine lieve
-      99 = Temporale con grandine forte
-
-    In assenza di dati reali di posizione, genera scariche "virtuali" posizionate
-    nel cerchio di osservazione (solo per trigger notifica). La fonte viene indicata
-    chiaramente nel messaggio.
     """
     import random
     try:
@@ -282,7 +271,6 @@ def collect_strikes_openmeteo(radius_km: float = 20.0) -> List[Dict[str, Any]]:
 
         current_code = data.get("current", {}).get("weather_code", 0)
         hourly_codes = data.get("hourly", {}).get("weather_code", [])
-        # Prendi il codice più critico tra corrente e ultima ora
         all_codes = [current_code] + (hourly_codes if isinstance(hourly_codes, list) else [])
         max_code = max((c for c in all_codes if isinstance(c, int)), default=0)
 
@@ -291,20 +279,17 @@ def collect_strikes_openmeteo(radius_km: float = 20.0) -> List[Dict[str, Any]]:
             print(f"Open-Meteo: weather_code={max_code} (nessun temporale)")
             return []
 
-        # Mappa codice → stima scariche (per superare la soglia)
         stima = {
-            95: thresholds.LIGHTNING_STRIKE_THRESHOLD + 2,   # lieve/moderato
-            96: thresholds.LIGHTNING_STRIKE_THRESHOLD * 3,  # con grandine
-            99: thresholds.LIGHTNING_STRIKE_THRESHOLD * 5,  # con grandine forte
+            95: thresholds.LIGHTNING_STRIKE_THRESHOLD + 2,
+            96: thresholds.LIGHTNING_STRIKE_THRESHOLD * 3,
+            99: thresholds.LIGHTNING_STRIKE_THRESHOLD * 5,
         }.get(max_code, thresholds.LIGHTNING_STRIKE_THRESHOLD + 1)
 
         print(f"Open-Meteo: weather_code={max_code} → TEMPORALE, stima ~{stima} scariche")
 
-        # Genera scariche virtuali distribuite nel raggio
         now = datetime.now(TZ_ROME)
         virtual_strikes = []
         for i in range(stima):
-            # Punto casuale nel cerchio entro raggio_km
             angle = random.uniform(0, 360)
             dist = random.uniform(1.0, min(radius_km, 15.0))
             dlat = dist / 111.0 * math.cos(math.radians(angle))
@@ -328,16 +313,12 @@ def collect_strikes_openmeteo(radius_km: float = 20.0) -> List[Dict[str, Any]]:
 
 
 def collect_strikes_from_state() -> List[Dict[str, Any]]:
-    """
-    Alternativa: legge le scariche recenti dallo stato salvato precedentemente
-    e le combina con quelle nuove per una finestra temporale più ampia.
-    """
+    """Legge le scariche recenti dallo stato salvato."""
     state = load_state()
     recent = state.get("recent_strikes", [])
     cutoff = datetime.now(TZ_ROME) - timedelta(
         minutes=thresholds.LIGHTNING_WINDOW_MINUTES
     )
-    # Filtra solo scariche nella finestra temporale
     valid = []
     for s in recent:
         try:
@@ -353,8 +334,7 @@ def generate_lightning_map(
     strikes: List[Dict[str, Any]],
     radius_km: float = 30.0,
 ) -> Optional[bytes]:
-    """Genera una mappa statica con i fulmini rilevati e cerchi di distanza.
-    Restituisce l'immagine PNG come bytes, o None in caso di errore."""
+    """Genera una mappa statica con i fulmini rilevati e cerchi di distanza."""
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -369,8 +349,6 @@ def generate_lightning_map(
         fig.patch.set_facecolor('#1a1a2e')
         ax.set_facecolor('#16213e')
 
-        # Cerchi di distanza (5, 10, 20, 30 km)
-        # Conversione km → gradi (approssimata alla latitudine locale)
         km_per_deg_lat = 111.0
         km_per_deg_lon = 111.0 * math.cos(math.radians(LATITUDE))
 
@@ -382,39 +360,34 @@ def generate_lightning_map(
             cx = LONGITUDE + (r_km / km_per_deg_lon) * np.cos(theta)
             cy = LATITUDE + (r_km / km_per_deg_lat) * np.sin(theta)
             ax.plot(cx, cy, color='#4a90d9', linewidth=0.8, alpha=0.6)
-            # Etichetta distanza
             ax.text(
                 LONGITUDE, LATITUDE + r_km / km_per_deg_lat,
                 f"{r_km} km", color='#7eb8da', fontsize=7,
                 ha='center', va='bottom', alpha=0.8,
             )
 
-        # Punto di osservazione
         ax.plot(LONGITUDE, LATITUDE, 'o', color='#00ff88', markersize=8, zorder=10)
         ax.plot(LONGITUDE, LATITUDE, 'o', color='#00ff88', markersize=14,
                 alpha=0.3, zorder=9)
 
-        # Fulmini
         if strikes:
             lats = [s["lat"] for s in strikes]
             lons = [s["lon"] for s in strikes]
             dists = [s["distance_km"] for s in strikes]
 
-            # Colora per distanza: rosso = vicino, giallo = lontano
             colors = []
             for d in dists:
                 ratio = min(d / radius_km, 1.0)
                 if ratio < 0.33:
-                    colors.append('#ff3333')  # rosso - vicino
+                    colors.append('#ff3333')
                 elif ratio < 0.66:
-                    colors.append('#ffaa00')  # arancione - medio
+                    colors.append('#ffaa00')
                 else:
-                    colors.append('#ffff00')  # giallo - lontano
+                    colors.append('#ffff00')
 
             ax.scatter(lons, lats, c=colors, s=25, marker='$⚡$',
                        zorder=8, alpha=0.9)
 
-        # Limiti mappa: cerchio più grande + margine 10%
         margin_km = radius_km * 1.15
         ax.set_xlim(
             LONGITUDE - margin_km / km_per_deg_lon,
@@ -437,7 +410,6 @@ def generate_lightning_map(
             color='#e0e0e0', fontsize=10, pad=10,
         )
 
-        # Griglia leggera
         ax.grid(True, alpha=0.15, color='#4a90d9', linewidth=0.5)
         for spine in ax.spines.values():
             spine.set_color('#333355')
@@ -459,24 +431,21 @@ def generate_lightning_map(
 def build_message(
     strikes: List[Dict], window_minutes: int
 ) -> str:
-    """Costruisce il messaggio Telegram per allerta fulmini."""
+    """Costruisce il messaggio Telegram HTML per allerta fulmini."""
     now_str = datetime.now(TZ_ROME).strftime("%d/%m/%Y %H:%M")
     n = len(strikes)
 
-    # Statistiche distanza
     distances = [s["distance_km"] for s in strikes]
     min_dist = min(distances)
     avg_dist = sum(distances) / len(distances)
     closest = min(strikes, key=lambda s: s["distance_km"])
-    closest_location = reverse_geocode(closest["lat"], closest["lon"])
+    closest_location = _escape_html(reverse_geocode(closest["lat"], closest["lon"]))
 
-    # Raggruppa per fasce
     entro_5 = sum(1 for d in distances if d <= 5)
     entro_10 = sum(1 for d in distances if 5 < d <= 10)
     entro_20 = sum(1 for d in distances if 10 < d <= 20)
     entro_30 = sum(1 for d in distances if 20 < d <= 30)
 
-    # Intensità stimata
     if n >= 20:
         intensita = "🔴 TEMPORALE SEVERO"
     elif n >= 10:
@@ -486,7 +455,6 @@ def build_message(
     else:
         intensita = "⚡ SCARICHE RILEVATE"
 
-    # Distribuzione come testo continuo
     fasce = []
     if entro_5:
         fasce.append(f"{entro_5} entro 5 km")
@@ -499,15 +467,15 @@ def build_message(
     distrib_text = ", ".join(fasce)
 
     msg = (
-        f"⚡ *ALLERTA FULMINI – La Spezia*\n"
+        f"⚡ <b>ALLERTA FULMINI – La Spezia</b>\n"
         f"{intensita}\n"
         f"📅 {now_str}\n\n"
-        f"Rilevate *{n}* scariche elettriche entro {int(thresholds.LIGHTNING_RADIUS_KM)} km "
+        f"Rilevate <b>{n}</b> scariche elettriche entro {int(thresholds.LIGHTNING_RADIUS_KM)} km "
         f"negli ultimi {window_minutes} minuti, "
-        f"la più vicina registrata a *{min_dist:.1f} km* dal punto di osservazione "
+        f"la più vicina registrata a <b>{min_dist:.1f} km</b> dal punto di osservazione "
         f"nei pressi di {closest_location}, "
         f"distanza media {avg_dist:.1f} km. "
-        f"Distribuzione: {distrib_text}."
+        f"Distribuzione: {_escape_html(distrib_text)}."
     )
 
     source = strikes[0].get("source", "blitzortung")
@@ -515,13 +483,13 @@ def build_message(
         wmo = strikes[0].get("wmo_code", 95)
         wmo_labels = {95: "Temporale lieve/moderato", 96: "Temporale con grandine", 99: "Temporale con grandine forte"}
         msg += (
-            f" Dati stimati da Open-Meteo (WMO {wmo}: {wmo_labels.get(wmo, 'Temporale')}), "
+            f" Dati stimati da Open-Meteo (WMO {wmo}: {_escape_html(wmo_labels.get(wmo, 'Temporale'))}), "
             f"le posizioni sono approssimate in assenza di Blitzortung."
         )
     else:
         msg += f" Fonte: Blitzortung.org, rete europea di rilevamento fulmini."
 
-    msg += f"\n\n🗺️ [Mappa fulmini in tempo reale]({LIGHTNINGMAPS_URL})"
+    msg += f"\n\n🗺️ <a href=\"{LIGHTNINGMAPS_URL}\">Mappa fulmini in tempo reale</a>"
     return msg
 
 
@@ -543,7 +511,6 @@ def should_send(state: Dict[str, Any], n_strikes: int, force: bool = False) -> b
             last_dt = datetime.fromisoformat(last_send)
             if last_dt.tzinfo is None:
                 last_dt = last_dt.replace(tzinfo=TZ_ROME)
-            # Non re-inviare per 30 minuti, a meno che il numero non sia raddoppiato
             if datetime.now(TZ_ROME) - last_dt < timedelta(minutes=30):
                 prev_n = state.get("last_strike_count", 0)
                 if n_strikes < prev_n * 2:
@@ -558,7 +525,7 @@ def should_send(state: Dict[str, Any], n_strikes: int, force: bool = False) -> b
 
 
 def send_telegram(text: str, image: Optional[bytes] = None):
-    """Invia messaggio Telegram, opzionalmente con foto radar."""
+    """Invia messaggio Telegram HTML, opzionalmente con foto radar."""
     if not TELEGRAM_TOKEN or not LISTA_CHAT:
         print("Telegram non configurato, skip invio")
         return
@@ -567,14 +534,14 @@ def send_telegram(text: str, image: Optional[bytes] = None):
             if image:
                 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
                 files = {"photo": ("mappa_fulmini.png", io.BytesIO(image), "image/png")}
-                data = {"chat_id": chat_id, "caption": text, "parse_mode": "Markdown"}
+                data = {"chat_id": chat_id, "caption": text, "parse_mode": "HTML"}
                 resp = requests.post(url, data=data, files=files, timeout=15)
             else:
                 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
                 data = {
                     "chat_id": chat_id,
                     "text": text,
-                    "parse_mode": "Markdown",
+                    "parse_mode": "HTML",
                     "disable_web_page_preview": False,
                 }
                 resp = requests.post(url, data=data, timeout=10)
@@ -589,9 +556,7 @@ def send_telegram(text: str, image: Optional[bytes] = None):
 
 
 def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dict[str, Any]]:
-    """Esegue l'analisi fulmini completa.
-    Ritorna un dict con {message, image, radar_time, strikes, n} se c'è un'allerta,
-    oppure None se non c'è nulla da inviare."""
+    """Esegue l'analisi fulmini completa."""
     radius = thresholds.LIGHTNING_RADIUS_KM
     threshold_count = thresholds.LIGHTNING_STRIKE_THRESHOLD
     window_min = thresholds.LIGHTNING_WINDOW_MINUTES
@@ -602,23 +567,19 @@ def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dic
         f"ascolto {listen_seconds}s"
     )
 
-    # 1. Raccolta scariche via WebSocket Blitzortung
     new_strikes = collect_strikes_websocket(
         duration_seconds=listen_seconds,
         radius_km=radius,
     )
 
-    # 2. Fallback Open-Meteo se Blitzortung non ha fornito dati
     ws_fallito = len(new_strikes) == 0
     if ws_fallito:
         print("WebSocket senza dati → provo fallback Open-Meteo...")
         new_strikes = collect_strikes_openmeteo(radius_km=radius)
 
-    # 3. Combina con scariche recenti dallo stato (per copertura finestra completa)
     state = load_state()
     old_strikes = collect_strikes_from_state()
 
-    # Unisci, evitando duplicati (per lat/lon arrotondati)
     seen = set()
     all_strikes = []
     for s in old_strikes + new_strikes:
@@ -627,7 +588,6 @@ def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dic
             seen.add(key)
             all_strikes.append(s)
 
-    # 4. Filtra scariche recenti (max 15 min)
     now = datetime.now(TZ_ROME)
     cutoff_fresh = now - timedelta(minutes=15)
     cutoff_window = now - timedelta(minutes=window_min)
