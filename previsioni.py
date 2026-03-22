@@ -375,20 +375,19 @@ def fetch_forecast_data(start_date):
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 SYSTEM_PROMPT = f"""Sei un meteorologo professionista italiano. Ricevi dati meteo orari e giornalieri per {LOCATION_NAME} e devi scrivere le previsioni per il periodo indicato.
-I dati possono coprire le ore rimanenti della giornata corrente e l'intera giornata successiva.
+I dati coprono le ore rimanenti della giornata corrente e i giorni successivi fino all'orizzonte del modello (tipicamente 2-3 giorni).
 
 Il tuo output DEVE contenere TRE sezioni separate dai marcatori "---SEZIONE TECNICA---" e "---SEZIONE RISCHI---" (esattamente così, ciascuno su una riga a sé).
 
 ═══ PRIMA SEZIONE: PREVISIONI SEMPLICI ═══
 
-Scrivi un testo BREVE e CONCISO (massimo 600-800 caratteri), in un UNICO BLOCCO CONTINUO senza andare a capo, comprensibile da chiunque.
+Scrivi un testo CONCISO in un UNICO BLOCCO CONTINUO senza andare a capo, comprensibile da chiunque. La lunghezza deve essere proporzionale al numero di giorni coperti: circa 600-800 caratteri per un giorno, fino a 1500 caratteri per tre giorni.
 
 Struttura:
 - Inizia con "Previsioni per {LOCATION_NAME}, [periodo coperto dai dati]."
 - Per le ore rimanenti di oggi: descrivi brevemente cosa aspettarsi.
-- Per domani: descrivi in sequenza le 4 fasce orarie (notte, mattina, pomeriggio, sera) in modo sintetico: cielo, temperature min/max, vento e precipitazioni solo se presenti.
-- Indica alba e tramonto di domani.
-- Concludi con una frase riepilogativa.
+- Per ciascun giorno successivo presente nei dati: descrivi in sequenza le 4 fasce orarie (notte, mattina, pomeriggio, sera) in modo sintetico: cielo, temperature min/max, vento e precipitazioni solo se presenti. Indica alba e tramonto. Se i dati coprono solo una parte della giornata, descrivi solo le ore disponibili.
+- Concludi con una frase riepilogativa sull'intero periodo.
 
 Regole:
 - Temperature arrotondate a un decimale. Precipitazioni in mm. Vento in km/h con direzione cardinale.
@@ -573,21 +572,37 @@ def main(target_chat_id=None):
     today_dt = datetime.combine(today, datetime.min.time()).replace(tzinfo=TZ_ROME)
     tomorrow_dt = datetime.combine(tomorrow, datetime.min.time()).replace(tzinfo=TZ_ROME)
 
-    print(f"\nPeriodo: dalle {now.strftime('%H:%M')} di {format_date_it(today_dt)} a fine {format_date_it(tomorrow_dt)}")
+    print(f"\nOra: {now.strftime('%H:%M')} di {format_date_it(today_dt)}")
     print(f"Località: {LOCATION_NAME} ({LATITUDE}°N, {LONGITUDE}°E)")
 
     # 1. Scarica dati meteo
     print("\n📡 Scaricamento dati Open-Meteo...")
     weather_data, model_api_name, model_used = fetch_forecast_data(today_dt)
 
-    # 1a. Verifica aggiornamento run NWP (prima del filtro sull'ora corrente,
-    #     così temperature_2m è ancora integro con i null di coda oltre l'orizzonte)
+    # 1a. Verifica aggiornamento run NWP e ricava fine effettiva copertura
+    #     (prima del filtro sull'ora corrente, così temperature_2m è ancora
+    #     integro con i null di coda oltre l'orizzonte del modello)
     print("\n🔍 Verifica aggiornamento run NWP...")
     fresh_ok, fresh_msg = check_data_freshness(weather_data, model_api_name, model_used, now)
     if fresh_ok:
         print(f"  ✓ {fresh_msg}")
     else:
         print(f"  ⚠ ATTENZIONE: {fresh_msg}")
+
+    # Ricava la fine effettiva della copertura dall'ultimo valore non-null
+    # di temperature_2m — questo è il vero orizzonte della run scaricata
+    _temps_raw = weather_data.get("hourly", {}).get("temperature_2m", [])
+    _times_raw = weather_data.get("hourly", {}).get("time", [])
+    actual_end_dt = tomorrow_dt  # fallback conservativo
+    for _i in range(len(_temps_raw) - 1, -1, -1):
+        if _temps_raw[_i] is not None and _i < len(_times_raw):
+            try:
+                actual_end_dt = datetime.fromisoformat(_times_raw[_i]).replace(tzinfo=TZ_ROME)
+            except ValueError:
+                pass
+            break
+    print(f"  ✓ Fine effettiva copertura: {actual_end_dt.strftime('%d/%m %H:%M')} "
+          f"({(actual_end_dt - now).total_seconds() / 3600:.0f}h da ora)")
 
     # 1b. Filtra dati orari: dalle ore correnti in poi
     hourly = weather_data.get("hourly", {})
@@ -618,7 +633,7 @@ def main(target_chat_id=None):
     print("\n🤖 Generazione previsioni con AI...")
     date_range_info = (
         f"Periodo: dalle ore {now.strftime('%H:00')} di {format_date_it(today_dt)} "
-        f"fino alle 23:00 di {format_date_it(tomorrow_dt)}"
+        f"fino alle {actual_end_dt.strftime('%H:00')} di {format_date_it(actual_end_dt)}"
     )
     forecast_text, gemini_model = generate_forecast(
         weather_data, model_used, date_range_info, GEMINI_API_KEY, ground_data
@@ -634,7 +649,7 @@ def main(target_chat_id=None):
     header = (
         f"🌤 Previsioni Meteo\n"
         f"📍 {LOCATION_NAME}\n"
-        f"📅 {today_dt.strftime('%d/%m/%Y')} – {tomorrow_dt.strftime('%d/%m/%Y')}\n"
+        f"📅 {today_dt.strftime('%d/%m/%Y')} – {actual_end_dt.strftime('%d/%m/%Y')}\n"
         f"🔬 Modello: {model_used} | AI: {gemini_model}\n"
         f"{freshness_warning}\n"
     )
@@ -680,7 +695,7 @@ def main(target_chat_id=None):
         print("\n✅ Previsioni inviate con successo (messaggio unico)")
     else:
         print("  ⚠ Messaggio unico troppo lungo, invio in 3 parti...")
-        date_line = f"📅 {today_dt.strftime('%d/%m/%Y')} – {tomorrow_dt.strftime('%d/%m/%Y')}"
+        date_line = f"📅 {today_dt.strftime('%d/%m/%Y')} – {actual_end_dt.strftime('%d/%m/%Y')}"
 
         msg1 = header + simple_part
         msg2 = f"📊 Analisi Tecnica\n📍 {LOCATION_NAME} · {date_line}\n\n{tech_part}" if tech_part else None
