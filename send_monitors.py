@@ -6,8 +6,8 @@ Esegue monitor_fulmini, poi invia le eventuali allerte via Telegram.
 
 Flusso:
 1. Esegue monitor_fulmini.run_analysis() (~2 min WebSocket)
-2. Se allerta con foto → sendPhoto
-   Altrimenti → sendMessage
+2. Se allerta con foto → sendPhoto (HTML caption)
+   Altrimenti → sendMessage (HTML)
 3. Aggiorna lo stato del monitor dopo l'invio
 
 Uso:
@@ -34,10 +34,7 @@ def send_media_group(
 ) -> bool:
     """
     Invia un album di foto via Telegram sendMediaGroup.
-
     items: lista di (nome_file, image_bytes, caption_text)
-    La caption viene assegnata a ciascuna foto.
-    Restituisce True se l'invio ha avuto successo.
     """
     if not items:
         return False
@@ -52,7 +49,7 @@ def send_media_group(
             "type": "photo",
             "media": f"attach://{attach_key}",
             "caption": caption,
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML",
         })
         files[attach_key] = (filename, io.BytesIO(img_bytes), "image/png")
 
@@ -77,12 +74,12 @@ def send_media_group(
 
 
 def send_single_photo(chat_id: str, caption: str, image: bytes, filename: str) -> bool:
-    """Invia una singola foto con caption."""
+    """Invia una singola foto con caption HTML."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     try:
         resp = requests.post(
             url,
-            data={"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"},
+            data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
             files={"photo": (filename, io.BytesIO(image), "image/png")},
             timeout=15,
         )
@@ -100,12 +97,12 @@ def send_single_photo(chat_id: str, caption: str, image: bytes, filename: str) -
 
 
 def send_text(chat_id: str, text: str) -> bool:
-    """Invia un messaggio di solo testo."""
+    """Invia un messaggio di testo HTML."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
         resp = requests.post(
             url,
-            data={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            data={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             timeout=10,
         )
         resp.raise_for_status()
@@ -126,8 +123,7 @@ def dispatch_results(
 ) -> bool:
     """
     Invia i risultati a tutti i chat Telegram.
-    Se c'è foto → foto singola, altrimenti testo.
-    Restituisce True se almeno un invio è riuscito.
+    Se c'è foto → foto singola con caption HTML, altrimenti testo HTML.
     """
     if not TELEGRAM_TOKEN or not LISTA_CHAT:
         print("Telegram non configurato, skip invio")
@@ -153,7 +149,6 @@ def main():
     print("  ORCHESTRATORE MONITOR METEO")
     print("=" * 50)
 
-    # 1. Monitor fulmini (~2 min WebSocket)
     print("\n🔌 Monitor Fulmini...")
     print("-" * 40)
     fulmini_result = monitor_fulmini.run_analysis(force=force)
@@ -162,17 +157,14 @@ def main():
     else:
         print("→ Nessuna allerta fulmini")
 
-    # 2. Nessuna allerta?
     if not fulmini_result:
         print("\n✅ Nessuna allerta attiva – niente da inviare")
         return
 
-    # 3. Invio
     print("\n📤 Invio notifiche...")
     print("-" * 40)
     success = dispatch_results(fulmini_result)
 
-    # 4. Aggiorna stato dopo invio riuscito
     if success:
         monitor_fulmini.mark_sent(fulmini_result)
         print("\n✅ Invio completato e stato aggiornato")
