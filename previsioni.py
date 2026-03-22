@@ -261,6 +261,7 @@ def _fetch_pressure_levels(start_date_str, end_date_str):
         print(f"  ⚠ Errore fetch supplementare: {e}")
         return {}
 
+
 def check_data_freshness(data, model_used, now):
     """
     Controlla che i dati non siano obsoleti.
@@ -270,16 +271,11 @@ def check_data_freshness(data, model_used, now):
     if not times:
         return False, "Nessun dato orario disponibile"
 
-    # Parsing primo e ultimo timestamp
-    fmt = "%Y-%m-%dT%H:%M"
     try:
-        first_dt = datetime.strptime(times[0],  fmt).replace(tzinfo=TZ_ROME)
-        last_dt  = datetime.strptime(times[-1], fmt).replace(tzinfo=TZ_ROME)
-    except ValueError:
-        # Prova senza minuti (formato "2025-03-22T06:00")
-        fmt = "%Y-%m-%dT%H:%M"
         first_dt = datetime.fromisoformat(times[0]).replace(tzinfo=TZ_ROME)
         last_dt  = datetime.fromisoformat(times[-1]).replace(tzinfo=TZ_ROME)
+    except ValueError:
+        return False, f"Formato timestamp non riconosciuto: {times[0]}"
 
     hours_ahead  = (last_dt  - now).total_seconds() / 3600
     hours_behind = (now - first_dt).total_seconds() / 3600
@@ -299,6 +295,7 @@ def check_data_freshness(data, model_used, now):
         f"Run aggiornata: {len(times)} ore totali, "
         f"copertura futura {hours_ahead:.0f}h (fino a {times[-1]})"
     )
+
 
 def fetch_forecast_data(start_date):
     """Scarica dati da Open-Meteo usando l'orizzonte massimo per ogni modello."""
@@ -563,18 +560,19 @@ def main(target_chat_id=None):
     print(f"\nPeriodo: dalle {now.strftime('%H:%M')} di {format_date_it(today_dt)} a fine {format_date_it(tomorrow_dt)}")
     print(f"Località: {LOCATION_NAME} ({LATITUDE}°N, {LONGITUDE}°E)")
 
-    # 1. Scarica dati meteo (oggi + domani)
+    # 1. Scarica dati meteo
     print("\n📡 Scaricamento dati Open-Meteo...")
     weather_data, model_used = fetch_forecast_data(today_dt)
 
+    # 1a. Verifica aggiornamento dati
     print("\n🔍 Verifica aggiornamento dati...")
-fresh_ok, fresh_msg = check_data_freshness(weather_data, model_used, now)
-if fresh_ok:
-    print(f"  ✓ {fresh_msg}")
-else:
-    print(f"  ⚠ ATTENZIONE: {fresh_msg}")
+    fresh_ok, fresh_msg = check_data_freshness(weather_data, model_used, now)
+    if fresh_ok:
+        print(f"  ✓ {fresh_msg}")
+    else:
+        print(f"  ⚠ ATTENZIONE: {fresh_msg}")
 
-    # 1a. Filtra dati orari: dalle ore correnti in poi
+    # 1b. Filtra dati orari: dalle ore correnti in poi
     hourly = weather_data.get("hourly", {})
     times = hourly.get("time", [])
     current_hour_str = now.strftime("%Y-%m-%dT%H:00")
@@ -589,7 +587,7 @@ else:
                 hourly[key] = hourly[key][start_idx:]
         print(f"  ✓ Dati filtrati: da {times[start_idx] if start_idx < len(times) else '?'} ({len(hourly.get('time', []))} ore)")
 
-    # 1b. Carica condizioni terreno e termodinamica attuale
+    # 1c. Carica condizioni terreno e termodinamica attuale
     print("\n🌱 Caricamento condizioni terreno...")
     ground_data = load_ground_conditions()
     if ground_data:
@@ -615,11 +613,13 @@ else:
 
     # 3. Componi e invia messaggio Telegram
     print("\n📤 Invio via Telegram...")
+    freshness_warning = "" if fresh_ok else f"⚠️ Dati potenzialmente obsoleti: {fresh_msg}\n"
     header = (
         f"🌤 Previsioni Meteo\n"
         f"📍 {LOCATION_NAME}\n"
         f"📅 {today_dt.strftime('%d/%m/%Y')} – {tomorrow_dt.strftime('%d/%m/%Y')}\n"
-        f"🔬 Modello: {model_used} | AI: {gemini_model}\n\n"
+        f"🔬 Modello: {model_used} | AI: {gemini_model}\n"
+        f"{freshness_warning}\n"
     )
 
     # Componi messaggio unico: semplice + tecnica + rischi
@@ -627,13 +627,11 @@ else:
     SEP_RISK = "---SEZIONE RISCHI---"
 
     remaining = forecast_text
-    # Estrai sezione semplice
     if SEP_TECH in remaining:
         simple_part, remaining = remaining.split(SEP_TECH, 1)
     else:
         simple_part, remaining = remaining, ""
 
-    # Estrai sezione tecnica e rischi
     if SEP_RISK in remaining:
         tech_part, risk_part = remaining.split(SEP_RISK, 1)
     else:
@@ -643,7 +641,6 @@ else:
     tech_part = tech_part.strip()
     risk_part = risk_part.strip()
 
-    # Componi la sezione rischi
     RISK_COLORS = {
         "VERDE": "🟢", "GIALLO": "🟡",
         "ARANCIONE": "🟠", "ROSSO": "🔴",
