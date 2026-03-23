@@ -1012,41 +1012,34 @@ def esegui_report(force_send=False, target_chat_id=None):
         pressione_msl = round(pressione_locale * math.exp(g_val * h / (Rd * T_k)), 1)
         v_medio = d.get('windspeed_avg', 0) / 10
         raffica_istantanea_tuya = d.get('windspeed_gust', 0) / 10
-        _omirl_gust = fetch_omirl_hourly_max_gust_laspezia()
-        if _omirl_gust is not None:
-            raffica = _omirl_gust
-            raffica_source = "OMIRL La Spezia"
-        else:
-            raffica = raffica_istantanea_tuya
-            raffica_source = "Tuya (max ultima ora da storico)"
+        # ── Raffica max ultima ORA ────────────────────────────────────────────
+        # Il campo 'max' dell'endpoint OMIRL /Vento restituisce il massimo
+        # dal reset di mezzanotte (max giornaliero), NON il massimo orario.
+        # Si usa quindi il max della raffica_istantanea nello storico ultima ora.
         pioggia_24h_sensore = (d.get('rain_24h', 0) / 10) * TUYA_RAIN_CALIBRATION
         pioggia_1h = (d.get('rain_1h', 0) / 10) * TUYA_RAIN_CALIBRATION
         rain_rate = (d.get('rain_rate', 0) / 10) * TUYA_RAIN_RATE_CALIBRATION
         print(f"  Precipitazioni (calibrate): pioggia_1h={pioggia_1h} mm, rain_rate={rain_rate} mm/h, sensore_24h={pioggia_24h_sensore} mm")
         now_it = datetime.now(TZ_ROME)
         _storico_tmp = carica_storico()
-        if _omirl_gust is None:
-            _cutoff_1h = now_it - timedelta(hours=1)
-            _raffiche_1h = [max(0.0, float(raffica_istantanea_tuya))]
-            for _s in sorted(_storico_tmp, key=lambda x: x.get("ts", "")):
-                _ts_str = _s.get("ts")
-                if not _ts_str:
-                    continue
-                try:
-                    _ts_dt = datetime.fromisoformat(_ts_str)
-                    if _ts_dt.tzinfo is None:
-                        _ts_dt = _ts_dt.replace(tzinfo=TZ_ROME)
-                    if _ts_dt >= _cutoff_1h:
-                        _raffica_sample = _s.get("raffica_istantanea")
-                        if isinstance(_raffica_sample, (int, float)) and _raffica_sample >= 0:
-                            _raffiche_1h.append(float(_raffica_sample))
-                except Exception:
-                    continue
-            raffica = round(max(_raffiche_1h), 1)
-            print(
-                f"⚠️  OMIRL non disponibile, uso raffica max ultima ora da Tuya/storico: "
-                f"{raffica} km/h"
-            )
+        _cutoff_1h = now_it - timedelta(hours=1)
+        _raffiche_1h = [max(0.0, float(raffica_istantanea_tuya))]
+        for _s in sorted(_storico_tmp, key=lambda x: x.get("ts", "")):
+            _ts_str = _s.get("ts")
+            if not _ts_str:
+                continue
+            try:
+                _ts_dt = datetime.fromisoformat(_ts_str)
+                if _ts_dt.tzinfo is None:
+                    _ts_dt = _ts_dt.replace(tzinfo=TZ_ROME)
+                if _ts_dt >= _cutoff_1h:
+                    _raffica_sample = _s.get("raffica_istantanea")
+                    if isinstance(_raffica_sample, (int, float)) and _raffica_sample >= 0:
+                        _raffiche_1h.append(float(_raffica_sample))
+            except Exception:
+                continue
+        raffica = round(max(_raffiche_1h), 1)
+        print(f"  Raffica max ultima ora (storico Tuya): {raffica} km/h ({len(_raffiche_1h)} campioni)")
         _cutoff_24h = now_it - timedelta(hours=24)
         _pioggia_24h_somma = 0.0
         _ts_precedente = None
@@ -1609,7 +1602,7 @@ def esegui_report(force_send=False, target_chat_id=None):
                 if _invia_con_grafico:
                     try:
                         from grafico import genera_grafico_24h
-                        _grafico_bytes = genera_grafico_24h(titolo_stazione="La Spezia — Foce")
+                        _grafico_bytes = genera_grafico_24h(titolo_stazione="La Spezia — Foce", lat=LATITUDE, lon=LONGITUDE)
                     except Exception as _eg:
                         print(f"⚠️  Grafico non generato: {_eg}")
                 for chat_id in _send_to:
