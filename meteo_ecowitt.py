@@ -1302,11 +1302,32 @@ def esegui_report(force_send=False, target_chat_id=None):
     salva_storico(storico)
     avvisi = []
     diff_temp_dew = temp_ext - dew_point
-    if umid_ext >= 99 and diff_temp_dew <= 0.5:
-        if v_medio < 5:
-            avvisi.append("🌫️ AVVISO: NEBBIA (T-Td ≤0.5°C, U≥99%)")
-        else:
-            avvisi.append("🌫️ AVVISO: FOSCHIA (T-Td ≤0.5°C, U≥99%)")
+    # ── Nebbia predittiva avanzata ────────────────────────────────────────
+    try:
+        from qualita_aria import valuta_nebbia
+        _nebbia = valuta_nebbia(
+            temp=temp_ext, dew_point=dew_point, umidita=umid_ext,
+            vento=v_medio, ora=now_it.hour, storico=storico,
+        )
+        if _nebbia:
+            avvisi.append(_nebbia["avviso"])
+    except Exception as _en:
+        print(f"⚠️  valuta_nebbia error: {_en}")
+        if umid_ext >= 99 and diff_temp_dew <= 0.5:
+            if v_medio < 5:
+                avvisi.append("🌫️ AVVISO: NEBBIA (T-Td ≤0.5°C, U≥99%)")
+            else:
+                avvisi.append("🌫️ AVVISO: FOSCHIA (T-Td ≤0.5°C, U≥99%)")
+    # ── Qualità dell'aria ─────────────────────────────────────────────────
+    _aq_data = None
+    try:
+        from qualita_aria import fetch_air_quality
+        _aq_data = fetch_air_quality()
+        if _aq_data and _aq_data.get("avvisi"):
+            for _av in _aq_data["avvisi"]:
+                avvisi.append(_av)
+    except Exception as _eaq:
+        print(f"⚠️  fetch_air_quality error: {_eaq}")
     if temp_ext >= thresholds.ARPAL_HEAT_ROSSO:
         avvisi.append(f"🔴🔥 AVVISO: CALDO ESTREMO — {temp_ext}°C (soglia ARPAL 🔴 ≥{thresholds.ARPAL_HEAT_ROSSO:.0f}°C)")
     elif temp_ext >= thresholds.ARPAL_HEAT_ARANCIONE:
@@ -1418,6 +1439,14 @@ def esegui_report(force_send=False, target_chat_id=None):
     }
     save_state_section('meteo', nuovi_dati)
     data_ora_it = now_it.strftime('%d/%m/%Y %H:%M')
+    # ── Sezione qualità dell'aria ─────────────────────────────────────────
+    _aq_sezione = ""
+    if _aq_data:
+        try:
+            from qualita_aria import formatta_sezione_aria
+            _aq_sezione = formatta_sezione_aria(_aq_data)
+        except Exception:
+            pass
     # ── Composizione messaggio HTML ───────────────────────────────────────────
     testo_meteo = (
         f"📡 <b>STAZIONE METEO ECOWITT WITTBOY — LA SPEZIA</b>\n"
@@ -1454,6 +1483,7 @@ def esegui_report(force_send=False, target_chat_id=None):
         f"⚡ <b>INSTABILITÀ CONVETTIVA</b>\n"
         f"<code>{sbcape_str}</code>\n\n"
         f"{massa_str}"
+        f"{_aq_sezione}"
     )
     ora_corrente = now_it.hour
     minuto_corrente = now_it.minute
@@ -1527,27 +1557,60 @@ def esegui_report(force_send=False, target_chat_id=None):
     else:
         print(f"⏭️  Nessun invio Telegram - Ora: {ora_corrente}:58, nessun evento significativo")
     if devo_inviare:
-        url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         invio_avvenuto = False
         if not TELEGRAM_TOKEN or not _send_to:
             print("✗ Telegram non configurato (manca token o lista chat); salto invio")
         else:
+            # Genera grafico solo al report serale (20:58) o se forzato con --force
+            _grafico_bytes = None
+            _invia_con_grafico = (ora_corrente == 20 and e_orario_programmato) or force_send
+            if _invia_con_grafico:
+                try:
+                    from grafico import genera_grafico_24h
+                    _grafico_bytes = genera_grafico_24h(titolo_stazione="La Spezia — Ecowitt")
+                except Exception as _eg:
+                    print(f"⚠️  Grafico non generato: {_eg}")
             for chat_id in _send_to:
                 try:
-                    response = requests.post(
-                        url_tg,
-                        data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'HTML'},
-                        timeout=10,
-                    )
+                    if _grafico_bytes:
+                        url_photo = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+                        response = requests.post(
+                            url_photo,
+                            data={'chat_id': chat_id, 'caption': testo_meteo, 'parse_mode': 'HTML'},
+                            files={'photo': ('grafico_24h.png', _grafico_bytes, 'image/png')},
+                            timeout=20,
+                        )
+                    else:
+                        url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                        response = requests.post(
+                            url_tg,
+                            data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'HTML'},
+                            timeout=10,
+                        )
                     response.raise_for_status()
                     tg_payload = response.json()
                     if tg_payload.get("ok"):
-                        print(f"✓ Messaggio inviato a {chat_id}")
+                        tipo_invio = "foto+grafico" if _grafico_bytes else "testo"
+                        print(f"✓ Messaggio ({tipo_invio}) inviato a {chat_id}")
                         invio_avvenuto = True
                     else:
-                        print(f"✗ Telegram API testo errore per {chat_id}: {tg_payload}")
+                        print(f"✗ Telegram API errore per {chat_id}: {tg_payload}")
+                        if _grafico_bytes:
+                            print(f"  → Fallback invio testo a {chat_id}")
+                            try:
+                                url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                                r2 = requests.post(
+                                    url_tg,
+                                    data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'HTML'},
+                                    timeout=10,
+                                )
+                                if r2.json().get("ok"):
+                                    print(f"  ✓ Fallback testo inviato a {chat_id}")
+                                    invio_avvenuto = True
+                            except Exception as _ef:
+                                print(f"  ✗ Fallback testo fallito: {_ef}")
                 except Exception as e:
-                    print(f"✗ Errore Telegram testo: {e}")
+                    print(f"✗ Errore Telegram: {e}")
         if invio_avvenuto and invio_slot:
             nuovi_dati["ultimo_invio_slot"] = invio_slot
             nuovi_dati["ultimo_invio_ts"] = now_it.isoformat()
