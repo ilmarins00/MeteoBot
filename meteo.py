@@ -10,7 +10,9 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import numpy as np
 from scipy.interpolate import interp1d
+
 TZ_ROME = ZoneInfo("Europe/Rome")
+
 def estrai_pressione_hpa(dati_device):
     """Estrae la pressione in hPa dalla risposta Tuya con fallback su più chiavi."""
     candidate_keys = [
@@ -29,6 +31,7 @@ def estrai_pressione_hpa(dati_device):
                 return value / 10.0
             return float(value)
     return None
+
 from config import (
     TUYA_ACCESS_ID as ACCESS_ID,
     TUYA_ACCESS_SECRET as ACCESS_SECRET,
@@ -48,6 +51,7 @@ from config import (
     TUYA_RAIN_RATE_CALIBRATION,
 )
 from utils import extract_pressure_hpa, fetch_omirl_hourly_max_gust_laspezia
+
 def carica_storico():
     """Carica lo storico delle ultime 24h di misurazioni."""
     if os.path.exists(FILE_STORICO):
@@ -57,6 +61,7 @@ def carica_storico():
         except Exception:
             pass
     return []
+
 def salva_storico(storico):
     """Salva lo storico, mantenendo solo le ultime 24h."""
     now = datetime.now(TZ_ROME)
@@ -76,6 +81,7 @@ def salva_storico(storico):
             continue
     with open(FILE_STORICO, "w") as f:
         json.dump(filtered, f)
+
 def calcola_tendenza_barometrica(storico, pressione_attuale):
     """Calcola la tendenza barometrica nelle ultime 3h.
     Restituisce (simbolo, delta_hPa, descrizione)."""
@@ -109,41 +115,9 @@ def calcola_tendenza_barometrica(storico, pressione_attuale):
         return "↘️", delta, "In calo"
     else:
         return "⬇️", delta, "In forte calo"
+
 def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
-    """Classifica la massa d'aria secondo Bergeron (1928).
-    Discriminante primario: punto di rugiada (Td).
-    ──────────────────────────────────────────────
-    In meteorologia operativa la classificazione si basa su θe a 850 hPa
-    (da radiosondaggio o modello NWP), livello in cui il riscaldamento
-    solare superficiale non arriva.  Quando si dispone solo di dati di
-    superficie, θe mostra un **ciclo diurno spurio** (±10-15 °C) perché
-    la temperatura al suolo è dominata dal riscaldamento/raffreddamento
-    diabatico (radiativo), non adiabatico.  Ciò causa salti artificiosi
-    nella classificazione tra giorno e notte.
-    Il punto di rugiada (Td) non ha questo problema:
-      • variazione diurna tipica < 2 °C (quasi conservativo)
-      • rappresenta direttamente il contenuto d'umidità e la regione
-        sorgente della massa d'aria
-      • è il parametro standard usato da NWS, ECMWF, Météo-France
-        per l'identificazione delle masse d'aria da osservazioni al suolo
-    θe viene calcolata correttamente (Bolton 1980, con pressione alla
-    stazione anziché MSL) e riportata a scopo informativo / convettivo.
-    Discriminanti secondari:
-      • spread T−Td  → continentale vs marittima  (Stull 2017)
-      • anomalia T   → sottoclassificazione locale (ARPAL 1991-2020)
-    Soglie Td per il Mediterraneo nord-occidentale (La Spezia):
-      Td < −8 °C   → Artica  (cA / mA)
-      Td −8…0 °C   → Polare  (cP / mP)
-      Td  0…8 °C   → Polare modificata / transizione
-      Td  8…15 °C  → Mediterranea / temperata
-      Td 15…20 °C  → Subtropicale
-      Td ≥ 20 °C   → Tropicale
-    Riferimenti:
-      Bolton D.  (1980)  Mon. Wea. Rev., 108, 1046-1053
-      Bergeron T. (1928) Geofysiske Publikasjoner, 5(6)
-      Stull R.    (2017) Practical Meteorology, Univ. of British Columbia
-      Lionello P. et al. (2006) Mediterranean Climate Variability, Elsevier
-    """
+    """Classifica la massa d'aria secondo Bergeron (1928)."""
     t_media_clima = {
         1: 7.5,  2: 8.2,  3: 10.8, 4: 13.8,
         5: 17.8, 6: 21.5, 7: 24.2, 8: 24.0,
@@ -165,6 +139,7 @@ def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
         theta_e_C = theta_e - 273.15
     except (ValueError, ZeroDivisionError, OverflowError):
         theta_e_C = temp + 10
+    
     if dew_point < -8:
         if spread > 10:
             tipo, nome, emoji = "cA", "Continentale Artica", "🧊"
@@ -225,6 +200,7 @@ def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
         else:
             tipo, nome, emoji = "mT", "Marittima Tropicale", "🌴"
             desc = "Aria calda e umida dal Mediterraneo meridionale o subtropicale"
+            
     return {
         "tipo": tipo,
         "nome": nome,
@@ -234,6 +210,7 @@ def classifica_massa_aria(temp, dew_point, pressione_msl, mese):
         "anomalia": round(anomalia, 1),
         "spread": round(spread, 1)
     }
+
 def calcola_theta_e_850hpa(data_openmeteo):
     """Calcola la theta-e a 850 hPa usando i dati del modello Open-Meteo."""
     try:
@@ -319,6 +296,7 @@ def estrai_temperature_alti_livelli(data_openmeteo):
     except Exception as e:
         print(f"⚠️  Errore estrazione temperature alti livelli: {e}")
         return None
+
 def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, severe_score=0):
     """Valutazione ingredient-based del rischio convettivo su scala 0-12."""
     sbcape_f = float(sbcape or 0)
@@ -327,6 +305,7 @@ def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, sev
     cin_abs = abs(float(cin or 0))
     shear = float(bulk_shear or 0)
     li = li_value if isinstance(li_value, (int, float)) else None
+    
     if max_cape < 300:
         cape_score = 0.0
     elif max_cape < 800:
@@ -337,8 +316,10 @@ def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, sev
         cape_score = 3.0
     else:
         cape_score = 4.0
+        
     if mucape_f >= 1200 and mucape_f >= 0.9 * max_cape:
         cape_score += 0.5
+        
     if cin_abs > 250:
         cin_score = 0.0
     elif cin_abs > 175:
@@ -347,6 +328,7 @@ def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, sev
         cin_score = 1.5
     else:
         cin_score = 1.0
+        
     if li is None:
         li_score = 0.0
     elif li <= -8:
@@ -359,6 +341,7 @@ def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, sev
         li_score = 0.8
     else:
         li_score = 0.0
+        
     if shear < 8:
         shear_score = 0.0
     elif shear < 12:
@@ -369,6 +352,7 @@ def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, sev
         shear_score = 3.0
     else:
         shear_score = 3.5
+        
     synergy_score = 0.0
     if max_cape >= 1500 and shear >= 15:
         synergy_score += 1.0
@@ -376,10 +360,12 @@ def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, sev
         synergy_score += 0.8
     if max_cape >= 2500 and shear >= 20 and li is not None and li <= -6:
         synergy_score += 1.2
+        
     score = cape_score + cin_score + li_score + shear_score + synergy_score
     if severe_score:
         score = max(score, min(float(severe_score), 12.0))
     score = round(min(score, 12.0), 1)
+    
     warning = None
     level = "basso"
     event_label = "Instabilità convettiva"
@@ -395,6 +381,7 @@ def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, sev
         warning = "⛈️ AVVISO: INSTABILITÀ CONVETTIVA MARCATA"
         level = "moderato"
         event_label = "Instabilità convettiva marcata"
+        
     return {
         "score": score,
         "level": level,
@@ -406,6 +393,7 @@ def valuta_instabilita_convettiva(sbcape, mucape, cin, li_value, bulk_shear, sev
         "li": li,
         "shear": shear,
     }
+
 _RD = 287.05
 _RV = 461.5
 _CP = 1005.0
@@ -414,6 +402,7 @@ _G  = 9.80665
 _EPSILON = 0.622
 _API_CACHE = {}
 _CACHE_DURATION = 600
+
 def fetch_station_data_with_retry(max_retries=3):
     """Legge i dati reali dalla stazione meteo Tuya con retry logic."""
     if not ACCESS_ID or not ACCESS_SECRET or not DEVICE_ID:
@@ -471,9 +460,9 @@ def fetch_station_data_with_retry(max_retries=3):
         return station_data
     print("⚠️  Tuya non disponibile dopo tutti i tentativi")
     return None
+
 def fetch_profile_cached():
-    """Scarica profilo verticale da Open-Meteo con cache.
-    Usa AROME France (Météo-France, 2.5 km) con fallback best_match."""
+    """Scarica profilo verticale da Open-Meteo con cache."""
     global _API_CACHE
     now = time.time()
     if 'open_meteo' in _API_CACHE and now - _API_CACHE['open_meteo_time'] < _CACHE_DURATION:
@@ -531,33 +520,33 @@ def fetch_profile_cached():
     except Exception as e:
         print(f"Errore fetch Open-Meteo: {e}")
         return None
+
 def vapor_pressure(T_celsius):
-    """Pressione di vapore saturo (hPa) — Bolton (1980)."""
     return 6.112 * np.exp(17.67 * T_celsius / (T_celsius + 243.5))
+
 def mixing_ratio(e, p):
-    """Rapporto di miscelanza (kg/kg) da pressione di vapore e pressione totale."""
     return _EPSILON * e / (p - e)
+
 def virtual_temperature(T_kelvin, q):
-    """Temperatura virtuale (K) da temperatura e rapporto di miscelanza."""
     return T_kelvin * (1 + q / _EPSILON) / (1 + q)
+
 def dewpoint_to_mixing_ratio(Td_celsius, p_hPa):
-    """Rapporto di miscelanza dal punto di rugiada."""
     es = vapor_pressure(Td_celsius)
     return mixing_ratio(es, p_hPa)
+
 def lcl_pressure(T_kelvin, Td_kelvin, p_hPa):
-    """Pressione al LCL (hPa) — approssimazione di Bolton."""
     Tl = 1 / (1 / (Td_kelvin - 56) + np.log(T_kelvin / Td_kelvin) / 800) + 56
     theta = T_kelvin * (1000 / p_hPa) ** (_RD / _CP)
     return 1000 * (Tl / theta) ** (_CP / _RD)
+
 def moist_adiabatic_lapse_rate(T_kelvin, p_hPa):
-    """Lapse rate adiabatico saturo (K/Pa)."""
     es = vapor_pressure(T_kelvin - 273.15)
     ws = mixing_ratio(es, p_hPa)
     numerator = 1 + _LV * ws / (_RD * T_kelvin)
     denominator = 1 + _EPSILON * _LV * _LV * ws / (_CP * _RD * T_kelvin * T_kelvin)
     return (_RD * T_kelvin / (_CP * p_hPa)) * (numerator / denominator)
+
 def lift_parcel(T_start_K, p_start_hPa, q_start, p_levels_hPa):
-    """Solleva una particella (secca fino al LCL, satura oltre)."""
     T_parcel = np.zeros(len(p_levels_hPa))
     T_parcel[0] = T_start_K
     es_start = vapor_pressure(T_start_K - 273.15)
@@ -593,8 +582,8 @@ def lift_parcel(T_start_K, p_start_hPa, q_start, p_levels_hPa):
                 T_temp = T_temp + dT_dp * dp
             T_parcel[i] = T_temp
     return T_parcel, p_lcl
+
 def calcola_cape_from_profile(T_parcel, p_env, T_env, RH_env, q_parcel_surface, p_lcl):
-    """Calcola CAPE e CIN da profili di temperatura e umidità."""
     Tv_env = np.zeros(len(p_env))
     Tv_parcel = np.zeros(len(p_env))
     for i in range(len(p_env)):
@@ -652,8 +641,8 @@ def calcola_cape_from_profile(T_parcel, p_env, T_env, RH_env, q_parcel_surface, 
         'el_pressure': p_env[el_idx] if el_idx is not None else None,
         'buoyancy': buoyancy
     }
+
 def calcola_mucape(data, p_surface, T_env, p_env, RH_env):
-    """Calcola Most Unstable CAPE (MUCAPE)."""
     max_cape = 0
     mu_result = None
     for p_idx in range(len(p_env)):
@@ -675,8 +664,8 @@ def calcola_mucape(data, p_surface, T_env, p_env, RH_env):
             mu_result = result_mu
             mu_result['mu_level'] = p_test
     return mu_result
+
 def calcola_wind_shear(data, current_hour_idx, station_data):
-    """Proxy wind shear 0-6 km (10 m → 120 m). Fortemente sottostimato."""
     try:
         hourly = data.get("hourly", {})
         if station_data and 'wind_speed' in station_data:
@@ -688,8 +677,8 @@ def calcola_wind_shear(data, current_hour_idx, station_data):
         return {'surface_wind': u_surface, 'upper_wind': u_120m, 'bulk_shear': shear}
     except Exception:
         return None
+
 def _validate_sbcape_results(results, T_surface_C):
-    """Validazione fisica dei risultati SBCAPE."""
     warnings = []
     if results['sbcape'] > 6000:
         warnings.append(f"⚠️  SBCAPE molto elevato ({results['sbcape']:.0f} J/kg) - verifica dati")
@@ -698,8 +687,8 @@ def _validate_sbcape_results(results, T_surface_C):
     if results['cin'] < -500:
         warnings.append(f"⚠️  CIN molto forte ({results['cin']:.0f} J/kg) - convezione fortemente inibita")
     return warnings
+
 def calcola_sbcape_advanced(data, station_data=None):
-    """Calcola SBCAPE, MUCAPE, CIN e parametri convettivi avanzati."""
     if not data:
         print("Errore: dati invalidi")
         return None
@@ -851,8 +840,8 @@ def calcola_sbcape_advanced(data, station_data=None):
         print(f"Errore calcolo SBCAPE: {e}")
         traceback.print_exc()
         return None
+
 def calcola_severe_score(results):
-    """Severe Weather Score combinando multipli parametri (score custom 0-12)."""
     score = 0
     reasons = []
     sbcape = results.get('sbcape', 0)
@@ -885,8 +874,8 @@ def calcola_severe_score(results):
     else:
         level = None
     return {'score': score, 'level': level, 'reasons': reasons}
+
 def calcola_e_salva_sbcape():
-    """Entry-point standalone: calcola SBCAPE e salva su state.json (sezione 'sbcape')."""
     print("=" * 70)
     print("📊 CALCOLO AVANZATO SBCAPE/MUCAPE & PARAMETRI CONVETTIVI v2.0")
     print("=" * 70)
@@ -928,6 +917,7 @@ def calcola_e_salva_sbcape():
     save_state_section('sbcape', risultato)
     print("\n✓ Risultati salvati in state.json (sezione 'sbcape')")
     print("=" * 70)
+
 def get_auth_headers(method, url, token=None, body=""):
     t = str(int(time.time() * 1000))
     content_hash = hashlib.sha256(body.encode('utf-8')).hexdigest()
@@ -940,15 +930,9 @@ def get_auth_headers(method, url, token=None, body=""):
     return headers
 
 def _escape_html(text):
-    """Escapa caratteri speciali HTML per Telegram HTML parse mode."""
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 def esegui_report(force_send=False, target_chat_id=None):
-    """Genera e invia il report meteo.
-    Args:
-        force_send: Se True, invia sempre ignorando la logica smart.
-        target_chat_id: Se fornito, invia solo a questa chat.
-    """
     _send_to = [str(target_chat_id)] if target_chat_id else LISTA_CHAT
     source_info_line = ""
     d = None
@@ -986,333 +970,359 @@ def esegui_report(force_send=False, target_chat_id=None):
                     time.sleep(2 ** attempt)
     else:
         print("✗ TUYA non configurato")
-    if d is None:
-        print("✗ Impossibile ricevere dati dalla stazione Tuya dopo tutti i tentativi")
-        if TELEGRAM_TOKEN and _send_to:
-            err_msg = "⚠️ Errore nel resoconto meteo orario: impossibile ricevere dati dalla stazione meteorologica."
-            url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-            for chat_id in _send_to:
-                try:
-                    requests.post(url_tg, data={'chat_id': chat_id, 'text': err_msg, 'parse_mode': 'HTML'}, timeout=10)
-                except Exception:
-                    pass
-        return
-    print("DATI GREZZI RICEVUTI:", json.dumps(d, indent=4))
-    temp_ext = d.get('temp_current_external', 0) / 10
-    umid_ext = d.get('humidity_outdoor', 0)
-    pressione_locale = estrai_pressione_hpa(d)
-    if True:
+        
+    # --- MODIFICA INIZIO ---
+    tuya_ok = d is not None
+    if not tuya_ok:
+        print("⚠️ Impossibile ricevere dati da Tuya. Genero report con dati da compilare.")
+        d = {}
+        temp_ext = 15.0
+        umid_ext = 50.0
+        pressione_locale = 1013.0
+        v_medio = 0.0
+        raffica_istantanea_tuya = 0.0
+        pioggia_24h_sensore = 0.0
+        pioggia_1h = 0.0
+        rain_rate = 0.0
+        dew_point = 10.0
+        feel_like = 15.0
+        heat_index = 15.0
+        wind_chill = 15.0
+        uv_idx = 0.0
+        batt = 0.0
+    else:
+        print("DATI GREZZI RICEVUTI:", json.dumps(d, indent=4))
+        temp_ext = d.get('temp_current_external', 0) / 10
+        umid_ext = d.get('humidity_outdoor', 0)
+        pressione_locale = estrai_pressione_hpa(d)
         if pressione_locale is None:
             print("Pressione non disponibile da Tuya, uso fallback 1013.0 hPa")
             pressione_locale = 1013.0
-        h = ELEVATION
-        Rd = 287.05
-        g_val = 9.80665
-        T_k = temp_ext + 273.15 if -50 < temp_ext < 60 else 288.15
-        pressione_msl = round(pressione_locale * math.exp(g_val * h / (Rd * T_k)), 1)
         v_medio = d.get('windspeed_avg', 0) / 10
         raffica_istantanea_tuya = d.get('windspeed_gust', 0) / 10
-        # ── Raffica max ultima ORA ────────────────────────────────────────────
-        # Il campo 'max' dell'endpoint OMIRL /Vento restituisce il massimo
-        # dal reset di mezzanotte (max giornaliero), NON il massimo orario.
-        # Si usa quindi il max della raffica_istantanea nello storico ultima ora.
         pioggia_24h_sensore = (d.get('rain_24h', 0) / 10) * TUYA_RAIN_CALIBRATION
         pioggia_1h = (d.get('rain_1h', 0) / 10) * TUYA_RAIN_CALIBRATION
         rain_rate = (d.get('rain_rate', 0) / 10) * TUYA_RAIN_RATE_CALIBRATION
-        print(f"  Precipitazioni (calibrate): pioggia_1h={pioggia_1h} mm, rain_rate={rain_rate} mm/h, sensore_24h={pioggia_24h_sensore} mm")
-        now_it = datetime.now(TZ_ROME)
-        _storico_tmp = carica_storico()
-        _cutoff_1h = now_it - timedelta(hours=1)
-        _raffiche_1h = [max(0.0, float(raffica_istantanea_tuya))]
-        for _s in sorted(_storico_tmp, key=lambda x: x.get("ts", "")):
-            _ts_str = _s.get("ts")
-            if not _ts_str:
-                continue
-            try:
-                _ts_dt = datetime.fromisoformat(_ts_str)
-                if _ts_dt.tzinfo is None:
-                    _ts_dt = _ts_dt.replace(tzinfo=TZ_ROME)
-                if _ts_dt >= _cutoff_1h:
-                    _raffica_sample = _s.get("raffica_istantanea")
-                    if isinstance(_raffica_sample, (int, float)) and _raffica_sample >= 0:
-                        _raffiche_1h.append(float(_raffica_sample))
-            except Exception:
-                continue
-        raffica = round(max(_raffiche_1h), 1)
-        print(f"  Raffica max ultima ora (storico Tuya): {raffica} km/h ({len(_raffiche_1h)} campioni)")
-        _cutoff_24h = now_it - timedelta(hours=24)
-        _pioggia_24h_somma = 0.0
-        _ts_precedente = None
-        for _s in sorted(_storico_tmp, key=lambda x: x.get("ts", "")):
-            _ts_str = _s.get("ts")
-            if not _ts_str:
-                continue
-            try:
-                _ts_dt = datetime.fromisoformat(_ts_str)
-                if _ts_dt.tzinfo is None:
-                    _ts_dt = _ts_dt.replace(tzinfo=TZ_ROME)
-                if _ts_dt >= _cutoff_24h:
-                    _p1h = _s.get("pioggia_1h", 0) or 0
-                    if isinstance(_p1h, (int, float)) and _p1h > 0:
-                        _pioggia_24h_somma += _p1h
-            except Exception:
-                continue
-        _pioggia_24h_somma += max(pioggia_1h, 0)
-        pioggia_24h = round(max(_pioggia_24h_somma, pioggia_24h_sensore), 1)
-        print(f"  Pioggia 24h calcolata: {pioggia_24h} mm (somma storico: {_pioggia_24h_somma:.1f} mm, sensore: {pioggia_24h_sensore} mm)")
         dew_point = d.get('dew_point_temp', 0) / 10
         feel_like = d.get('feellike_temp', 0) / 10
         heat_index = d.get('heat_index', 0) / 10
         wind_chill = d.get('windchill_index', 0) / 10
         uv_idx = d.get('uv_index', 0)
         batt = d.get('battery_percentage', 0)
-        mese_corrente = now_it.month
-        oggi_str = now_it.strftime("%Y-%m-%d")
-        giorno_anno = now_it.timetuple().tm_yday
-        LAT = LATITUDE
-        lat_rad = (math.pi / 180.0) * LAT
-        delta = 0.409 * math.sin((2 * math.pi / 365) * giorno_anno - 1.39)
-        dr = 1 + 0.033 * math.cos((2 * math.pi / 365) * giorno_anno)
-        ws = math.acos(-math.tan(lat_rad) * math.tan(delta))
-        Gsc = 0.0820
-        Ra = (24 * 60 / math.pi) * Gsc * dr * (
-            ws * math.sin(lat_rad) * math.sin(delta) +
-            math.cos(lat_rad) * math.cos(delta) * math.sin(ws)
-        )
-        dati_salvati = load_state_section('meteo')
-        t_min_oggi = dati_salvati.get("t_min_oggi", temp_ext)
-        t_max_oggi = dati_salvati.get("t_max_oggi", temp_ext)
-        ultima_data_check = dati_salvati.get("data_calcolo", "")
-        if ultima_data_check != oggi_str:
-            t_min_oggi = temp_ext
-            t_max_oggi = temp_ext
-        if temp_ext < t_min_oggi:
-            t_min_oggi = temp_ext
-        if temp_ext > t_max_oggi:
-            t_max_oggi = temp_ext
-        t_media = (t_max_oggi + t_min_oggi) / 2.0
-        delta_t = t_max_oggi - t_min_oggi
-        etp_base = 0.0023 * Ra * (t_media + 17.8) * math.sqrt(max(delta_t, 1.0))
-        etp_base = round(etp_base, 2)
-        kc_mensile = {
-            1: 0.35, 2: 0.35,
-            3: 0.45, 4: 0.55,
-            5: 0.65, 6: 0.70,
-            7: 0.70, 8: 0.65,
-            9: 0.55, 10: 0.50,
-            11: 0.40, 12: 0.35
-        }
-        kc = kc_mensile.get(mese_corrente, 0.50)
-        etp_giornaliera = round(etp_base * kc, 2)
-        kcb_mensile = {
-            1: 0.15, 2: 0.15,
-            3: 0.25, 4: 0.35,
-            5: 0.50, 6: 0.55,
-            7: 0.55, 8: 0.50,
-            9: 0.40, 10: 0.30,
-            11: 0.20, 12: 0.15
-        }
-        kcb = kcb_mensile.get(mese_corrente, 0.30)
-        capacita_campo = 200
-        wilting_point = 80
-        K_sat = 2.5
-        beta_drenaggio = 3.5
-        dati_salvati = load_state_section('meteo')
-        print(f"state.json sezione 'meteo': {dati_salvati}")
-        ultima_data = dati_salvati.get("data_calcolo", "")
-        api_ultimo_valore = dati_salvati.get("api_ultimo_valore", 179.45)
-        sat_base_oggi = dati_salvati.get("sat_base_oggi", 0)
-        etp_accumulata = dati_salvati.get("etp_accumulata_ieri", 0)
-        e_nuovo_giorno = (ultima_data != oggi_str)
-        debug_api = f"API_DEBUG: data={ultima_data}, api_ultimo={api_ultimo_valore:.2f}, etp_acc={etp_accumulata:.2f}"
-        print(debug_api)
-        if ultima_data != oggi_str:
-            if ultima_data == "":
-                sat_base_oggi = api_ultimo_valore
-                etp_accumulata = 0
-                t_min_oggi = temp_ext
-                t_max_oggi = temp_ext
-                print(f"Prima esecuzione: seed iniziale = {sat_base_oggi:.2f}")
-            else:
-                theta_prec = api_ultimo_valore / capacita_campo
-                if theta_prec > 0.4:
-                    drenaggio_extra = K_sat * (theta_prec ** beta_drenaggio)
-                else:
-                    drenaggio_extra = 0
-                perdita_totale = etp_accumulata + drenaggio_extra
-                sat_base_oggi = max(0, api_ultimo_valore - perdita_totale)
-                print(f"Nuovo giorno: {api_ultimo_valore:.2f} - ETR({etp_accumulata:.2f}) - dren_Ksat({drenaggio_extra:.2f}) = {sat_base_oggi:.2f}")
-                etp_accumulata = 0
-                t_min_oggi = temp_ext
-                t_max_oggi = temp_ext
-            ultima_data = oggi_str
-        saturazione_percentuale = (sat_base_oggi / capacita_campo) * 100
-        if pioggia_1h > 25:
-            runoff_intensita = 0.5
-        elif pioggia_1h > 15:
-            runoff_intensita = 0.35
-        elif pioggia_1h > 8:
-            runoff_intensita = 0.20
-        elif pioggia_1h > 3:
-            runoff_intensita = 0.08
-        else:
-            runoff_intensita = 0.02
-        if saturazione_percentuale > 95:
-            runoff_saturazione = 0.7
-        elif saturazione_percentuale > 85:
-            runoff_saturazione = 0.4
-        elif saturazione_percentuale > 70:
-            runoff_saturazione = 0.15
-        else:
-            runoff_saturazione = 0.0
-        runoff_totale = max(runoff_intensita, runoff_saturazione)
-        efficienza_infiltrazione = 1 - runoff_totale
-        pioggia_infiltrata = pioggia_24h * efficienza_infiltrazione
-        theta_attuale = sat_base_oggi / capacita_campo if capacita_campo > 0 else 0
-        theta_wp = wilting_point / capacita_campo
-        p_depletion = 0.60
-        theta_critico = theta_wp + p_depletion * (1.0 - theta_wp)
-        if theta_attuale >= theta_critico:
-            ks = 1.0
-        elif theta_attuale > theta_wp:
-            ks = (theta_attuale - theta_wp) / (theta_critico - theta_wp)
-        else:
-            ks = 0.0
-        evaporazione_suolo = 0.0
-        ke = 0.0
+    # --- MODIFICA FINE ---
+
+    h = ELEVATION
+    Rd = 287.05
+    g_val = 9.80665
+    T_k = temp_ext + 273.15 if -50 < temp_ext < 60 else 288.15
+    pressione_msl = round(pressione_locale * math.exp(g_val * h / (Rd * T_k)), 1)
+    
+    print(f"  Precipitazioni (calibrate): pioggia_1h={pioggia_1h} mm, rain_rate={rain_rate} mm/h, sensore_24h={pioggia_24h_sensore} mm")
+    now_it = datetime.now(TZ_ROME)
+    _storico_tmp = carica_storico()
+    _cutoff_1h = now_it - timedelta(hours=1)
+    _raffiche_1h = [max(0.0, float(raffica_istantanea_tuya))]
+    for _s in sorted(_storico_tmp, key=lambda x: x.get("ts", "")):
+        _ts_str = _s.get("ts")
+        if not _ts_str:
+            continue
         try:
-            TAW = max(0.0, capacita_campo - wilting_point)
-            AW = max(0.0, sat_base_oggi - wilting_point)
-            RAW = p_depletion * TAW
-            ke_initial = max(0.0, kc - kcb)
-            if RAW <= 0 or TAW <= 0:
-                Kr = 0.0
-            else:
-                if AW >= RAW:
-                    Kr = 1.0
-                else:
-                    Kr = AW / RAW
-            ke = ke_initial * Kr
-            evaporazione_suolo = round(ke * etp_base, 2)
+            _ts_dt = datetime.fromisoformat(_ts_str)
+            if _ts_dt.tzinfo is None:
+                _ts_dt = _ts_dt.replace(tzinfo=TZ_ROME)
+            if _ts_dt >= _cutoff_1h:
+                _raffica_sample = _s.get("raffica_istantanea")
+                if isinstance(_raffica_sample, (int, float)) and _raffica_sample >= 0:
+                    _raffiche_1h.append(float(_raffica_sample))
         except Exception:
-            ke = 0.0
-        traspirazione = round(kcb * ks * etp_base, 2)
-        etr_giornaliera = round(traspirazione + evaporazione_suolo, 2)
-        n_run_oggi = dati_salvati.get("n_run_oggi", 0)
-        etp_media_oggi = dati_salvati.get("etp_media_oggi", 0)
-        if not e_nuovo_giorno and n_run_oggi > 0:
-            n_run_oggi += 1
-            etp_media_oggi = etp_media_oggi + (etr_giornaliera - etp_media_oggi) / n_run_oggi
-        else:
-            n_run_oggi = 1
-            etp_media_oggi = etr_giornaliera
-        etp_accumulata = round(etp_media_oggi, 2)
-        ore_trascorse = now_it.hour + now_it.minute / 60.0
-        fraz_giorno = ore_trascorse / 24.0
-        etr_parziale = etr_giornaliera * fraz_giorno
-        sat_visualizzato = sat_base_oggi + pioggia_infiltrata - etr_parziale
-        sat_visualizzato = max(0.0, min(sat_visualizzato, capacita_campo))
-        sat_visualizzato = round(sat_visualizzato, 2)
-        saturazione_percentuale = (sat_visualizzato / capacita_campo) * 100
-        print(f"API AVANZATO (Bilancio idrico multi-componente):")
-        print(f"  Base oggi: {sat_base_oggi:.2f} mm")
-        print(f"  Pioggia 24h: {pioggia_24h:.2f} mm → infiltrata: {pioggia_infiltrata:.2f} mm")
-        print(f"  Runoff: {runoff_totale*100:.1f}% (int:{runoff_intensita*100:.0f}%, sat:{runoff_saturazione*100:.0f}%)")
-        print(f"  ETP base Hargreaves: {etp_base:.2f} mm | Kc={kc:.2f} → ETP={etp_giornaliera:.2f} mm")
-        print(f"  Ra={Ra:.1f} MJ/m²/d | T_med={t_media:.1f}°C | ΔT={delta_t:.1f}°C")
-        print(f"  Dual Kc: Ke={ke:.2f} (evap suolo) | Kcb={kcb:.2f} (trasp) | Ks={ks:.2f} (stress)")
-        print(f"  Evaporazione suolo: {evaporazione_suolo:.2f} mm | Traspirazione: {traspirazione:.2f} mm")
-        print(f"  ETR giornaliera: {etr_giornaliera:.2f} mm | ETR parziale ({fraz_giorno*100:.0f}% giorno): {etr_parziale:.2f} mm")
-        print(f"  ETR media accumulata (run #{n_run_oggi}): {etp_accumulata:.2f} mm")
-        print(f"  Drenaggio Brooks-Corey: K_sat={K_sat} mm/d, β={beta_drenaggio}")
-        print(f"  Saturazione: {saturazione_percentuale:.1f}% ({sat_visualizzato:.2f}/{capacita_campo} mm)")
-        print(f"  API totale: {sat_visualizzato:.2f} mm")
-        sbcape_str = ""
-        sbcape_value = 0
-        mucape_value = 0
-        cin_value = 0
-        li_value = None
-        bulk_shear = 0
-        severe_score = 0
-        severe_warning = None
-        cc_low = 0
-        cc_mid = 0
-        cc_high = 0
-        convective_risk = {
-            "score": 0.0,
-            "level": "basso",
-            "warning": None,
-            "event_label": "Instabilità convettiva",
-            "event_trigger": False,
-            "max_cape": 0.0,
-            "cin_abs": 0.0,
-            "li": None,
-            "shear": 0.0,
-        }
-        _station_data_for_sbcape = {
-            'temperature': temp_ext,
-            'dewpoint': dew_point,
-            'pressure': pressione_locale if pressione_locale else 1013.0,
-            'humidity': umid_ext,
-            'wind_speed': v_medio,
-        }
-        _om_data = None
+            continue
+    raffica = round(max(_raffiche_1h), 1)
+    print(f"  Raffica max ultima ora (storico Tuya): {raffica} km/h ({len(_raffiche_1h)} campioni)")
+    
+    _cutoff_24h = now_it - timedelta(hours=24)
+    _pioggia_24h_somma = 0.0
+    for _s in sorted(_storico_tmp, key=lambda x: x.get("ts", "")):
+        _ts_str = _s.get("ts")
+        if not _ts_str:
+            continue
         try:
-            print("\n⚙️  Calcolo SBCAPE/MUCAPE inline...")
-            _om_data = fetch_profile_cached()
-            if _om_data:
-                _current_om = _om_data.get("current", {})
-                cc_low = _current_om.get("cloud_cover_low", 0) or 0
-                cc_mid = _current_om.get("cloud_cover_mid", 0) or 0
-                cc_high = _current_om.get("cloud_cover_high", 0) or 0
-                print(f"  ☁️ Nuvolosità: bassa={cc_low}% media={cc_mid}% alta={cc_high}%")
-                _sbcape_result = calcola_sbcape_advanced(_om_data, None)
-                if _sbcape_result:
-                    sbcape_value = _sbcape_result.get("sbcape") or 0
-                    mucape_value = _sbcape_result.get("mucape") or 0
-                    cin_value = _sbcape_result.get("cin") or 0
-                    li_value = _sbcape_result.get("lifted_index")
-                    bulk_shear = _sbcape_result.get("bulk_shear") or 0
-                    _severe = calcola_severe_score(_sbcape_result)
-                    severe_score = _severe['score']
-                    severe_warning = _severe.get('level')
-                    _sbcape_result['severe_score'] = severe_score
-                    if severe_warning:
-                        _sbcape_result['severe_warning'] = severe_warning
-                        _sbcape_result['severe_reasons'] = _severe.get('reasons', [])
-                    save_state_section('sbcape', _sbcape_result)
-                    print(f"  ✓ SBCAPE={sbcape_value:.0f} MUCAPE={mucape_value:.0f} CIN={cin_value:.0f} LI={li_value} Shear={bulk_shear} SevScore={severe_score}")
-                else:
-                    print("  ⚠️  Calcolo SBCAPE fallito, provo fallback da JSON")
-                    raise RuntimeError("calcolo fallito")
+            _ts_dt = datetime.fromisoformat(_ts_str)
+            if _ts_dt.tzinfo is None:
+                _ts_dt = _ts_dt.replace(tzinfo=TZ_ROME)
+            if _ts_dt >= _cutoff_24h:
+                _p1h = _s.get("pioggia_1h", 0) or 0
+                if isinstance(_p1h, (int, float)) and _p1h > 0:
+                    _pioggia_24h_somma += _p1h
+        except Exception:
+            continue
+    _pioggia_24h_somma += max(pioggia_1h, 0)
+    pioggia_24h = round(max(_pioggia_24h_somma, pioggia_24h_sensore), 1)
+    print(f"  Pioggia 24h calcolata: {pioggia_24h} mm (somma storico: {_pioggia_24h_somma:.1f} mm, sensore: {pioggia_24h_sensore} mm)")
+    
+    mese_corrente = now_it.month
+    oggi_str = now_it.strftime("%Y-%m-%d")
+    giorno_anno = now_it.timetuple().tm_yday
+    LAT = LATITUDE
+    lat_rad = (math.pi / 180.0) * LAT
+    delta = 0.409 * math.sin((2 * math.pi / 365) * giorno_anno - 1.39)
+    dr = 1 + 0.033 * math.cos((2 * math.pi / 365) * giorno_anno)
+    ws = math.acos(-math.tan(lat_rad) * math.tan(delta))
+    Gsc = 0.0820
+    Ra = (24 * 60 / math.pi) * Gsc * dr * (
+        ws * math.sin(lat_rad) * math.sin(delta) +
+        math.cos(lat_rad) * math.cos(delta) * math.sin(ws)
+    )
+    
+    dati_salvati = load_state_section('meteo')
+    t_min_oggi = dati_salvati.get("t_min_oggi", temp_ext)
+    t_max_oggi = dati_salvati.get("t_max_oggi", temp_ext)
+    ultima_data_check = dati_salvati.get("data_calcolo", "")
+    if ultima_data_check != oggi_str:
+        t_min_oggi = temp_ext
+        t_max_oggi = temp_ext
+    if temp_ext < t_min_oggi:
+        t_min_oggi = temp_ext
+    if temp_ext > t_max_oggi:
+        t_max_oggi = temp_ext
+    t_media = (t_max_oggi + t_min_oggi) / 2.0
+    delta_t = t_max_oggi - t_min_oggi
+    etp_base = 0.0023 * Ra * (t_media + 17.8) * math.sqrt(max(delta_t, 1.0))
+    etp_base = round(etp_base, 2)
+    
+    kc_mensile = {
+        1: 0.35, 2: 0.35,
+        3: 0.45, 4: 0.55,
+        5: 0.65, 6: 0.70,
+        7: 0.70, 8: 0.65,
+        9: 0.55, 10: 0.50,
+        11: 0.40, 12: 0.35
+    }
+    kc = kc_mensile.get(mese_corrente, 0.50)
+    etp_giornaliera = round(etp_base * kc, 2)
+    
+    kcb_mensile = {
+        1: 0.15, 2: 0.15,
+        3: 0.25, 4: 0.35,
+        5: 0.50, 6: 0.55,
+        7: 0.55, 8: 0.50,
+        9: 0.40, 10: 0.30,
+        11: 0.20, 12: 0.15
+    }
+    kcb = kcb_mensile.get(mese_corrente, 0.30)
+    
+    capacita_campo = 200
+    wilting_point = 80
+    K_sat = 2.5
+    beta_drenaggio = 3.5
+    
+    dati_salvati = load_state_section('meteo')
+    print(f"state.json sezione 'meteo': {dati_salvati}")
+    ultima_data = dati_salvati.get("data_calcolo", "")
+    api_ultimo_valore = dati_salvati.get("api_ultimo_valore", 179.45)
+    sat_base_oggi = dati_salvati.get("sat_base_oggi", 0)
+    etp_accumulata = dati_salvati.get("etp_accumulata_ieri", 0)
+    e_nuovo_giorno = (ultima_data != oggi_str)
+    
+    debug_api = f"API_DEBUG: data={ultima_data}, api_ultimo={api_ultimo_valore:.2f}, etp_acc={etp_accumulata:.2f}"
+    print(debug_api)
+    if ultima_data != oggi_str:
+        if ultima_data == "":
+            sat_base_oggi = api_ultimo_valore
+            etp_accumulata = 0
+            t_min_oggi = temp_ext
+            t_max_oggi = temp_ext
+            print(f"Prima esecuzione: seed iniziale = {sat_base_oggi:.2f}")
+        else:
+            theta_prec = api_ultimo_valore / capacita_campo
+            if theta_prec > 0.4:
+                drenaggio_extra = K_sat * (theta_prec ** beta_drenaggio)
             else:
-                print("  ⚠️  Profilo Open-Meteo non disponibile, provo fallback da JSON")
-                raise RuntimeError("profilo non disponibile")
-        except Exception as _e:
-            print(f"  Fallback state.json['sbcape']: {_e}")
-            try:
-                sbcape_data = load_state_section('sbcape')
-                if sbcape_data:
-                    sbcape_value = sbcape_data.get("sbcape") or 0
-                    mucape_value = sbcape_data.get("mucape") or 0
-                    cin_value = sbcape_data.get("cin") or 0
-                    li_value = sbcape_data.get("lifted_index")
-                    bulk_shear = sbcape_data.get("bulk_shear") or 0
-                    severe_score = sbcape_data.get("severe_score") or 0
-                    severe_warning = sbcape_data.get("severe_warning")
-                    print("  ✓ Letto da state.json sezione 'sbcape' (fallback)")
-            except Exception as e2:
-                print(f"  ✗ Anche fallback JSON fallito: {e2}")
-        convective_risk = valuta_instabilita_convettiva(
-            sbcape_value,
-            mucape_value,
-            cin_value,
-            li_value,
-            bulk_shear,
-            severe_score,
-        )
-        storico = carica_storico()
-        simbolo_baro, delta_baro, desc_baro = calcola_tendenza_barometrica(storico, pressione_msl)
+                drenaggio_extra = 0
+            perdita_totale = etp_accumulata + drenaggio_extra
+            sat_base_oggi = max(0, api_ultimo_valore - perdita_totale)
+            print(f"Nuovo giorno: {api_ultimo_valore:.2f} - ETR({etp_accumulata:.2f}) - dren_Ksat({drenaggio_extra:.2f}) = {sat_base_oggi:.2f}")
+            etp_accumulata = 0
+            t_min_oggi = temp_ext
+            t_max_oggi = temp_ext
+        ultima_data = oggi_str
+        
+    saturazione_percentuale = (sat_base_oggi / capacita_campo) * 100
+    if pioggia_1h > 25:
+        runoff_intensita = 0.5
+    elif pioggia_1h > 15:
+        runoff_intensita = 0.35
+    elif pioggia_1h > 8:
+        runoff_intensita = 0.20
+    elif pioggia_1h > 3:
+        runoff_intensita = 0.08
+    else:
+        runoff_intensita = 0.02
+        
+    if saturazione_percentuale > 95:
+        runoff_saturazione = 0.7
+    elif saturazione_percentuale > 85:
+        runoff_saturazione = 0.4
+    elif saturazione_percentuale > 70:
+        runoff_saturazione = 0.15
+    else:
+        runoff_saturazione = 0.0
+        
+    runoff_totale = max(runoff_intensita, runoff_saturazione)
+    efficienza_infiltrazione = 1 - runoff_totale
+    pioggia_infiltrata = pioggia_24h * efficienza_infiltrazione
+    
+    theta_attuale = sat_base_oggi / capacita_campo if capacita_campo > 0 else 0
+    theta_wp = wilting_point / capacita_campo
+    p_depletion = 0.60
+    theta_critico = theta_wp + p_depletion * (1.0 - theta_wp)
+    
+    if theta_attuale >= theta_critico:
+        ks = 1.0
+    elif theta_attuale > theta_wp:
+        ks = (theta_attuale - theta_wp) / (theta_critico - theta_wp)
+    else:
+        ks = 0.0
+        
+    evaporazione_suolo = 0.0
+    ke = 0.0
+    try:
+        TAW = max(0.0, capacita_campo - wilting_point)
+        AW = max(0.0, sat_base_oggi - wilting_point)
+        RAW = p_depletion * TAW
+        ke_initial = max(0.0, kc - kcb)
+        if RAW <= 0 or TAW <= 0:
+            Kr = 0.0
+        else:
+            if AW >= RAW:
+                Kr = 1.0
+            else:
+                Kr = AW / RAW
+        ke = ke_initial * Kr
+        evaporazione_suolo = round(ke * etp_base, 2)
+    except Exception:
+        ke = 0.0
+        
+    traspirazione = round(kcb * ks * etp_base, 2)
+    etr_giornaliera = round(traspirazione + evaporazione_suolo, 2)
+    n_run_oggi = dati_salvati.get("n_run_oggi", 0)
+    etp_media_oggi = dati_salvati.get("etp_media_oggi", 0)
+    
+    if not e_nuovo_giorno and n_run_oggi > 0:
+        n_run_oggi += 1
+        etp_media_oggi = etp_media_oggi + (etr_giornaliera - etp_media_oggi) / n_run_oggi
+    else:
+        n_run_oggi = 1
+        etp_media_oggi = etr_giornaliera
+        
+    etp_accumulata = round(etp_media_oggi, 2)
+    ore_trascorse = now_it.hour + now_it.minute / 60.0
+    fraz_giorno = ore_trascorse / 24.0
+    etr_parziale = etr_giornaliera * fraz_giorno
+    sat_visualizzato = sat_base_oggi + pioggia_infiltrata - etr_parziale
+    sat_visualizzato = max(0.0, min(sat_visualizzato, capacita_campo))
+    sat_visualizzato = round(sat_visualizzato, 2)
+    saturazione_percentuale = (sat_visualizzato / capacita_campo) * 100
+    
+    print(f"API AVANZATO (Bilancio idrico multi-componente):")
+    print(f"  Base oggi: {sat_base_oggi:.2f} mm")
+    print(f"  Pioggia 24h: {pioggia_24h:.2f} mm → infiltrata: {pioggia_infiltrata:.2f} mm")
+    print(f"  Runoff: {runoff_totale*100:.1f}% (int:{runoff_intensita*100:.0f}%, sat:{runoff_saturazione*100:.0f}%)")
+    print(f"  ETP base Hargreaves: {etp_base:.2f} mm | Kc={kc:.2f} → ETP={etp_giornaliera:.2f} mm")
+    print(f"  Ra={Ra:.1f} MJ/m²/d | T_med={t_media:.1f}°C | ΔT={delta_t:.1f}°C")
+    print(f"  Dual Kc: Ke={ke:.2f} (evap suolo) | Kcb={kcb:.2f} (trasp) | Ks={ks:.2f} (stress)")
+    print(f"  Evaporazione suolo: {evaporazione_suolo:.2f} mm | Traspirazione: {traspirazione:.2f} mm")
+    print(f"  ETR giornaliera: {etr_giornaliera:.2f} mm | ETR parziale ({fraz_giorno*100:.0f}% giorno): {etr_parziale:.2f} mm")
+    print(f"  ETR media accumulata (run #{n_run_oggi}): {etp_accumulata:.2f} mm")
+    print(f"  Drenaggio Brooks-Corey: K_sat={K_sat} mm/d, β={beta_drenaggio}")
+    print(f"  Saturazione: {saturazione_percentuale:.1f}% ({sat_visualizzato:.2f}/{capacita_campo} mm)")
+    print(f"  API totale: {sat_visualizzato:.2f} mm")
+    
+    sbcape_str = ""
+    sbcape_value = 0
+    mucape_value = 0
+    cin_value = 0
+    li_value = None
+    bulk_shear = 0
+    severe_score = 0
+    severe_warning = None
+    cc_low = 0
+    cc_mid = 0
+    cc_high = 0
+    convective_risk = {
+        "score": 0.0,
+        "level": "basso",
+        "warning": None,
+        "event_label": "Instabilità convettiva",
+        "event_trigger": False,
+        "max_cape": 0.0,
+        "cin_abs": 0.0,
+        "li": None,
+        "shear": 0.0,
+    }
+    
+    _station_data_for_sbcape = {
+        'temperature': temp_ext,
+        'dewpoint': dew_point,
+        'pressure': pressione_locale if pressione_locale else 1013.0,
+        'humidity': umid_ext,
+        'wind_speed': v_medio,
+    }
+    _om_data = None
+    try:
+        print("\n⚙️  Calcolo SBCAPE/MUCAPE inline...")
+        _om_data = fetch_profile_cached()
+        if _om_data:
+            _current_om = _om_data.get("current", {})
+            cc_low = _current_om.get("cloud_cover_low", 0) or 0
+            cc_mid = _current_om.get("cloud_cover_mid", 0) or 0
+            cc_high = _current_om.get("cloud_cover_high", 0) or 0
+            print(f"  ☁️ Nuvolosità: bassa={cc_low}% media={cc_mid}% alta={cc_high}%")
+            _sbcape_result = calcola_sbcape_advanced(_om_data, None)
+            if _sbcape_result:
+                sbcape_value = _sbcape_result.get("sbcape") or 0
+                mucape_value = _sbcape_result.get("mucape") or 0
+                cin_value = _sbcape_result.get("cin") or 0
+                li_value = _sbcape_result.get("lifted_index")
+                bulk_shear = _sbcape_result.get("bulk_shear") or 0
+                _severe = calcola_severe_score(_sbcape_result)
+                severe_score = _severe['score']
+                severe_warning = _severe.get('level')
+                _sbcape_result['severe_score'] = severe_score
+                if severe_warning:
+                    _sbcape_result['severe_warning'] = severe_warning
+                    _sbcape_result['severe_reasons'] = _severe.get('reasons', [])
+                save_state_section('sbcape', _sbcape_result)
+                print(f"  ✓ SBCAPE={sbcape_value:.0f} MUCAPE={mucape_value:.0f} CIN={cin_value:.0f} LI={li_value} Shear={bulk_shear} SevScore={severe_score}")
+            else:
+                print("  ⚠️  Calcolo SBCAPE fallito, provo fallback da JSON")
+                raise RuntimeError("calcolo fallito")
+        else:
+            print("  ⚠️  Profilo Open-Meteo non disponibile, provo fallback da JSON")
+            raise RuntimeError("profilo non disponibile")
+    except Exception as _e:
+        print(f"  Fallback state.json['sbcape']: {_e}")
+        try:
+            sbcape_data = load_state_section('sbcape')
+            if sbcape_data:
+                sbcape_value = sbcape_data.get("sbcape") or 0
+                mucape_value = sbcape_data.get("mucape") or 0
+                cin_value = sbcape_data.get("cin") or 0
+                li_value = sbcape_data.get("lifted_index")
+                bulk_shear = sbcape_data.get("bulk_shear") or 0
+                severe_score = sbcape_data.get("severe_score") or 0
+                severe_warning = sbcape_data.get("severe_warning")
+                print("  ✓ Letto da state.json sezione 'sbcape' (fallback)")
+        except Exception as e2:
+            print(f"  ✗ Anche fallback JSON fallito: {e2}")
+            
+    convective_risk = valuta_instabilita_convettiva(
+        sbcape_value, mucape_value, cin_value, li_value, bulk_shear, severe_score,
+    )
+    storico = carica_storico()
+    simbolo_baro, delta_baro, desc_baro = calcola_tendenza_barometrica(storico, pressione_msl)
+    
+    # --- MODIFICA 2 INIZIO ---
+    if tuya_ok:
         storico.append({
             "ts": now_it.isoformat(),
             "temp": temp_ext,
@@ -1334,125 +1344,135 @@ def esegui_report(force_send=False, target_chat_id=None):
             "cc_high": cc_high
         })
         salva_storico(storico)
-        arpal_str = ""
-        arpal_livello = "Verde"
-        avvisi = []
-        diff_temp_dew = temp_ext - dew_point
-        # ── Nebbia predittiva avanzata ────────────────────────────────────────
-        try:
-            from qualita_aria import valuta_nebbia
-            _nebbia = valuta_nebbia(
-                temp=temp_ext, dew_point=dew_point, umidita=umid_ext,
-                vento=v_medio, ora=now_it.hour, storico=storico,
-            )
-            if _nebbia:
-                avvisi.append(_nebbia["avviso"])
-        except Exception as _en:
-            print(f"⚠️  valuta_nebbia error: {_en}")
-            if umid_ext >= 99 and diff_temp_dew <= 0.5:
-                if v_medio < 5:
-                    avvisi.append("🌫️ AVVISO: NEBBIA (T-Td ≤0.5°C, U≥99%)")
-                else:
-                    avvisi.append("🌫️ AVVISO: FOSCHIA (T-Td ≤0.5°C, U≥99%)")
-        # ── Qualità dell'aria ─────────────────────────────────────────────────
-        _aq_data = None
-        try:
-            from qualita_aria import fetch_air_quality
-            _aq_data = fetch_air_quality()
-            if _aq_data and _aq_data.get("avvisi"):
-                for _av in _aq_data["avvisi"]:
-                    avvisi.append(_av)
-        except Exception as _eaq:
-            print(f"⚠️  fetch_air_quality error: {_eaq}")
-        if temp_ext >= thresholds.ARPAL_HEAT_ROSSO:
-            avvisi.append(f"🔴🔥 AVVISO: CALDO ESTREMO — {temp_ext}°C (soglia ARPAL 🔴 ≥{thresholds.ARPAL_HEAT_ROSSO:.0f}°C)")
-        elif temp_ext >= thresholds.ARPAL_HEAT_ARANCIONE:
-            avvisi.append(f"🟠🔥 AVVISO: CALDO MOLTO INTENSO — {temp_ext}°C (soglia ARPAL 🟠 ≥{thresholds.ARPAL_HEAT_ARANCIONE:.0f}°C)")
-        elif temp_ext >= thresholds.ARPAL_HEAT_GIALLO:
-            avvisi.append(f"🟡🔥 AVVISO: CALDO INTENSO — {temp_ext}°C (soglia ARPAL 🟡 ≥{thresholds.ARPAL_HEAT_GIALLO:.0f}°C)")
-        elif temp_ext <= thresholds.ARPAL_FROST_ROSSO:
-            avvisi.append(f"🔴❄️ AVVISO: GELO ESTREMO — {temp_ext}°C (soglia ARPAL 🔴 ≤{thresholds.ARPAL_FROST_ROSSO:.0f}°C)")
-        elif temp_ext <= thresholds.ARPAL_FROST_ARANCIONE:
-            avvisi.append(f"🟠❄️ AVVISO: GELO INTENSO — {temp_ext}°C (soglia ARPAL 🟠 ≤{thresholds.ARPAL_FROST_ARANCIONE:.0f}°C)")
-        elif temp_ext <= thresholds.ARPAL_FROST_GIALLO:
-            avvisi.append(f"🟡❄️ AVVISO: GELO — {temp_ext}°C (soglia ARPAL 🟡 ≤{thresholds.ARPAL_FROST_GIALLO:.0f}°C)")
-        if temp_ext > 25 and umid_ext > 60:
-            avvisi.append("🥵 AVVISO: AFA")
-        if pressione_msl < thresholds.ARPAL_STORM_SURGE_ROSSO:
-            avvisi.append(f"🔴🌊 AVVISO: MAREGGIATE GRAVI — {pressione_msl} hPa (soglia ARPAL 🔴 &lt;{thresholds.ARPAL_STORM_SURGE_ROSSO:.0f} hPa)")
-        elif pressione_msl < thresholds.ARPAL_STORM_SURGE_ARANCIONE:
-            avvisi.append(f"🟠🌊 AVVISO: MAREGGIATE — {pressione_msl} hPa (soglia ARPAL 🟠 &lt;{thresholds.ARPAL_STORM_SURGE_ARANCIONE:.0f} hPa)")
-        elif pressione_msl < thresholds.ARPAL_STORM_SURGE_GIALLO:
-            avvisi.append(f"🟡🌊 AVVISO: ATTENZIONE MARE — {pressione_msl} hPa (soglia ARPAL 🟡 &lt;{thresholds.ARPAL_STORM_SURGE_GIALLO:.0f} hPa)")
-        if pioggia_1h >= thresholds.ARPAL_RAIN_1H_ROSSO:
-            avvisi.append(f"🔴🌧️ AVVISO: NUBIFRAGIO — {pioggia_1h} mm/h (soglia ARPAL 🔴 ≥{thresholds.ARPAL_RAIN_1H_ROSSO:.0f} mm/h)")
-        elif pioggia_1h >= thresholds.ARPAL_RAIN_1H_ARANCIONE:
-            avvisi.append(f"🟠🌧️ AVVISO: PIOGGIA MOLTO FORTE — {pioggia_1h} mm/h (soglia ARPAL 🟠 ≥{thresholds.ARPAL_RAIN_1H_ARANCIONE:.0f} mm/h)")
-        elif pioggia_1h >= thresholds.ARPAL_RAIN_1H_GIALLO:
-            avvisi.append(f"🟡🌧️ AVVISO: PIOGGIA FORTE — {pioggia_1h} mm/h (soglia ARPAL 🟡 ≥{thresholds.ARPAL_RAIN_1H_GIALLO:.0f} mm/h)")
-        elif pioggia_1h >= 6:
-            avvisi.append(f"🌧️ AVVISO: PIOGGIA MODERATA — {pioggia_1h} mm/h")
-        if sat_visualizzato >= 170:
-            avvisi.append("⛰️ AVVISO: SUOLO SATURO")
-        if pioggia_24h >= thresholds.ARPAL_RAIN_24H_ROSSO:
-            avvisi.append(f"🔴🌧️ AVVISO: CUMULATE ECCEZIONALI — {pioggia_24h} mm/24h (soglia ARPAL 🔴 ≥{thresholds.ARPAL_RAIN_24H_ROSSO:.0f} mm)")
-        elif pioggia_24h >= thresholds.ARPAL_RAIN_24H_ARANCIONE:
-            avvisi.append(f"🟠🌧️ AVVISO: CUMULATE MOLTO ELEVATE — {pioggia_24h} mm/24h (soglia ARPAL 🟠 ≥{thresholds.ARPAL_RAIN_24H_ARANCIONE:.0f} mm)")
-        elif pioggia_24h >= thresholds.ARPAL_RAIN_24H_GIALLO:
-            avvisi.append(f"🟡🌧️ AVVISO: CUMULATE ELEVATE — {pioggia_24h} mm/24h (soglia ARPAL 🟡 ≥{thresholds.ARPAL_RAIN_24H_GIALLO:.0f} mm)")
-        elif pioggia_24h >= 50:
-            avvisi.append(f"🌧️ AVVISO: CUMULATE SIGNIFICATIVE — {pioggia_24h} mm/24h")
-        if severe_warning:
-            avvisi.append(severe_warning)
-        else:
-            if convective_risk["warning"]:
-                avvisi.append(convective_risk["warning"])
-        avvisi_lower = " ".join(avvisi).lower() if avvisi else ""
-        sbcape_lines = []
-        if "sbcape" not in avvisi_lower:
-            sbcape_lines.append(f"SBCAPE: {sbcape_value} J/kg")
-        if mucape_value and mucape_value > sbcape_value and "mucape" not in avvisi_lower:
-            sbcape_lines.append(f"MUCAPE: {mucape_value} J/kg")
-        if "cin" not in avvisi_lower:
-            sbcape_lines.append(f"CIN: {cin_value} J/kg")
-        if li_value is not None and "lifted index" not in avvisi_lower:
-            sbcape_lines.append(f"Lifted Index: {li_value:+.1f}°C")
-        if bulk_shear:
-            sbcape_lines.append(f"Bulk Shear: {bulk_shear:.1f} m/s")
-        if severe_score > 0 and "severe score" not in avvisi_lower:
-            sbcape_lines.append(f"Severe Score: {severe_score}/12")
-        elif convective_risk["score"] > 0 and "severe score" not in avvisi_lower:
-            sbcape_lines.append(f"Convective Score (fallback): {convective_risk['score']}/12")
-        sbcape_str = "\n".join(sbcape_lines)
-        # ── Avvisi HTML ──────────────────────────────────────────────────────
-        str_avvisi = ""
-        if avvisi:
-            str_avvisi = "\n".join(avvisi) + "\n\n"
-        massa_aria = classifica_massa_aria(temp_ext, dew_point, pressione_msl, mese_corrente)
-        theta_e_850 = None
-        temp_alti_livelli = None
-        if _om_data:
-            theta_e_850 = calcola_theta_e_850hpa(_om_data)
-            temp_alti_livelli = estrai_temperature_alti_livelli(_om_data)
-        if theta_e_850 is not None:
-            theta_e_str = f"θe 850hPa: {theta_e_850}°C"
-        else:
-            theta_e_str = f"θe: {massa_aria['theta_e']}°C"
-        massa_str = (
-            f"🌍 <b>MASSA D'ARIA</b>\n"
-            f"{massa_aria['emoji']} {_escape_html(massa_aria['nome'])} ({_escape_html(massa_aria['tipo'])})\n"
-            f"{_escape_html(massa_aria['desc'])}\n"
-            f"{_escape_html(theta_e_str)}\n"
-            f"Anomalia: {massa_aria['anomalia']:+.1f}°C\n"
-            f"Spread T-Td: {massa_aria['spread']}°C\n"
+    # --- MODIFICA 2 FINE ---
+
+    arpal_str = ""
+    arpal_livello = "Verde"
+    avvisi = []
+    diff_temp_dew = temp_ext - dew_point
+    
+    try:
+        from qualita_aria import valuta_nebbia
+        _nebbia = valuta_nebbia(
+            temp=temp_ext, dew_point=dew_point, umidita=umid_ext,
+            vento=v_medio, ora=now_it.hour, storico=storico,
         )
-        if temp_alti_livelli:
-            massa_str += (
-                f"T 850hPa: {temp_alti_livelli['T_850']}°C\n"
-                f"T 500hPa: {temp_alti_livelli['T_500']}°C\n"
-            )
-        theta_e_display = theta_e_850 if theta_e_850 is not None else massa_aria['theta_e']
-        print(f"Massa d'aria: {massa_aria['tipo']} ({massa_aria['nome']}) - θe_850={theta_e_850}°C, θe_sup={massa_aria['theta_e']}°C, anomalia={massa_aria['anomalia']:+.1f}°C")
+        if _nebbia:
+            avvisi.append(_nebbia["avviso"])
+    except Exception as _en:
+        print(f"⚠️  valuta_nebbia error: {_en}")
+        
+    if umid_ext >= 99 and diff_temp_dew <= 0.5:
+        if v_medio < 5:
+            avvisi.append("🌫️ AVVISO: NEBBIA (T-Td ≤0.5°C, U≥99%)")
+        else:
+            avvisi.append("🌫️ AVVISO: FOSCHIA (T-Td ≤0.5°C, U≥99%)")
+            
+    _aq_data = None
+    try:
+        from qualita_aria import fetch_air_quality
+        _aq_data = fetch_air_quality()
+        if _aq_data and _aq_data.get("avvisi"):
+            for _av in _aq_data["avvisi"]:
+                avvisi.append(_av)
+    except Exception as _eaq:
+        print(f"⚠️  fetch_air_quality error: {_eaq}")
+        
+    if temp_ext >= thresholds.ARPAL_HEAT_ROSSO:
+        avvisi.append(f"🔴🔥 AVVISO: CALDO ESTREMO — {temp_ext}°C (soglia ARPAL 🔴 ≥{thresholds.ARPAL_HEAT_ROSSO:.0f}°C)")
+    elif temp_ext >= thresholds.ARPAL_HEAT_ARANCIONE:
+        avvisi.append(f"🟠🔥 AVVISO: CALDO MOLTO INTENSO — {temp_ext}°C (soglia ARPAL 🟠 ≥{thresholds.ARPAL_HEAT_ARANCIONE:.0f}°C)")
+    elif temp_ext >= thresholds.ARPAL_HEAT_GIALLO:
+        avvisi.append(f"🟡🔥 AVVISO: CALDO INTENSO — {temp_ext}°C (soglia ARPAL 🟡 ≥{thresholds.ARPAL_HEAT_GIALLO:.0f}°C)")
+    elif temp_ext <= thresholds.ARPAL_FROST_ROSSO:
+        avvisi.append(f"🔴❄️ AVVISO: GELO ESTREMO — {temp_ext}°C (soglia ARPAL 🔴 ≤{thresholds.ARPAL_FROST_ROSSO:.0f}°C)")
+    elif temp_ext <= thresholds.ARPAL_FROST_ARANCIONE:
+        avvisi.append(f"🟠❄️ AVVISO: GELO INTENSO — {temp_ext}°C (soglia ARPAL 🟠 ≤{thresholds.ARPAL_FROST_ARANCIONE:.0f}°C)")
+    elif temp_ext <= thresholds.ARPAL_FROST_GIALLO:
+        avvisi.append(f"🟡❄️ AVVISO: GELO — {temp_ext}°C (soglia ARPAL 🟡 ≤{thresholds.ARPAL_FROST_GIALLO:.0f}°C)")
+    if temp_ext > 25 and umid_ext > 60:
+        avvisi.append("🥵 AVVISO: AFA")
+    if pressione_msl < thresholds.ARPAL_STORM_SURGE_ROSSO:
+        avvisi.append(f"🔴🌊 AVVISO: MAREGGIATE GRAVI — {pressione_msl} hPa (soglia ARPAL 🔴 &lt;{thresholds.ARPAL_STORM_SURGE_ROSSO:.0f} hPa)")
+    elif pressione_msl < thresholds.ARPAL_STORM_SURGE_ARANCIONE:
+        avvisi.append(f"🟠🌊 AVVISO: MAREGGIATE — {pressione_msl} hPa (soglia ARPAL 🟠 &lt;{thresholds.ARPAL_STORM_SURGE_ARANCIONE:.0f} hPa)")
+    elif pressione_msl < thresholds.ARPAL_STORM_SURGE_GIALLO:
+        avvisi.append(f"🟡🌊 AVVISO: ATTENZIONE MARE — {pressione_msl} hPa (soglia ARPAL 🟡 &lt;{thresholds.ARPAL_STORM_SURGE_GIALLO:.0f} hPa)")
+    if pioggia_1h >= thresholds.ARPAL_RAIN_1H_ROSSO:
+        avvisi.append(f"🔴🌧️ AVVISO: NUBIFRAGIO — {pioggia_1h} mm/h (soglia ARPAL 🔴 ≥{thresholds.ARPAL_RAIN_1H_ROSSO:.0f} mm/h)")
+    elif pioggia_1h >= thresholds.ARPAL_RAIN_1H_ARANCIONE:
+        avvisi.append(f"🟠🌧️ AVVISO: PIOGGIA MOLTO FORTE — {pioggia_1h} mm/h (soglia ARPAL 🟠 ≥{thresholds.ARPAL_RAIN_1H_ARANCIONE:.0f} mm/h)")
+    elif pioggia_1h >= thresholds.ARPAL_RAIN_1H_GIALLO:
+        avvisi.append(f"🟡🌧️ AVVISO: PIOGGIA FORTE — {pioggia_1h} mm/h (soglia ARPAL 🟡 ≥{thresholds.ARPAL_RAIN_1H_GIALLO:.0f} mm/h)")
+    elif pioggia_1h >= 6:
+        avvisi.append(f"🌧️ AVVISO: PIOGGIA MODERATA — {pioggia_1h} mm/h")
+    if sat_visualizzato >= 170:
+        avvisi.append("⛰️ AVVISO: SUOLO SATURO")
+    if pioggia_24h >= thresholds.ARPAL_RAIN_24H_ROSSO:
+        avvisi.append(f"🔴🌧️ AVVISO: CUMULATE ECCEZIONALI — {pioggia_24h} mm/24h (soglia ARPAL 🔴 ≥{thresholds.ARPAL_RAIN_24H_ROSSO:.0f} mm)")
+    elif pioggia_24h >= thresholds.ARPAL_RAIN_24H_ARANCIONE:
+        avvisi.append(f"🟠🌧️ AVVISO: CUMULATE MOLTO ELEVATE — {pioggia_24h} mm/24h (soglia ARPAL 🟠 ≥{thresholds.ARPAL_RAIN_24H_ARANCIONE:.0f} mm)")
+    elif pioggia_24h >= thresholds.ARPAL_RAIN_24H_GIALLO:
+        avvisi.append(f"🟡🌧️ AVVISO: CUMULATE ELEVATE — {pioggia_24h} mm/24h (soglia ARPAL 🟡 ≥{thresholds.ARPAL_RAIN_24H_GIALLO:.0f} mm)")
+    elif pioggia_24h >= 50:
+        avvisi.append(f"🌧️ AVVISO: CUMULATE SIGNIFICATIVE — {pioggia_24h} mm/24h")
+    if severe_warning:
+        avvisi.append(severe_warning)
+    else:
+        if convective_risk["warning"]:
+            avvisi.append(convective_risk["warning"])
+            
+    avvisi_lower = " ".join(avvisi).lower() if avvisi else ""
+    sbcape_lines = []
+    if "sbcape" not in avvisi_lower:
+        sbcape_lines.append(f"SBCAPE: {sbcape_value} J/kg")
+    if mucape_value and mucape_value > sbcape_value and "mucape" not in avvisi_lower:
+        sbcape_lines.append(f"MUCAPE: {mucape_value} J/kg")
+    if "cin" not in avvisi_lower:
+        sbcape_lines.append(f"CIN: {cin_value} J/kg")
+    if li_value is not None and "lifted index" not in avvisi_lower:
+        sbcape_lines.append(f"Lifted Index: {li_value:+.1f}°C")
+    if bulk_shear:
+        sbcape_lines.append(f"Bulk Shear: {bulk_shear:.1f} m/s")
+    if severe_score > 0 and "severe score" not in avvisi_lower:
+        sbcape_lines.append(f"Severe Score: {severe_score}/12")
+    elif convective_risk["score"] > 0 and "severe score" not in avvisi_lower:
+        sbcape_lines.append(f"Convective Score (fallback): {convective_risk['score']}/12")
+    sbcape_str = "\n".join(sbcape_lines)
+    
+    str_avvisi = ""
+    if avvisi:
+        str_avvisi = "\n".join(avvisi) + "\n\n"
+        
+    massa_aria = classifica_massa_aria(temp_ext, dew_point, pressione_msl, mese_corrente)
+    theta_e_850 = None
+    temp_alti_livelli = None
+    if _om_data:
+        theta_e_850 = calcola_theta_e_850hpa(_om_data)
+        temp_alti_livelli = estrai_temperature_alti_livelli(_om_data)
+    if theta_e_850 is not None:
+        theta_e_str = f"θe 850hPa: {theta_e_850}°C"
+    else:
+        theta_e_str = f"θe: {massa_aria['theta_e']}°C"
+        
+    massa_str = (
+        f"🌍 <b>MASSA D'ARIA</b>\n"
+        f"{massa_aria['emoji']} {_escape_html(massa_aria['nome'])} ({_escape_html(massa_aria['tipo'])})\n"
+        f"{_escape_html(massa_aria['desc'])}\n"
+        f"{_escape_html(theta_e_str)}\n"
+        f"Anomalia: {massa_aria['anomalia']:+.1f}°C\n"
+        f"Spread T-Td: {massa_aria['spread']}°C\n"
+    )
+    if temp_alti_livelli:
+        massa_str += (
+            f"T 850hPa: {temp_alti_livelli['T_850']}°C\n"
+            f"T 500hPa: {temp_alti_livelli['T_500']}°C\n"
+        )
+    theta_e_display = theta_e_850 if theta_e_850 is not None else massa_aria['theta_e']
+    print(f"Massa d'aria: {massa_aria['tipo']} ({massa_aria['nome']}) - θe_850={theta_e_850}°C, θe_sup={massa_aria['theta_e']}°C, anomalia={massa_aria['anomalia']:+.1f}°C")
+    
+    # --- MODIFICA 3 INIZIO ---
+    if tuya_ok:
         nuovi_dati = {
             "api_ultimo_valore": sat_visualizzato,
             "sat_base_oggi": sat_base_oggi,
@@ -1474,184 +1494,226 @@ def esegui_report(force_send=False, target_chat_id=None):
             "ultimo_ks": round(ks, 2)
         }
         save_state_section('meteo', nuovi_dati)
-        data_ora_it = now_it.strftime('%d/%m/%Y %H:%M')
-        # ── Sezione qualità dell'aria ─────────────────────────────────────────
-        _aq_sezione = ""
-        if _aq_data:
-            try:
-                from qualita_aria import formatta_sezione_aria
-                _aq_sezione = formatta_sezione_aria(_aq_data)
-            except Exception:
-                pass
-        # ── Composizione messaggio HTML ───────────────────────────────────────
-        testo_meteo = (
-            f"📡 <b>STAZIONE METEO LA SPEZIA — FOCE</b>\n"
-            f"📅 {data_ora_it}\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"{source_info_line}"
-            f"{str_avvisi}"
-            f"🌡️ <b>TEMPERATURE</b>\n"
-            f"Aria: {temp_ext}°C\n"
-            f"Percepita: {feel_like}°C\n"
-            f"Heat Index: {heat_index}°C\n"
-            f"Wind Chill: {wind_chill}°C\n"
-            f"Punto di rugiada: {dew_point}°C\n\n"
-            f"💧 <b>UMIDITÀ E PRECIPITAZIONI</b>\n"
-            f"Umidità: {umid_ext}%\n"
-            f"Pioggia ultima ora: {pioggia_1h} mm\n"
-            f"Pioggia 24h: {pioggia_24h} mm\n\n"
-            f"🌬️ <b>VENTO</b>\n"
-            f"Velocità media: {v_medio} km/h\n"
-            f"Raffica max (1h): {raffica} km/h\n\n"
-            f"🔵 <b>PRESSIONE ATMOSFERICA</b>\n"
-            f"Livello mare: {pressione_msl} hPa {simbolo_baro}\n\n"
-            f"☀️ <b>RADIAZIONE</b>\n"
-            f"Indice UV: {uv_idx}\n\n"
-            f"☁️ <b>NUVOLOSITÀ (Open-Meteo)</b>\n"
-            f"Bassa (&lt;2 km): {cc_low}%\n"
-            f"Media (2-6 km): {cc_mid}%\n"
-            f"Alta (&gt;6 km): {cc_high}%\n\n"
-            f"🌱 <b>BILANCIO IDRICO SUOLO</b>\n"
-            f"API: {sat_visualizzato} mm ({saturazione_percentuale:.1f}%)\n"
-            f"ETR: {etr_giornaliera} mm\n"
-            f"ETP: {etp_giornaliera} mm\n\n"
-            f"⚡ <b>INSTABILITÀ CONVETTIVA</b>\n"
-            f"<code>{sbcape_str}</code>\n\n"
-            f"{massa_str}"
-            f"{_aq_sezione}"
+    # --- MODIFICA 3 FINE ---
+    
+    data_ora_it = now_it.strftime('%d/%m/%Y %H:%M')
+    _aq_sezione = ""
+    if _aq_data:
+        try:
+            from qualita_aria import formatta_sezione_aria
+            _aq_sezione = formatta_sezione_aria(_aq_data)
+        except Exception:
+            pass
+
+    # --- MODIFICA 4 INIZIO ---
+    if tuya_ok:
+        str_temp = f"{temp_ext}°C"
+        str_feel = f"{feel_like}°C"
+        str_heat = f"{heat_index}°C"
+        str_chill = f"{wind_chill}°C"
+        str_dew = f"{dew_point}°C"
+        str_umid = f"{umid_ext}%"
+        str_p1h = f"{pioggia_1h} mm"
+        str_p24h = f"{pioggia_24h} mm"
+        str_v = f"{v_medio} km/h"
+        str_raf = f"{raffica} km/h"
+        str_press = f"{pressione_msl} hPa {simbolo_baro}"
+        str_uv = f"{uv_idx}"
+    else:
+        str_temp = "[ compilare ] °C"
+        str_feel = "[ compilare ] °C"
+        str_heat = "[ compilare ] °C"
+        str_chill = "[ compilare ] °C"
+        str_dew = "[ compilare ] °C"
+        str_umid = "[ compilare ] %"
+        str_p1h = "[ compilare ] mm"
+        str_p24h = "[ compilare ] mm"
+        str_v = "[ compilare ] km/h"
+        str_raf = "[ compilare ] km/h"
+        str_press = "[ compilare ] hPa"
+        str_uv = "[ compilare ]"
+        str_avvisi += "⚠️ ATTENZIONE: Stazione meteo offline. Compilare i dati manualmente.\n\n"
+
+    testo_meteo = (
+        f"📡 <b>STAZIONE METEO LA SPEZIA — FOCE</b>\n"
+        f"📅 {data_ora_it}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{source_info_line}"
+        f"{str_avvisi}"
+        f"🌡️ <b>TEMPERATURE</b>\n"
+        f"Aria: {str_temp}\n"
+        f"Percepita: {str_feel}\n"
+        f"Heat Index: {str_heat}\n"
+        f"Wind Chill: {str_chill}\n"
+        f"Punto di rugiada: {str_dew}\n\n"
+        f"💧 <b>UMIDITÀ E PRECIPITAZIONI</b>\n"
+        f"Umidità: {str_umid}\n"
+        f"Pioggia ultima ora: {str_p1h}\n"
+        f"Pioggia 24h: {str_p24h}\n\n"
+        f"🌬️ <b>VENTO</b>\n"
+        f"Velocità media: {str_v}\n"
+        f"Raffica max (1h): {str_raf}\n\n"
+        f"🔵 <b>PRESSIONE ATMOSFERICA</b>\n"
+        f"Livello mare: {str_press}\n\n"
+        f"☀️ <b>RADIAZIONE</b>\n"
+        f"Indice UV: {str_uv}\n\n"
+        f"☁️ <b>NUVOLOSITÀ (Open-Meteo)</b>\n"
+        f"Bassa (&lt;2 km): {cc_low}%\n"
+        f"Media (2-6 km): {cc_mid}%\n"
+        f"Alta (&gt;6 km): {cc_high}%\n\n"
+        f"🌱 <b>BILANCIO IDRICO SUOLO</b>\n"
+        f"API: {sat_visualizzato} mm ({saturazione_percentuale:.1f}%)\n"
+        f"ETR: {etr_giornaliera} mm\n"
+        f"ETP: {etp_giornaliera} mm\n\n"
+        f"⚡ <b>INSTABILITÀ CONVETTIVA</b>\n"
+        f"<code>{sbcape_str}</code>\n\n"
+        f"{massa_str}"
+        f"{_aq_sezione}"
+    )
+    # --- MODIFICA 4 FINE ---
+    
+    ora_corrente = now_it.hour
+    minuto_corrente = now_it.minute
+    orari_report = [5, 9, 11, 15, 20]
+    minuti_report = [58, 59]
+    e_orario_programmato = ora_corrente in orari_report and minuto_corrente in minuti_report
+    eventi_significativi = []
+    ultimo_invio_slot = dati_salvati.get("ultimo_invio_slot")
+    ultimo_invio_ts_raw = dati_salvati.get("ultimo_invio_ts")
+    
+    if pioggia_1h >= thresholds.RAIN_SIGNIFICANT:
+        eventi_significativi.append(f"Pioggia: {pioggia_1h} mm/h")
+    if raffica >= 40:
+        eventi_significativi.append(f"Raffica forte (1h): {raffica} km/h")
+    if temp_ext <= thresholds.TEMP_FREEZING:
+        eventi_significativi.append(f"Temperatura bassa: {temp_ext}°C")
+    if temp_ext >= thresholds.TEMP_HOT:
+        eventi_significativi.append(f"Temperatura alta: {temp_ext}°C")
+        
+    pressione_precedente = dati_salvati.get("ultima_pressione")
+    pressione_in_calo_attuale = isinstance(pressione_precedente, (int, float)) and pressione_msl < pressione_precedente
+    if pressione_in_calo_attuale and delta_baro <= -1:
+        eventi_significativi.append(f"Pressione in calo: {delta_baro:.1f} hPa/3h")
+    if umid_ext >= 99 and diff_temp_dew <= 0.5:
+        eventi_significativi.append(f"Nebbia (T-Td={diff_temp_dew:.1f}°C, U={umid_ext}%)")
+    if convective_risk["event_trigger"]:
+        li_text = f"{convective_risk['li']:.1f}" if convective_risk["li"] is not None else "n/d"
+        eventi_significativi.append(
+            f"{convective_risk['event_label']} (Score {convective_risk['score']}/12, "
+            f"CAPE {convective_risk['max_cape']:.0f} J/kg, CIN {cin_value:.0f} J/kg, "
+            f"LI {li_text}°C, Shear {convective_risk['shear']:.1f} m/s)"
         )
-        ora_corrente = now_it.hour
-        minuto_corrente = now_it.minute
-        orari_report = [5, 9, 11, 15, 20]
-        minuti_report = [58, 59]
-        e_orario_programmato = ora_corrente in orari_report and minuto_corrente in minuti_report
-        eventi_significativi = []
-        ultimo_invio_slot = dati_salvati.get("ultimo_invio_slot")
-        ultimo_invio_ts_raw = dati_salvati.get("ultimo_invio_ts")
-        if pioggia_1h >= thresholds.RAIN_SIGNIFICANT:
-            eventi_significativi.append(f"Pioggia: {pioggia_1h} mm/h")
-        if raffica >= 40:
-            eventi_significativi.append(f"Raffica forte (1h): {raffica} km/h")
-        if temp_ext <= thresholds.TEMP_FREEZING:
-            eventi_significativi.append(f"Temperatura bassa: {temp_ext}°C")
-        if temp_ext >= thresholds.TEMP_HOT:
-            eventi_significativi.append(f"Temperatura alta: {temp_ext}°C")
-        pressione_precedente = dati_salvati.get("ultima_pressione")
-        pressione_in_calo_attuale = isinstance(pressione_precedente, (int, float)) and pressione_msl < pressione_precedente
-        if pressione_in_calo_attuale and delta_baro <= -1:
-            eventi_significativi.append(f"Pressione in calo: {delta_baro:.1f} hPa/3h")
-        if umid_ext >= 99 and diff_temp_dew <= 0.5:
-            eventi_significativi.append(f"Nebbia (T-Td={diff_temp_dew:.1f}°C, U={umid_ext}%)")
-        if convective_risk["event_trigger"]:
-            li_text = f"{convective_risk['li']:.1f}" if convective_risk["li"] is not None else "n/d"
-            eventi_significativi.append(
-                f"{convective_risk['event_label']} (Score {convective_risk['score']}/12, "
-                f"CAPE {convective_risk['max_cape']:.0f} J/kg, CIN {cin_value:.0f} J/kg, "
-                f"LI {li_text}°C, Shear {convective_risk['shear']:.1f} m/s)"
-            )
-        if severe_score >= 7 and not convective_risk["event_trigger"]:
-            eventi_significativi.append(f"Severe Score: {severe_score}/12")
-        avvisi_precedenti = set(dati_salvati.get("ultimi_avvisi", []))
-        avvisi_attuali = set(avvisi)
-        nuovi_avvisi = avvisi_attuali - avvisi_precedenti
-        if nuovi_avvisi:
-            eventi_significativi.append(f"Nuovi avvisi: {len(nuovi_avvisi)}")
-        devo_inviare = force_send or e_orario_programmato or len(eventi_significativi) > 0
-        invio_slot = None
-        invio_duplicato = False
+    if severe_score >= 7 and not convective_risk["event_trigger"]:
+        eventi_significativi.append(f"Severe Score: {severe_score}/12")
+        
+    avvisi_precedenti = set(dati_salvati.get("ultimi_avvisi", []))
+    avvisi_attuali = set(avvisi)
+    nuovi_avvisi = avvisi_attuali - avvisi_precedenti
+    if nuovi_avvisi:
+        eventi_significativi.append(f"Nuovi avvisi: {len(nuovi_avvisi)}")
+        
+    devo_inviare = force_send or e_orario_programmato or len(eventi_significativi) > 0
+    invio_slot = None
+    invio_duplicato = False
+    
+    if e_orario_programmato:
+        invio_slot = f"scheduled:{now_it.strftime('%Y-%m-%d')}:{ora_corrente:02d}"
+    elif eventi_significativi:
+        eventi_fingerprint = "|".join(sorted(eventi_significativi))
+        event_hash = hashlib.sha1(eventi_fingerprint.encode("utf-8")).hexdigest()[:12]
+        invio_slot = f"event:{event_hash}"
+        
+    if devo_inviare and not force_send and invio_slot and ultimo_invio_slot == invio_slot:
+        if invio_slot.startswith("scheduled:"):
+            invio_duplicato = True
+        elif invio_slot.startswith("event:") and ultimo_invio_ts_raw:
+            try:
+                ultimo_invio_dt = datetime.fromisoformat(ultimo_invio_ts_raw)
+                if ultimo_invio_dt.tzinfo is None:
+                    ultimo_invio_dt = ultimo_invio_dt.replace(tzinfo=TZ_ROME)
+                if (now_it - ultimo_invio_dt).total_seconds() < 600:
+                    invio_duplicato = True
+            except Exception:
+                invio_duplicato = False
+                
+    if invio_duplicato:
+        print(f"⏭️  Invio duplicato evitato (slot: {invio_slot})")
+        devo_inviare = False
+        
+    if devo_inviare:
+        motivo = []
+        if force_send:
+            motivo.append("Invio forzato (--force)")
         if e_orario_programmato:
-            invio_slot = f"scheduled:{now_it.strftime('%Y-%m-%d')}:{ora_corrente:02d}"
-        elif eventi_significativi:
-            eventi_fingerprint = "|".join(sorted(eventi_significativi))
-            event_hash = hashlib.sha1(eventi_fingerprint.encode("utf-8")).hexdigest()[:12]
-            invio_slot = f"event:{event_hash}"
-        if devo_inviare and not force_send and invio_slot and ultimo_invio_slot == invio_slot:
-            if invio_slot.startswith("scheduled:"):
-                invio_duplicato = True
-            elif invio_slot.startswith("event:") and ultimo_invio_ts_raw:
-                try:
-                    ultimo_invio_dt = datetime.fromisoformat(ultimo_invio_ts_raw)
-                    if ultimo_invio_dt.tzinfo is None:
-                        ultimo_invio_dt = ultimo_invio_dt.replace(tzinfo=TZ_ROME)
-                    if (now_it - ultimo_invio_dt).total_seconds() < 600:
-                        invio_duplicato = True
-                except Exception:
-                    invio_duplicato = False
-        if invio_duplicato:
-            print(f"⏭️  Invio duplicato evitato (slot: {invio_slot})")
-            devo_inviare = False
-        if devo_inviare:
-            motivo = []
-            if force_send:
-                motivo.append("Invio forzato (--force)")
-            if e_orario_programmato:
-                motivo.append(f"Orario programmato: {ora_corrente:02d}:{minuto_corrente:02d}")
-            if eventi_significativi:
-                motivo.append(f"Eventi: {', '.join(eventi_significativi)}")
-            print(f"📤 Invio Telegram - Motivo: {' | '.join(motivo)}")
+            motivo.append(f"Orario programmato: {ora_corrente:02d}:{minuto_corrente:02d}")
+        if eventi_significativi:
+            motivo.append(f"Eventi: {', '.join(eventi_significativi)}")
+        print(f"📤 Invio Telegram - Motivo: {' | '.join(motivo)}")
+    else:
+        print(f"⏭️  Nessun invio Telegram - Ora: {ora_corrente}:58, nessun evento significativo")
+        
+    if devo_inviare:
+        invio_avvenuto = False
+        if not TELEGRAM_TOKEN or not _send_to:
+            print("✗ Telegram non configurato (manca token o lista chat); salto invio")
         else:
-            print(f"⏭️  Nessun invio Telegram - Ora: {ora_corrente}:58, nessun evento significativo")
-        if devo_inviare:
-            invio_avvenuto = False
-            if not TELEGRAM_TOKEN or not _send_to:
-                print("✗ Telegram non configurato (manca token o lista chat); salto invio")
-            else:
-                # Genera grafico solo al report serale (20:58) o se forzato con --force
-                _grafico_bytes = None
-                _invia_con_grafico = (ora_corrente == 20 and e_orario_programmato) or force_send
-                if _invia_con_grafico:
-                    try:
-                        from grafico import genera_grafico_24h
-                        _grafico_bytes = genera_grafico_24h(titolo_stazione="La Spezia — Foce", lat=LATITUDE, lon=LONGITUDE)
-                    except Exception as _eg:
-                        print(f"⚠️  Grafico non generato: {_eg}")
-                for chat_id in _send_to:
-                    try:
+            _grafico_bytes = None
+            _invia_con_grafico = (ora_corrente == 20 and e_orario_programmato) or force_send
+            if _invia_con_grafico:
+                try:
+                    from grafico import genera_grafico_24h
+                    _grafico_bytes = genera_grafico_24h(titolo_stazione="La Spezia — Foce", lat=LATITUDE, lon=LONGITUDE)
+                except Exception as _eg:
+                    print(f"⚠️  Grafico non generato: {_eg}")
+            for chat_id in _send_to:
+                try:
+                    if _grafico_bytes:
+                        url_photo = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+                        response = requests.post(
+                            url_photo,
+                            data={'chat_id': chat_id, 'caption': testo_meteo, 'parse_mode': 'HTML'},
+                            files={'photo': ('grafico_24h.png', _grafico_bytes, 'image/png')},
+                            timeout=20
+                        )
+                    else:
+                        url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                        response = requests.post(
+                            url_tg,
+                            data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'HTML'},
+                            timeout=10
+                        )
+                    response.raise_for_status()
+                    tg_payload = response.json()
+                    if tg_payload.get("ok"):
+                        tipo_invio = "foto+grafico" if _grafico_bytes else "testo"
+                        print(f"✓ Messaggio ({tipo_invio}) inviato a {chat_id}")
+                        invio_avvenuto = True
+                    else:
+                        print(f"✗ Telegram API errore per {chat_id}: {tg_payload}")
                         if _grafico_bytes:
-                            # Invia come foto con caption HTML
-                            url_photo = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-                            response = requests.post(
-                                url_photo,
-                                data={'chat_id': chat_id, 'caption': testo_meteo, 'parse_mode': 'HTML'},
-                                files={'photo': ('grafico_24h.png', _grafico_bytes, 'image/png')},
-                                timeout=20
-                            )
-                        else:
-                            url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                            response = requests.post(
-                                url_tg,
-                                data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'HTML'},
-                                timeout=10
-                            )
-                        response.raise_for_status()
-                        tg_payload = response.json()
-                        if tg_payload.get("ok"):
-                            tipo_invio = "foto+grafico" if _grafico_bytes else "testo"
-                            print(f"✓ Messaggio ({tipo_invio}) inviato a {chat_id}")
-                            invio_avvenuto = True
-                        else:
-                            print(f"✗ Telegram API errore per {chat_id}: {tg_payload}")
-                            # Fallback testo se la foto ha fallito
-                            if _grafico_bytes:
-                                print(f"  → Fallback invio testo a {chat_id}")
-                                try:
-                                    url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                                    r2 = requests.post(
-                                        url_tg,
-                                        data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'HTML'},
-                                        timeout=10
-                                    )
-                                    if r2.json().get("ok"):
-                                        print(f"  ✓ Fallback testo inviato a {chat_id}")
-                                        invio_avvenuto = True
-                                except Exception as _ef:
-                                    print(f"  ✗ Fallback testo fallito: {_ef}")
-                    except Exception as e:
-                        print(f"✗ Errore Telegram: {e}")
-            if invio_avvenuto and invio_slot:
+                            print(f"  → Fallback invio testo a {chat_id}")
+                            try:
+                                url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                                r2 = requests.post(
+                                    url_tg,
+                                    data={'chat_id': chat_id, 'text': testo_meteo, 'parse_mode': 'HTML'},
+                                    timeout=10
+                                )
+                                if r2.json().get("ok"):
+                                    print(f"  ✓ Fallback testo inviato a {chat_id}")
+                                    invio_avvenuto = True
+                            except Exception as _ef:
+                                print(f"  ✗ Fallback testo fallito: {_ef}")
+                except Exception as e:
+                    print(f"✗ Errore Telegram: {e}")
+        
+        if invio_avvenuto and invio_slot:
+            # Assicuriamoci che tuya fosse ok prima di aggiornare i timing se non è forzato
+            if tuya_ok:
                 nuovi_dati["ultimo_invio_slot"] = invio_slot
                 nuovi_dati["ultimo_invio_ts"] = now_it.isoformat()
                 save_state_section('meteo', nuovi_dati)
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "--sbcape":
