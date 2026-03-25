@@ -28,17 +28,23 @@ MESI_IT = [
 STATE_FILE = "state.json"
 STORICO_FILE = "storico_24h.json"
 
+# Inclusione completa di tutte le variabili orarie disponibili per AROME/Open-Meteo
 HOURLY_VARS = [
     "temperature_2m", "relative_humidity_2m", "dew_point_2m",
     "apparent_temperature", "precipitation", "rain", "showers",
     "snowfall", "snow_depth", "weather_code", "pressure_msl",
     "surface_pressure", "cloud_cover", "cloud_cover_low",
     "cloud_cover_mid", "cloud_cover_high", "visibility",
-    "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
-    "uv_index", "cape", "lifted_index", "convective_inhibition",
-    "sunshine_duration",
-    "shortwave_radiation", "direct_radiation", "diffuse_radiation",
-    "freezing_level_height", "vapour_pressure_deficit", "is_day",
+    "evapotranspiration", "et0_fao_evapotranspiration", 
+    "vapour_pressure_deficit", "wind_speed_10m", "wind_direction_10m", 
+    "wind_gusts_10m", "wind_speed_100m", "wind_direction_100m", 
+    "soil_temperature_0_to_7cm", "soil_temperature_7_to_28cm", 
+    "soil_moisture_0_to_7cm", "soil_moisture_7_to_28cm",
+    "uv_index", "is_day", "sunshine_duration", 
+    "shortwave_radiation", "direct_radiation", "diffuse_radiation", 
+    "direct_normal_irradiance", "terrestrial_radiation",
+    "cape", "freezing_level_height", "boundary_layer_height", 
+    "convective_inhibition", "lifted_index", "lightning_potential",
     "temperature_850hPa", "temperature_500hPa",
     "wind_speed_850hPa", "wind_speed_500hPa",
     "wind_direction_850hPa", "wind_direction_500hPa",
@@ -253,17 +259,6 @@ def check_data_freshness(data, model_api_name, model_display, now):
     """
     Inferisce l'orario di inizializzazione della run NWP dall'ultimo timestamp
     non-null di temperature_2m, poi verifica che la run non sia obsoleta.
-
-    Principio: la finestra richiesta (MODEL_HORIZONS in giorni) è volutamente
-    più larga dell'orizzonte nominale del modello (MODEL_HORIZONS_HOURS).
-    Le ore oltre il cutoff reale della run tornano come None in temperature_2m.
-    L'ultimo indice non-null è la fine effettiva della previsione; da lì:
-
-        run_init ≈ last_valid_timestamp − orizzonte_nominale_ore
-
-    Se (now − run_init) > MAX_RUN_AGE_H la run è considerata obsoleta.
-
-    Restituisce (ok: bool, messaggio: str).
     """
     hourly = data.get("hourly", {})
     times = hourly.get("time", [])
@@ -274,7 +269,6 @@ def check_data_freshness(data, model_api_name, model_display, now):
     if not temps:
         return False, "temperature_2m non disponibile, impossibile verificare freshness"
 
-    # Trova l'ultimo indice con valore non-null
     last_valid_idx = None
     for i in range(len(temps) - 1, -1, -1):
         if temps[i] is not None:
@@ -323,8 +317,6 @@ def check_data_freshness(data, model_api_name, model_display, now):
 
 
 def fetch_forecast_data(start_date):
-    """Scarica dati da Open-Meteo usando l'orizzonte massimo per ogni modello.
-    Restituisce (data, model_api_name, model_display_name)."""
     start_str = start_date.strftime("%Y-%m-%d")
 
     for model_name, display, max_retries in MODELS:
@@ -421,7 +413,7 @@ DEVI iniziare la sezione con ESATTAMENTE una di queste quattro righe (senza virg
 - ARANCIONE se c'è un rischio probabile
 - ROSSO se il rischio è molto probabile o severo
 
-SOGLIE DI RIFERIMENTO ARPAL (Agenzia Regionale Protezione Ambiente Liguria):
+SOGLIE DI RIFERIMENTO ARPAL (Agenzia Regionale Protezione Ambiente Liguria) DA RISPETTARE IN MODO ESTREMAMENTE SEVERO E TASSATIVO:
 - Pioggia oraria: Giallo >= 15 mm/h, Arancione >= 30 mm/h, Rosso >= 50 mm/h
 - Pioggia cumulata 24h: Giallo >= 80 mm, Arancione >= 150 mm, Rosso >= 250 mm
 - Vento/raffiche: Giallo >= 50 km/h, Arancione >= 80 km/h, Rosso >= 100 km/h
@@ -431,13 +423,16 @@ SOGLIE DI RIFERIMENTO ARPAL (Agenzia Regionale Protezione Ambiente Liguria):
 - Mareggiata (pressione): Giallo <= 998 hPa, Arancione <= 995 hPa, Rosso <= 990 hPa
 - Suolo molto saturo (API): >= 185 mm → rischio idrogeologico elevato
 
+REGOLE RIGOROSE SULLE SOGLIE: 
+DEVI applicare le soglie matematicamente e in modo assoluto. Se la pioggia oraria massima è di 14 mm/h il livello è VERDE, non GIALLO. Non sottostimare e non sovrastimare per nessuna ragione. Applica le soglie esattamente come scritte.
+
 DATI INTEGRATIVI disponibili nel prompt:
 - Se presenti i dati del terreno: usa la saturazione del suolo (%) e l'API (mm) per valutare il rischio idrogeologico. Un terreno saturo (>85%) amplifica enormemente il rischio di allagamenti e frane anche con piogge moderate.
 - Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo. Confrontali con i valori previsti dal modello.
 - Se presente l'allerta ARPAL attuale: menzionala come contesto.
 
 REGOLA FONDAMENTALE SULLA BREVITÀ:
-- Se NON ci sono rischi significativi, scrivi SOLO:
+- Se NON ci sono rischi significativi (livello VERDE su tutti i fronti), scrivi SOLO:
   VERDE
   Nessun rischio significativo previsto.
   E BASTA. Non aggiungere NIENTE altro. NIENTE. Solo quelle due righe.
@@ -454,12 +449,7 @@ REGOLA FONDAMENTALE SULLA BREVITÀ:
 - Negli avvisi o segnalazioni: indica SOLO il tipo di fenomeno, MAI i valori numerici tra parentesi."""
 
 
-GEMINI_MODEL = "gemini-2.5-flash"
-
-
 def generate_forecast(weather_data, model_used, date_range_info, api_key, ground_data=None):
-    print(f"  Modello Gemini: {GEMINI_MODEL}")
-
     hourly = weather_data.get("hourly", {})
     daily = weather_data.get("daily", {})
 
@@ -490,36 +480,51 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
         },
     }
 
-    url = f"{GEMINI_API_BASE}/models/{GEMINI_MODEL}:generateContent?key={api_key}"
-    max_retries = 3
-    for attempt in range(1, max_retries + 1):
-        resp = requests.post(url, json=payload, timeout=120)
-        if resp.status_code == 429 and attempt < max_retries:
-            wait = 60
-            print(f"  ⚠ Rate limit (429), attendo {wait}s ({attempt}/{max_retries})...")
-            time.sleep(wait)
-            continue
-        if resp.status_code == 429:
-            raise RuntimeError("Gemini Flash rate-limited dopo tutti i tentativi")
-        resp.raise_for_status()
-        break
+    # Configurazione modelli: Proviamo prima la 3.1 Pro (1 tentativo), se fallisce passiamo alla 3.0 Flash (Fast)
+    models_to_try = [
+        ("gemini-3.1-pro", 1),
+        ("gemini-3.0-flash", 3)
+    ]
 
-    result = resp.json()
+    for model_name, max_retries in models_to_try:
+        print(f"  Modello Gemini in prova: {model_name}")
+        url = f"{GEMINI_API_BASE}/models/{model_name}:generateContent?key={api_key}"
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                resp = requests.post(url, json=payload, timeout=120)
+                if resp.status_code == 429 and attempt < max_retries:
+                    wait = 60
+                    print(f"  ⚠ Rate limit (429), attendo {wait}s ({attempt}/{max_retries})...")
+                    time.sleep(wait)
+                    continue
+                if resp.status_code == 429:
+                    raise RuntimeError(f"Rate-limited definitivo su {model_name}")
+                resp.raise_for_status()
+                
+                result = resp.json()
+                candidates = result.get("candidates", [])
+                
+                if not candidates:
+                    block_reason = result.get("promptFeedback", {}).get("blockReason", "sconosciuto")
+                    raise ValueError(f"Risposta bloccata da Gemini (motivo: {block_reason})")
 
-    candidates = result.get("candidates", [])
-    if not candidates:
-        block_reason = result.get("promptFeedback", {}).get("blockReason", "sconosciuto")
-        raise ValueError(f"Risposta bloccata da Gemini (motivo: {block_reason})")
+                finish_reason = candidates[0].get("finishReason", "")
+                if finish_reason == "SAFETY":
+                    raise ValueError("Risposta bloccata per motivi di sicurezza")
 
-    finish_reason = candidates[0].get("finishReason", "")
-    if finish_reason == "SAFETY":
-        raise ValueError("Risposta bloccata per motivi di sicurezza")
+                text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                if not text:
+                    raise ValueError(f"Risposta Gemini vuota (finishReason: {finish_reason})")
 
-    text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-    if not text:
-        raise ValueError(f"Risposta Gemini vuota (finishReason: {finish_reason})")
-
-    return text.strip(), GEMINI_MODEL
+                return text.strip(), model_name
+                
+            except Exception as e:
+                print(f"  ⚠ Fallito tentativo {attempt}/{max_retries} con {model_name}: {e}")
+                if attempt == max_retries:
+                    break # Passa al prossimo modello in lista
+                    
+    raise RuntimeError("Tutti i tentativi con i modelli Gemini sono falliti.")
 
 
 def send_telegram(text, target_chat_id=None):
@@ -580,8 +585,6 @@ def main(target_chat_id=None):
     weather_data, model_api_name, model_used = fetch_forecast_data(today_dt)
 
     # 1a. Verifica aggiornamento run NWP e ricava fine effettiva copertura
-    #     (prima del filtro sull'ora corrente, così temperature_2m è ancora
-    #     integro con i null di coda oltre l'orizzonte del modello)
     print("\n🔍 Verifica aggiornamento run NWP...")
     fresh_ok, fresh_msg = check_data_freshness(weather_data, model_api_name, model_used, now)
     if fresh_ok:
@@ -590,10 +593,9 @@ def main(target_chat_id=None):
         print(f"  ⚠ ATTENZIONE: {fresh_msg}")
 
     # Ricava la fine effettiva della copertura dall'ultimo valore non-null
-    # di temperature_2m — questo è il vero orizzonte della run scaricata
     _temps_raw = weather_data.get("hourly", {}).get("temperature_2m", [])
     _times_raw = weather_data.get("hourly", {}).get("time", [])
-    actual_end_dt = tomorrow_dt  # fallback conservativo
+    actual_end_dt = tomorrow_dt
     for _i in range(len(_temps_raw) - 1, -1, -1):
         if _temps_raw[_i] is not None and _i < len(_times_raw):
             try:
@@ -635,6 +637,7 @@ def main(target_chat_id=None):
         f"Periodo: dalle ore {now.strftime('%H:00')} di {format_date_it(today_dt)} "
         f"fino alle {actual_end_dt.strftime('%H:00')} di {format_date_it(actual_end_dt)}"
     )
+    
     forecast_text, gemini_model = generate_forecast(
         weather_data, model_used, date_range_info, GEMINI_API_KEY, ground_data
     )
