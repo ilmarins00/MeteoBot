@@ -454,7 +454,7 @@ Dopo il marcatore "---SEZIONE TECNICA---", scrivi un'analisi meteorologica tecni
 - Deficit di pressione di vapore (VPD) e implicazioni per evapotraspirazione.
 - Se ci sono dati di radiazione: analisi radiativa breve.
 
-Usa terminologia tecnica appropriata (avvezione, gradiente adiabatico, baroclinia, etc.) ma rimani comprensibile per un appassionato.
+Usa terminologia tecnica appropriata (avvezione, gradiente adiabatico, baroclinia, etc.) ma rimani comprensibile per un appassionato. Cita TUTTI i dati.
 
 ═══ TERZA SEZIONE: VALUTAZIONE RISCHI ═══
 
