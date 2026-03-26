@@ -487,6 +487,7 @@ REGOLE FERREE:
 4. In caso di dubbio tra due livelli, scegli sempre il più alto.
 5. Non attribuire MAI un livello inferiore motivandolo con "probabilità bassa" o "fenomeni passeggeri": le soglie sono oggettive e si applicano ai valori previsti, non alla loro probabilità soggettiva.
 6. VERDE è consentito SOLO se TUTTI i parametri restano sotto le rispettive soglie GIALLO.
+7. Segui in modo PRECISISSIMO le soglie di allerta/rischio. Seguile a TUTTI I COSTI, SENZA SCUSE.
 
 DATI INTEGRATIVI disponibili nel prompt:
 - Se presenti i dati del terreno: usa la saturazione del suolo (%) e l'API (mm) per valutare il rischio idrogeologico. Un terreno saturo amplifica enormemente il rischio di allagamenti e frane.
@@ -499,7 +500,7 @@ REGOLA FONDAMENTALE SULLA BREVITÀ:
   Nessun rischio significativo previsto.
   E BASTA. Non aggiungere NIENTE altro. NIENTE. Solo quelle due righe.
 
-- Se CI SONO rischi significativi, menziona ESCLUSIVAMENTE i fenomeni rilevanti. NON parlare dei parametri nella norma. Scrivi in modo DISCORSIVO, spiegando il perché del rischio e indicando probabilità approssimative. NON elencare dati grezzi, NON citare valori numerici tra parentesi negli avvisi.
+- Se CI SONO rischi significativi, menziona ESCLUSIVAMENTE i fenomeni rilevanti. NON parlare ASSOLUTAMENTE dei parametri nella norma. Scrivi in modo DISCORSIVO, spiegando il perché del rischio e indicando probabilità approssimative. NON elencare dati grezzi, NON citare valori numerici tra parentesi negli avvisi.
 
 ═══ REGOLE GENERALI ═══
 
