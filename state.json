@@ -20,16 +20,16 @@
         "ultimo_ks": 0.62
     },
     "sbcape": {
-        "sbcape": 0.78,
-        "mucape": 0.71,
-        "mu_level": 1000.1,
-        "cin": -116.22,
-        "lifted_index": 1.5,
-        "lcl_pressure": 848.3,
-        "lfc_pressure": 830.1,
-        "el_pressure": 810.1,
-        "bulk_shear": 2.2,
-        "timestamp": "2026-03-30T12:58:44.640805",
+        "sbcape": 0.0,
+        "mucape": null,
+        "mu_level": null,
+        "cin": 0.0,
+        "lifted_index": 1.11,
+        "lcl_pressure": 831.9,
+        "lfc_pressure": null,
+        "el_pressure": null,
+        "bulk_shear": 1.9,
+        "timestamp": "2026-03-30T13:58:37.815539",
         "location": "La Spezia (44.12514, 9.79706) - 100m",
         "unit": "J/kg",
         "calculation_method": "Advanced thermodynamic integration v2.0",
@@ -37,14 +37,14 @@
         "profile_model": "AROME France (2.5km)",
         "parameters": {
             "temperature_surface": 15.0,
-            "dewpoint_surface": 4.1,
-            "rh_surface": 48.0,
-            "pressure_surface": 1000.1,
-            "mixing_ratio_surface": 5.14,
-            "profile_levels": 51,
+            "dewpoint_surface": 2.9,
+            "rh_surface": 44.0,
+            "pressure_surface": 998.9,
+            "mixing_ratio_surface": 4.72,
+            "profile_levels": 50,
             "interpolated": true
         },
-        "severe_score": 0
+        "severe_score": 2
     },
     "arpal": {
         "dettaglio": {
