@@ -20,31 +20,31 @@
         "ultimo_ks": 0.62
     },
     "sbcape": {
-        "sbcape": 44.9,
-        "mucape": 79.52,
-        "mu_level": 816.9,
-        "cin": -210.54,
-        "lifted_index": 0.14,
-        "lcl_pressure": 896.4,
-        "lfc_pressure": 656.9,
-        "el_pressure": 506.9,
+        "sbcape": 0.0,
+        "mucape": 64.24,
+        "mu_level": 967.2,
+        "cin": 0.0,
+        "lifted_index": 0.56,
+        "lcl_pressure": 924.1,
+        "lfc_pressure": null,
+        "el_pressure": null,
         "bulk_shear": 1.0,
-        "timestamp": "2026-03-30T17:58:42.976414",
+        "timestamp": "2026-03-30T18:58:39.177630",
         "location": "La Spezia (44.12514, 9.79706) - 100m",
         "unit": "J/kg",
         "calculation_method": "Advanced thermodynamic integration v2.0",
         "data_source": "Open-Meteo (modello)",
         "profile_model": "AROME France (2.5km)",
         "parameters": {
-            "temperature_surface": 12.0,
-            "dewpoint_surface": 5.0,
-            "rh_surface": 62.0,
-            "pressure_surface": 996.9,
-            "mixing_ratio_surface": 5.49,
+            "temperature_surface": 10.4,
+            "dewpoint_surface": 5.4,
+            "rh_surface": 71.0,
+            "pressure_surface": 997.2,
+            "mixing_ratio_surface": 5.64,
             "profile_levels": 50,
             "interpolated": true
         },
-        "severe_score": 0
+        "severe_score": 2
     },
     "arpal": {
         "dettaglio": {
