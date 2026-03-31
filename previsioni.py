@@ -158,8 +158,6 @@ def load_ground_conditions():
         meteo = state.get("meteo", {})
         if meteo:
             ground["suolo"] = {
-                "api_mm": meteo.get("api_ultimo_valore"),
-                "saturazione_perc": meteo.get("ultima_saturazione_perc"),
                 "capacita_campo_mm": 200,
                 "pioggia_24h_stazione": None,
                 "t_min_oggi": meteo.get("t_min_oggi"),
@@ -212,7 +210,6 @@ def load_ground_conditions():
                 "vento_kmh": ultimo.get("vento"),
                 "raffica_kmh": ultimo.get("raffica"),
                 "dew_point": ultimo.get("dew_point"),
-                "api": ultimo.get("api"),
                 "timestamp": ultimo.get("ts"),
             }
     except Exception as e:
@@ -478,19 +475,16 @@ SOGLIE DI RIFERIMENTO ARPAL (Agenzia Regionale Protezione Ambiente Liguria):
 - Gelo: VERDE > 0°C | GIALLO <= 0°C | ARANCIONE <= -5°C | ROSSO <= -10°C
 - Neve: VERDE < 5 cm | GIALLO >= 5 cm | ARANCIONE >= 15 cm | ROSSO >= 30 cm
 - Mareggiata (pressione): VERDE > 998 hPa | GIALLO <= 998 hPa | ARANCIONE <= 995 hPa | ROSSO <= 990 hPa
-- Suolo saturo (API): >= 185 mm → rischio idrogeologico elevato (amplifica il livello di rischio pioggia di un grado)
 
 REGOLE FERREE:
 1. Controlla il valore MASSIMO di ogni parametro rilevante nell'intero periodo previsto.
 2. Se anche UN SOLO valore supera una soglia, il livello NON PUÒ essere inferiore a quello corrispondente. Nessuna eccezione.
-3. Se il suolo è saturo (API >= 185 mm o saturazione >= 85%) E sono previste precipitazioni, il livello di rischio pioggia DEVE essere elevato di un grado (VERDE→GIALLO, GIALLO→ARANCIONE, ARANCIONE→ROSSO).
-4. In caso di dubbio tra due livelli, scegli sempre il più alto.
-5. Non attribuire MAI un livello inferiore motivandolo con "probabilità bassa" o "fenomeni passeggeri": le soglie sono oggettive e si applicano ai valori previsti, non alla loro probabilità soggettiva.
-6. VERDE è consentito SOLO se TUTTI i parametri restano sotto le rispettive soglie GIALLO.
-7. Segui in modo PRECISISSIMO le soglie di allerta/rischio. Seguile a TUTTI I COSTI, SENZA SCUSE.
+3. In caso di dubbio tra due livelli, scegli sempre il più alto.
+4. Non attribuire MAI un livello inferiore motivandolo con "probabilità bassa" o "fenomeni passeggeri": le soglie sono oggettive e si applicano ai valori previsti, non alla loro probabilità soggettiva.
+5. VERDE è consentito SOLO se TUTTI i parametri restano sotto le rispettive soglie GIALLO.
+6. Segui in modo PRECISISSIMO le soglie di allerta/rischio. Seguile a TUTTI I COSTI, SENZA SCUSE.
 
 DATI INTEGRATIVI disponibili nel prompt:
-- Se presenti i dati del terreno: usa la saturazione del suolo (%) e l'API (mm) per valutare il rischio idrogeologico. Un terreno saturo amplifica enormemente il rischio di allagamenti e frane.
 - Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo. Confrontali con i valori previsti dal modello.
 - Se presente l'allerta ARPAL attuale: menzionala come contesto.
 
@@ -735,9 +729,7 @@ def main(target_chat_id=None):
     print("\n🌱 Caricamento condizioni terreno...")
     ground_data = load_ground_conditions()
     if ground_data:
-        sat = ground_data.get("suolo", {}).get("saturazione_perc")
-        api_val = ground_data.get("suolo", {}).get("api_mm")
-        print(f"  ✓ Saturazione: {sat}% | API: {api_val} mm")
+        print("  ✓ Dati terreno caricati")
     else:
         print("  ⚠ Dati terreno non disponibili")
 
