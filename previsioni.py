@@ -499,6 +499,7 @@ REGOLA FONDAMENTALE SULLA BREVITÀ:
 ═══ REGOLE GENERALI ═══
 
 - Basati SOLO sui dati numerici forniti, non inventare nulla.
+-NON citare e NON tenere in considerazione ASSOLUTAMENTE il dato dell'API (Saturazione Suolo).
 - Se un dato di quota non è disponibile (null/None), non menzionarlo.
 - Scrivi testi completi, non troncare mai a metà frase.
 - NON usare emoji in nessuna delle tre sezioni.
@@ -506,8 +507,8 @@ REGOLA FONDAMENTALE SULLA BREVITÀ:
 - Negli avvisi o segnalazioni: indica SOLO il tipo di fenomeno, MAI i valori numerici tra parentesi."""
 
 
-GEMINI_MODEL_PRIMARY = "gemini-3.1-pro-preview"
-GEMINI_MODEL_FALLBACK = "gemini-3-flash-preview"
+GEMINI_MODEL_PRIMARY = "gemini-3-flash-preview"
+GEMINI_MODEL_FALLBACK = "gemini-3.1-pro-preview"
 
 
 def generate_forecast(weather_data, model_used, date_range_info, api_key, ground_data=None):
