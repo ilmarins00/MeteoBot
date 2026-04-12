@@ -485,7 +485,7 @@ REGOLE FERREE:
 6. Segui in modo PRECISISSIMO le soglie di allerta/rischio. Seguile a TUTTI I COSTI, SENZA SCUSE.
 
 DATI INTEGRATIVI disponibili nel prompt:
-- Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo. Confrontali con i valori previsti dal modello.
+- Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare la situazione ATTUALE di partenza. Se i modelli non forniscono questi dati per il futuro, NON spalmare il valore attuale sui giorni successivi, ma omettilo.
 - Se presente l'allerta ARPAL attuale: menzionala come contesto.
 
 REGOLA FONDAMENTALE SULLA BREVITÀ:
@@ -499,7 +499,8 @@ REGOLA FONDAMENTALE SULLA BREVITÀ:
 ═══ REGOLE GENERALI ═══
 
 - Basati SOLO sui dati numerici forniti, non inventare nulla.
--NON citare e NON tenere in considerazione ASSOLUTAMENTE il dato dell'API (Saturazione Suolo).
+- NON citare e NON tenere in considerazione ASSOLUTAMENTE il dato dell'API (Saturazione Suolo).
+- ATTENZIONE: I dati in "CONDIZIONI ATTUALI DEL TERRENO E TERMODINAMICA" sono solo un'istantanea del presente. NON usarli MAI come valori previsti per il futuro (es. non ripetere la pressione o il lifted index attuale per i giorni successivi). Se un dato manca nei DATI ORARI, omettilo del tutto.
 - Se un dato di quota non è disponibile (null/None), non menzionarlo.
 - Scrivi testi completi, non troncare mai a metà frase.
 - NON usare emoji in nessuna delle tre sezioni.
