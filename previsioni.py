@@ -25,9 +25,6 @@ MESI_IT = [
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
 ]
 
-STATE_FILE = "state.json"
-STORICO_FILE = "storico_24h.json"
-
 HOURLY_VARS = [
     # Superficie e strato limite
     "temperature_2m", "relative_humidity_2m", "dew_point_2m",
@@ -145,75 +142,36 @@ def format_date_it(dt):
     return f"{GIORNI_IT[dt.weekday()]} {dt.day} {MESI_IT[dt.month - 1]} {dt.year}"
 
 
-def load_ground_conditions():
+def load_ground_conditions(hourly, timestamp_str):
+    """Estrae le condizioni attuali (ora 0) direttamente dai dati orari del modello"""
     ground = {}
-    import os
-    base = os.path.dirname(os.path.abspath(__file__))
+    
+    def val(key):
+        v = hourly.get(key)
+        return v[0] if v and len(v) > 0 else None
 
-    state_path = os.path.join(base, STATE_FILE)
-    try:
-        with open(state_path) as f:
-            state = json.load(f)
+    ground["suolo"] = {
+        "pressione_msl": val("pressure_msl"),
+        "data_aggiornamento": timestamp_str,
+    }
 
-        meteo = state.get("meteo", {})
-        if meteo:
-            ground["suolo"] = {
-                "capacita_campo_mm": 200,
-                "pioggia_24h_stazione": None,
-                "t_min_oggi": meteo.get("t_min_oggi"),
-                "t_max_oggi": meteo.get("t_max_oggi"),
-                "pressione_msl": meteo.get("ultima_pressione"),
-                "etp_giornaliera": meteo.get("ultimo_etp_giornaliera"),
-                "etr_giornaliera": meteo.get("ultimo_etr_giornaliera"),
-                "stress_idrico_ks": meteo.get("ultimo_ks"),
-                "data_aggiornamento": meteo.get("ultimo_update_ora"),
-            }
+    ground["termodinamica_attuale"] = {
+        "sbcape_jkg": val("cape"),
+        "cin_jkg": val("convective_inhibition"),
+        "lifted_index": val("lifted_index"),
+        "timestamp": timestamp_str,
+    }
 
-        sbcape = state.get("sbcape", {})
-        if sbcape:
-            ground["termodinamica_attuale"] = {
-                "sbcape_jkg": sbcape.get("sbcape"),
-                "mucape_jkg": sbcape.get("mucape"),
-                "cin_jkg": sbcape.get("cin"),
-                "lifted_index": sbcape.get("lifted_index"),
-                "bulk_shear_ms": sbcape.get("bulk_shear"),
-                "lcl_hpa": sbcape.get("lcl_pressure"),
-                "lfc_hpa": sbcape.get("lfc_pressure"),
-                "el_hpa": sbcape.get("el_pressure"),
-                "severe_score": sbcape.get("severe_score"),
-                "timestamp": sbcape.get("timestamp"),
-            }
-
-        arpal = state.get("arpal", {})
-        if arpal:
-            ground["allerta_arpal_attuale"] = {
-                "max_livello": arpal.get("max_livello"),
-                "dettaglio": arpal.get("dettaglio"),
-                "vigilanza": arpal.get("vigilanza"),
-            }
-    except Exception as e:
-        print(f"  ⚠ Impossibile caricare state.json: {e}")
-
-    storico_path = os.path.join(base, STORICO_FILE)
-    try:
-        with open(storico_path) as f:
-            storico = json.load(f)
-        if storico:
-            ultimo = storico[-1]
-            ground.setdefault("suolo", {})["pioggia_24h_stazione"] = ultimo.get("pioggia_24h")
-            ground["osservazioni_recenti"] = {
-                "temp": ultimo.get("temp"),
-                "umidita": ultimo.get("umidita"),
-                "pressione": ultimo.get("pressione"),
-                "pioggia_1h": ultimo.get("pioggia_1h"),
-                "pioggia_24h": ultimo.get("pioggia_24h"),
-                "vento_kmh": ultimo.get("vento"),
-                "raffica_kmh": ultimo.get("raffica"),
-                "dew_point": ultimo.get("dew_point"),
-                "timestamp": ultimo.get("ts"),
-            }
-    except Exception as e:
-        print(f"  ⚠ Impossibile caricare storico_24h.json: {e}")
+    ground["osservazioni_recenti"] = {
+        "temp": val("temperature_2m"),
+        "umidita": val("relative_humidity_2m"),
+        "pressione": val("pressure_msl"),
+        "pioggia_1h": val("precipitation"),
+        "vento_kmh": val("wind_speed_10m"),
+        "raffica_kmh": val("wind_gusts_10m"),
+        "dew_point": val("dew_point_2m"),
+        "timestamp": timestamp_str,
+    }
 
     return ground if ground else None
 
@@ -485,7 +443,7 @@ REGOLE FERREE:
 6. Segui in modo PRECISISSIMO le soglie di allerta/rischio. Seguile a TUTTI I COSTI, SENZA SCUSE.
 
 DATI INTEGRATIVI disponibili nel prompt:
-- Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare la situazione ATTUALE di partenza. Se i modelli non forniscono questi dati per il futuro, NON spalmare il valore attuale sui giorni successivi, ma omettilo.
+- Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo. Confrontali con i valori previsti dal modello.
 - Se presente l'allerta ARPAL attuale: menzionala come contesto.
 
 REGOLA FONDAMENTALE SULLA BREVITÀ:
@@ -499,8 +457,7 @@ REGOLA FONDAMENTALE SULLA BREVITÀ:
 ═══ REGOLE GENERALI ═══
 
 - Basati SOLO sui dati numerici forniti, non inventare nulla.
-- NON citare e NON tenere in considerazione ASSOLUTAMENTE il dato dell'API (Saturazione Suolo).
-- ATTENZIONE: I dati in "CONDIZIONI ATTUALI DEL TERRENO E TERMODINAMICA" sono solo un'istantanea del presente. NON usarli MAI come valori previsti per il futuro (es. non ripetere la pressione o il lifted index attuale per i giorni successivi). Se un dato manca nei DATI ORARI, omettilo del tutto.
+-NON citare e NON tenere in considerazione ASSOLUTAMENTE il dato dell'API (Saturazione Suolo).
 - Se un dato di quota non è disponibile (null/None), non menzionarlo.
 - Scrivi testi completi, non troncare mai a metà frase.
 - NON usare emoji in nessuna delle tre sezioni.
@@ -527,7 +484,7 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
 
     if ground_data:
         user_prompt += (
-            f"CONDIZIONI ATTUALI DEL TERRENO E TERMODINAMICA (dati della stazione locale):\n"
+            f"CONDIZIONI ATTUALI E TERMODINAMICA (dati estratti dal modello):\n"
             f"{json.dumps(ground_data, indent=2, ensure_ascii=False)}\n\n"
         )
 
@@ -727,13 +684,15 @@ def main(target_chat_id=None):
                 hourly[key] = hourly[key][start_idx:]
         print(f"  ✓ Dati filtrati: da {times[start_idx] if start_idx < len(times) else '?'} ({len(hourly.get('time', []))} ore)")
 
-    # 1c. Carica condizioni terreno e termodinamica attuale
-    print("\n🌱 Caricamento condizioni terreno...")
-    ground_data = load_ground_conditions()
+    # 1c. Estrazione condizioni attuali dal modello
+    print("\n🌱 Estrazione condizioni attuali dal modello...")
+    current_times = hourly.get("time", [])
+    current_ts_str = current_times[0] if current_times else now.strftime("%Y-%m-%dT%H:00")
+    ground_data = load_ground_conditions(hourly, current_ts_str)
     if ground_data:
-        print("  ✓ Dati terreno caricati")
+        print("  ✓ Condizioni attuali estratte")
     else:
-        print("  ⚠ Dati terreno non disponibili")
+        print("  ⚠ Condizioni attuali non disponibili")
 
     # 2. Genera previsioni con AI
     print("\n🤖 Generazione previsioni con AI...")
