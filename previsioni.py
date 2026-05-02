@@ -462,6 +462,7 @@ REGOLA FONDAMENTALE SULLA BREVITÀ:
 - Scrivi testi completi, non troncare mai a metà frase.
 - NON usare emoji in nessuna delle tre sezioni.
 - NON usare formattazione Markdown (no asterischi, no underscore, no backtick).
+-Specifica (se presenti) gli orari delle precipitazioni e tutti gli altri orari MA SOLO SE I DATI INDICANO QUALCOSA SI SIGNIFICATIVO.
 - Negli avvisi o segnalazioni: indica SOLO il tipo di fenomeno, MAI i valori numerici tra parentesi."""
 
 
