@@ -423,31 +423,18 @@ DEVI iniziare la sezione con ESATTAMENTE una di queste quattro righe (senza virg
 
 ═══ SOGLIE ARPAL – APPLICAZIONE OBBLIGATORIA E NON NEGOZIABILE ═══
 
-PRIMA DI SCRIVERE QUALSIASI COSA nella sezione rischi, devi svolgere mentalmente questa procedura di controllo sistematico, parametro per parametro. Il livello finale è il MASSIMO tra tutti i parametri esaminati. Non è mai consentito abbassare il livello rispetto a quello imposto dalle soglie numeriche.
+Ho preparato questo testo per quando riguarda le soglie dei rischi, seguilo ATTENTAMENTE:
 
-SOGLIE DI RIFERIMENTO ARPAL (Agenzia Regionale Protezione Ambiente Liguria):
-- Pioggia oraria: VERDE < 15 mm/h | GIALLO >= 15 mm/h | ARANCIONE >= 30 mm/h | ROSSO >= 50 mm/h
-- Pioggia cumulata 24h: VERDE < 80 mm | GIALLO >= 80 mm | ARANCIONE >= 150 mm | ROSSO >= 250 mm
-- Vento/raffiche: VERDE < 50 km/h | GIALLO >= 50 km/h | ARANCIONE >= 80 km/h | ROSSO >= 100 km/h
-- Caldo: VERDE < 35°C | GIALLO >= 35°C | ARANCIONE >= 38°C | ROSSO >= 40°C
-- Gelo: VERDE > 0°C | GIALLO <= 0°C | ARANCIONE <= -5°C | ROSSO <= -10°C
-- Neve: VERDE < 5 cm | GIALLO >= 5 cm | ARANCIONE >= 15 cm | ROSSO >= 30 cm
-- Mareggiata (pressione): VERDE > 998 hPa | GIALLO <= 998 hPa | ARANCIONE <= 995 hPa | ROSSO <= 990 hPa
+Per costruire una valutazione dei rischi che sia davvero realistica per il territorio ligure, e in particolare per l’area spezzina, non è necessario ragionare per soglie isolate e rigide, ma per combinazioni di parametri che descrivono il tipo di fenomeno in atto. In Liguria, infatti, il rischio non dipende quasi mai da un solo valore (ad esempio mm/h), ma dal modo in cui più fattori si sovrappongono nello stesso intervallo temporale. Il primo passaggio fondamentale è distinguere tra due scenari meteorologici completamente diversi, perché generano rischi differenti pur con quantitativi di pioggia simili. Da un lato ci sono i temporali convettivi, dall’altro le piogge stratiformi persistenti legate a flussi umidi meridionali. Nel caso dei temporali convettivi, i parametri chiave sono l’energia disponibile (CAPE), l’intensità oraria della precipitazione e la presenza di convergenze o forzanti locali. Qui il rischio nasce dalla rapidità: anche 20–30 mm in un’ora possono creare criticità, soprattutto nei piccoli bacini o in ambito urbano. Se a questo si aggiunge attività elettrica e raffiche di vento, il quadro evolve verso temporali organizzati, anche senza accumuli giornalieri estremi. Nel caso delle piogge stratiformi, invece, il meccanismo è opposto. Non conta tanto il picco orario, ma la durata e la continuità. In presenza di flussi da sud o sud-est (scirocco), aria molto umida e precipitazioni diffuse, anche intensità modeste (5–10 mm/h) possono diventare problematiche se persistono per molte ore. Qui il parametro più importante diventa la cumulata su più intervalli temporali: 6 ore, 12 ore e 24 ore. In questo scenario, superare gli 80 mm in 24 ore è già un segnale di attenzione (solo un esempio), ma il vero salto di rischio avviene quando la pioggia continua senza pause e con intensità costante o crescente. È proprio questa tipologia di evento che in Liguria genera spesso le criticità maggiori. Un altro elemento da integrare è il vento, non tanto come rischio a sé stante (salvo casi estremi), ma come indicatore del tipo di sistema in atto. Un rinforzo del vento da sud-est sullo Spezzino è un segnale molto importante: indica richiamo umido marittimo e spesso anticipa o accompagna precipitazioni persistenti. Se le raffiche restano sotto i 50 km/h, il rischio diretto è basso, ma se aumentano oltre i 60–70 km/h iniziano a esserci effetti combinati (mare agitato, difficoltà di deflusso dei corsi d’acqua, maggiore esposizione costiera). Raffiche oltre gli 80 km/h rappresentano già una criticità autonoma. Per quanto riguarda i temporali più organizzati, bisogna considerare la combinazione tra CAPE e struttura del vento. Valori di CAPE tra 300 e 800 J/kg, sono già sufficienti in ambiente ligure se accompagnati da forte umidità e sollevamento forzato. Non servono valori elevatissimi come in pianura: il contesto orografico e marittimo amplifica l’efficienza del sistema. In queste situazioni, anche se le cumulate totali non sono eccezionali, si possono avere rovesci intensi, fulminazioni frequenti e locali criticità. Un punto cruciale è evitare di valutare i parametri in modo isolato. Alcuni esempi pratici aiutano a chiarire il metodo: Se osservi pioggia debole o moderata (5–10 mm/h), ma continua per molte ore, con vento da sud-est e umidità molto alta, il rischio è in crescita anche senza superare soglie orarie elevate. Se invece hai picchi brevi di 20–30 mm/h ma senza persistenza e senza struttura organizzata, il rischio può restare limitato e localizzato. Se compaiono contemporaneamente CAPE significativo, saturazione elevata e precipitazioni in aumento, allora il sistema può evolvere rapidamente verso fenomeni più intensi. Infine, è importante considerare che il sistema di ARPAL è costruito proprio su questa logica integrata: non esiste una singola soglia che determina un’allerta, ma una valutazione complessiva del tipo di evento, della sua durata e della sua distribuzione sul territorio. Seguendo questo metodo, anche senza il dato di saturazione del suolo, puoi ottenere una valutazione molto più vicina alla realtà operativa: meno automatica, ma decisamente più affidabile, soprattutto in un contesto complesso come quello ligure.
 
-REGOLE FERREE:
-1. Controlla il valore MASSIMO di ogni parametro rilevante nell'intero periodo previsto.
-2. Se anche UN SOLO valore supera una soglia, il livello NON PUÒ essere inferiore a quello corrispondente. Nessuna eccezione.
-3. In caso di dubbio tra due livelli, scegli sempre il più alto.
-4. Non attribuire MAI un livello inferiore motivandolo con "probabilità bassa" o "fenomeni passeggeri": le soglie sono oggettive e si applicano ai valori previsti, non alla loro probabilità soggettiva.
-5. VERDE è consentito SOLO se TUTTI i parametri restano sotto le rispettive soglie GIALLO.
-6. Segui in modo PRECISISSIMO le soglie di allerta/rischio. Seguile a TUTTI I COSTI, SENZA SCUSE.
+REGOLA FERREA:
+Segui ciò che c'è scritto nel testo OBBLIGATORIAMENTE e non devi né drammatizzare né sdrammatizzare ciò che c'è scritto.
 
 DATI INTEGRATIVI disponibili nel prompt:
 - Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo. Confrontali con i valori previsti dal modello.
-- Se presente l'allerta ARPAL attuale: menzionala come contesto.
 
 REGOLA FONDAMENTALE SULLA BREVITÀ:
-- Se NON ci sono rischi significativi (tutti i parametri sotto soglia GIALLO), scrivi SOLO:
+- Se NON ci sono rischi significativi, scrivi SOLO:
   VERDE
   Nessun rischio significativo previsto.
   E BASTA. Non aggiungere NIENTE altro. NIENTE. Solo quelle due righe.
@@ -462,8 +449,8 @@ REGOLA FONDAMENTALE SULLA BREVITÀ:
 - Scrivi testi completi, non troncare mai a metà frase.
 - NON usare emoji in nessuna delle tre sezioni.
 - NON usare formattazione Markdown (no asterischi, no underscore, no backtick).
--Specifica (se presenti) gli orari delle precipitazioni e tutti gli altri orari MA SOLO SE I DATI INDICANO QUALCOSA SI SIGNIFICATIVO.
-- Negli avvisi o segnalazioni: indica SOLO il tipo di fenomeno, MAI i valori numerici tra parentesi."""
+-Specifica OBBLIGATORIAMENTE (se presenti) gli orari delle precipitazioni e tutti gli altri orari degli altri fenomeni MA SOLO SE I DATI INDICANO QUALCOSA DI SIGNIFICATIVO.
+"""
 
 
 GEMINI_MODEL_PRIMARY = "gemini-3-flash-preview"
