@@ -181,7 +181,7 @@
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-05-06T03:03:04.572670+02:00",
+        "last_check_ts": "2026-05-06T03:17:41.477393+02:00",
         "recent_strikes": [
             {
                 "lat": 44.0771,
@@ -209,11 +209,38 @@
                 "signal": 0,
                 "source": "openmeteo",
                 "wmo_code": 95
+            },
+            {
+                "lat": 44.1413,
+                "lon": 9.9813,
+                "time": "2026-05-06T03:00:00+02:00",
+                "distance_km": 14.8,
+                "signal": 0,
+                "source": "openmeteo",
+                "wmo_code": 95
+            },
+            {
+                "lat": 44.1362,
+                "lon": 9.971,
+                "time": "2026-05-06T03:00:00+02:00",
+                "distance_km": 13.9,
+                "signal": 0,
+                "source": "openmeteo",
+                "wmo_code": 95
+            },
+            {
+                "lat": 44.1533,
+                "lon": 9.9076,
+                "time": "2026-05-06T03:00:00+02:00",
+                "distance_km": 9.3,
+                "signal": 0,
+                "source": "openmeteo",
+                "wmo_code": 95
             }
         ],
-        "total_in_window": 3,
+        "total_in_window": 6,
         "status": "alert",
-        "last_send_ts": "2026-05-06T03:03:07.182617+02:00",
-        "last_strike_count": 3
+        "last_send_ts": "2026-05-06T03:17:43.642131+02:00",
+        "last_strike_count": 6
     }
 }
