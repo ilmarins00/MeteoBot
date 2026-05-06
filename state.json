@@ -181,64 +181,19 @@
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-05-06T03:17:41.477393+02:00",
+        "last_check_ts": "2026-05-06T03:32:47.173333+02:00",
         "recent_strikes": [
             {
-                "lat": 44.0771,
-                "lon": 9.9556,
-                "time": "2026-05-06T03:00:00+02:00",
-                "distance_km": 13.7,
-                "signal": 0,
-                "source": "openmeteo",
-                "wmo_code": 95
-            },
-            {
-                "lat": 44.1671,
-                "lon": 9.6845,
-                "time": "2026-05-06T03:00:00+02:00",
-                "distance_km": 10.1,
-                "signal": 0,
-                "source": "openmeteo",
-                "wmo_code": 95
-            },
-            {
-                "lat": 44.1465,
-                "lon": 9.8054,
-                "time": "2026-05-06T03:00:00+02:00",
-                "distance_km": 2.5,
-                "signal": 0,
-                "source": "openmeteo",
-                "wmo_code": 95
-            },
-            {
-                "lat": 44.1413,
-                "lon": 9.9813,
-                "time": "2026-05-06T03:00:00+02:00",
-                "distance_km": 14.8,
-                "signal": 0,
-                "source": "openmeteo",
-                "wmo_code": 95
-            },
-            {
-                "lat": 44.1362,
-                "lon": 9.971,
-                "time": "2026-05-06T03:00:00+02:00",
-                "distance_km": 13.9,
-                "signal": 0,
-                "source": "openmeteo",
-                "wmo_code": 95
-            },
-            {
-                "lat": 44.1533,
-                "lon": 9.9076,
-                "time": "2026-05-06T03:00:00+02:00",
-                "distance_km": 9.3,
+                "lat": 44.2298,
+                "lon": 9.8826,
+                "time": "2026-05-06T03:31:00+02:00",
+                "distance_km": 13.5,
                 "signal": 0,
                 "source": "openmeteo",
                 "wmo_code": 95
             }
         ],
-        "total_in_window": 6,
+        "total_in_window": 1,
         "status": "alert",
         "last_send_ts": "2026-05-06T03:17:43.642131+02:00",
         "last_strike_count": 6
