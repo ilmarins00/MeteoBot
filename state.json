@@ -181,28 +181,37 @@
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-05-16T06:47:32.937527+02:00",
+        "last_check_ts": "2026-05-16T07:02:53.547930+02:00",
         "recent_strikes": [
             {
-                "lat": 44.1824,
-                "lon": 9.8672,
-                "time": "2026-05-16T06:47:00+02:00",
-                "distance_km": 8.5,
+                "lat": 44.1173,
+                "lon": 9.8058,
+                "time": "2026-05-16T07:00:00+02:00",
+                "distance_km": 1.1,
                 "signal": 0,
                 "source": "openmeteo",
                 "wmo_code": 96
             },
             {
-                "lat": 43.9984,
-                "lon": 9.7335,
-                "time": "2026-05-16T06:33:00+02:00",
-                "distance_km": 14.9,
+                "lat": 44.1388,
+                "lon": 9.7873,
+                "time": "2026-05-16T07:00:00+02:00",
+                "distance_km": 1.7,
+                "signal": 0,
+                "source": "openmeteo",
+                "wmo_code": 96
+            },
+            {
+                "lat": 44.1342,
+                "lon": 9.7597,
+                "time": "2026-05-16T07:00:00+02:00",
+                "distance_km": 3.1,
                 "signal": 0,
                 "source": "openmeteo",
                 "wmo_code": 96
             }
         ],
-        "total_in_window": 2,
+        "total_in_window": 3,
         "status": "alert",
         "last_send_ts": "2026-05-16T06:47:35.279132+02:00",
         "last_strike_count": 2
