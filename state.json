@@ -181,13 +181,13 @@
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-06-02T22:17:43.047346+02:00",
+        "last_check_ts": "2026-06-02T22:32:49.080443+02:00",
         "recent_strikes": [
             {
-                "lat": 44.0188,
-                "lon": 9.727,
-                "time": "2026-06-02T22:10:00+02:00",
-                "distance_km": 13.1,
+                "lat": 44.1233,
+                "lon": 9.928,
+                "time": "2026-06-02T22:32:00+02:00",
+                "distance_km": 10.4,
                 "signal": 0,
                 "source": "openmeteo",
                 "wmo_code": 95
