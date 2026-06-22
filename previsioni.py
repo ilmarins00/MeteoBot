@@ -453,8 +453,8 @@ REGOLA FONDAMENTALE SULLA BREVITÀ:
 """
 
 
-GEMINI_MODEL_PRIMARY = "gemini-3-flash-preview"
-GEMINI_MODEL_FALLBACK = "gemini-3.1-pro-preview"
+GEMINI_MODEL_PRIMARY = "gemini-3.5-flash"
+GEMINI_MODEL_FALLBACK = "gemini-3-flash-preview"
 
 
 def generate_forecast(weather_data, model_used, date_range_info, api_key, ground_data=None):
@@ -480,7 +480,7 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
 
     # Prova prima con Gemini 3.1 Pro Preview, poi fallback su 3 Flash Preview
     models_to_try = [
-        (GEMINI_MODEL_PRIMARY, "3.1 Pro Preview"),
+        (GEMINI_MODEL_PRIMARY, "3.5 Flash"),
         (GEMINI_MODEL_FALLBACK, "3 Flash Preview (fallback)"),
     ]
 
