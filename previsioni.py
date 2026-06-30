@@ -597,8 +597,8 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
 
     # Prova prima con Gemini 3.1 Pro Preview, poi fallback su 3 Flash Preview
     models_to_try = [
-        (GEMINI_MODEL_PRIMARY, "3 Flash Preview"),
-        (GEMINI_MODEL_FALLBACK, "3.5 Flash (fallback)"),
+        (GEMINI_MODEL_PRIMARY, "3.5 Flash"),
+        (GEMINI_MODEL_FALLBACK, "3 Flash Preview (fallback)"),
     ]
 
     for gemini_model, gemini_label in models_to_try:
@@ -610,7 +610,7 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
             "generationConfig": {
                 "temperature": 0.2,
                 "maxOutputTokens": 32768,
-                "thinkingConfig": {"thinkingLevel": "medium"},
+                "thinkingConfig": {"thinkingLevel": "low"},
             },
         }
 
