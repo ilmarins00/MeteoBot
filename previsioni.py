@@ -610,7 +610,7 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
             "generationConfig": {
                 "temperature": 0.2,
                 "maxOutputTokens": 32768,
-                "thinkingConfig": {"thinkingLevel": "low"},
+                "thinkingConfig": {"thinkingLevel": "medium"},
             },
         }
 
@@ -684,6 +684,12 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
         text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
         if not text:
             print(f"  ✗ Risposta vuota (finishReason: {finish_reason}), provo fallback...")
+            continue
+        
+        required_markers = ["---SEZIONE TECNICA---", "---SEZIONE INDICE---", "---SEZIONE RISCHI---"]
+        missing_markers = [m for m in required_markers if m not in text]
+        if missing_markers:
+            print(f"  ✗ Sezioni mancanti nella risposta: {missing_markers}, provo fallback...")
             continue
 
         print(f"  ✓ Risposta ottenuta da {gemini_label}")
