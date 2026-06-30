@@ -116,6 +116,9 @@ MODELS = [
     ("icon_eu", "ICON-EU", 1),
 ]
 
+FALLBACK_MODEL = "icon_eu"
+FALLBACK_MODEL_DISPLAY = "ICON-EU"
+
 # Finestra di richiesta in giorni. Deve superare l'orizzonte nominale
 # del modello per permettere l'inferenza dell'orario di run tramite i null di coda.
 MODEL_HORIZONS = {
@@ -248,6 +251,42 @@ def _fetch_pressure_levels(start_date_str, end_date_str, model_name=None):
         print(f"  ⚠ Errore fetch supplementare: {e}")
         return {}
 
+def _fetch_fallback_vars(start_date_str, end_date_str, missing_vars):
+    """Scarica SOLO le variabili mancanti dal modello primario, usando
+    ICON-EU come riserva. Restituisce (dict_variabili, lista_timestamp)
+    per permettere l'allineamento temporale con la serie principale,
+    dato che gli orizzonti dei due modelli possono differire."""
+    if not missing_vars:
+        return {}, []
+    try:
+        params = {
+            "latitude": LATITUDE,
+            "longitude": LONGITUDE,
+            "hourly": ",".join(missing_vars),
+            "models": FALLBACK_MODEL,
+            "start_date": start_date_str,
+            "end_date": end_date_str,
+            "timezone": "Europe/Rome",
+        }
+        resp = requests.get(
+            "https://api.open-meteo.com/v1/forecast", params=params, timeout=30
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("error"):
+            print(f"  ⚠ Errore fallback {FALLBACK_MODEL_DISPLAY}: {data.get('reason')}")
+            return {}, []
+        hourly = data.get("hourly", {})
+        fb_times = hourly.get("time", [])
+        result = {
+            k: v for k, v in hourly.items()
+            if k != "time" and isinstance(v, list) and any(x is not None for x in v)
+        }
+        return result, fb_times
+    except Exception as e:
+        print(f"  ⚠ Errore fetch fallback {FALLBACK_MODEL_DISPLAY}: {e}")
+        return {}, []
+
 
 def check_data_freshness(data, model_api_name, model_display, now):
     """
@@ -357,6 +396,32 @@ def fetch_forecast_data(start_date):
                     for key, vals in extra.items():
                         if key not in hourly:
                             hourly[key] = vals
+
+                # Integra da ICON-EU SOLO le variabili ancora mancanti dopo AROME,
+                # senza toccare quelle già disponibili. Non eseguire se il modello
+                # primario è già ICON-EU, per evitare un fetch ridondante.
+                hourly = data.get("hourly", {})
+                if model_name != FALLBACK_MODEL:
+                    all_expected_vars = set(HOURLY_VARS) | set(PRESSURE_LEVEL_VARS)
+                    missing_vars = sorted(v for v in all_expected_vars if v not in hourly)
+                    if missing_vars:
+                        print(f"  ⚠ {len(missing_vars)} variabili non disponibili su {display}, "
+                              f"integrazione da {FALLBACK_MODEL_DISPLAY}...")
+                        fb_vars, fb_times = _fetch_fallback_vars(start_str, end_str, missing_vars)
+                        if fb_vars and fb_times:
+                            arome_times = hourly.get("time", [])
+                            time_index = {t: i for i, t in enumerate(fb_times)}
+                            added = []
+                            for key, vals in fb_vars.items():
+                                aligned = [
+                                    vals[time_index[t]] if t in time_index and time_index[t] < len(vals) else None
+                                    for t in arome_times
+                                ]
+                                if any(v is not None for v in aligned):
+                                    hourly[key] = aligned
+                                    added.append(key)
+                            if added:
+                                print(f"  ✓ Variabili integrate da {FALLBACK_MODEL_DISPLAY}: {', '.join(added)}")
 
                 print(f"  ✓ {display}: {len(hours)} ore, "
                       f"{len([k for k in data.get('hourly', {}) if k != 'time'])} variabili totali")
@@ -760,18 +825,29 @@ def main(target_chat_id=None):
     )
 
     SEP_TECH = "---SEZIONE TECNICA---"
-    SEP_RISK = "---SEZIONE RISCHI---"
+SEP_INDEX = "---SEZIONE INDICE---"
+SEP_RISK = "---SEZIONE RISCHI---"
 
-    remaining = forecast_text
-    if SEP_TECH in remaining:
-        simple_part, remaining = remaining.split(SEP_TECH, 1)
-    else:
-        simple_part, remaining = remaining, ""
+remaining = forecast_text
+if SEP_TECH in remaining:
+    simple_part, remaining = remaining.split(SEP_TECH, 1)
+else:
+    simple_part, remaining = remaining, ""
 
-    if SEP_RISK in remaining:
-        tech_part, risk_part = remaining.split(SEP_RISK, 1)
-    else:
-        tech_part, risk_part = remaining, ""
+if SEP_INDEX in remaining:
+    tech_part, remaining = remaining.split(SEP_INDEX, 1)
+else:
+    tech_part, remaining = remaining, ""
+
+if SEP_RISK in remaining:
+    index_part, risk_part = remaining.split(SEP_RISK, 1)
+else:
+    index_part, risk_part = remaining, ""
+
+simple_part = simple_part.strip()
+tech_part = tech_part.strip()
+index_part = index_part.strip()
+risk_part = risk_part.strip()
 
     simple_part = simple_part.strip()
     tech_part = tech_part.strip()
@@ -791,9 +867,11 @@ def main(target_chat_id=None):
         risk_block = "🟢 RISCHI POSSIBILI\n\nNessun rischio previsto."
 
     body = simple_part
-    if tech_part:
-        body += "\n\n📊 Analisi Tecnica\n\n" + tech_part
-    body += "\n\n" + risk_block
+if tech_part:
+    body += "\n\n📊 Analisi Tecnica\n\n" + tech_part
+if index_part:
+    body += "\n\n📈 Indice di Rischio Oggettivo\n\n" + index_part
+body += "\n\n" + risk_block
     full_msg = header + body
 
     if send_telegram(full_msg, target_chat_id=target_chat_id):
