@@ -642,6 +642,13 @@ def prepara_compendio_orario(dati_orari, giorni_validi):
     compendio = []
     times = dati_orari.get("time", [])
     
+    # Funzione interna protetta contro IndexError e chiavi mancanti
+    def get_val(chiave, index):
+        arr = dati_orari.get(chiave)
+        if arr and isinstance(arr, list) and index < len(arr):
+            return arr[index]
+        return None
+
     for g_str in giorni_validi:
         indici = [i for i, t in enumerate(times) if t.startswith(g_str)]
         if not indici:
@@ -653,24 +660,24 @@ def prepara_compendio_orario(dati_orari, giorni_validi):
             ora_completa = times[idx]
             ora_h = ora_completa.split("T")[1][:5] if "T" in ora_completa else ora_completa
             
-            # Estrazione parametri principali e di quota
+            # Estrazione parametri principali e di quota sicura
             orario_info = {
                 "ora": ora_h,
-                "t2m": dati_orari.get("temperature_2m", [None])[idx],
-                "rh2m": dati_orari.get("relative_humidity_2m", [None])[idx],
-                "prec": dati_orari.get("precipitation", [None])[idx],
-                "w_code": dati_orari.get("weather_code", [None])[idx],
-                "gust": dati_orari.get("wind_gusts_10m", [None])[idx],
-                "wind_spd": dati_orari.get("wind_speed_10m", [None])[idx],
-                "wind_dir": dati_orari.get("wind_direction_10m", [None])[idx],
-                "cape": dati_orari.get("cape", [None])[idx],
-                "cin": dati_orari.get("convective_inhibition", [None])[idx],
-                "li": dati_orari.get("lifted_index", [None])[idx],
+                "t2m": get_val("temperature_2m", idx),
+                "rh2m": get_val("relative_humidity_2m", idx),
+                "prec": get_val("precipitation", idx),
+                "w_code": get_val("weather_code", idx),
+                "gust": get_val("wind_gusts_10m", idx),
+                "wind_spd": get_val("wind_speed_10m", idx),
+                "wind_dir": get_val("wind_direction_10m", idx),
+                "cape": get_val("cape", idx),
+                "cin": get_val("convective_inhibition", idx),
+                "li": get_val("lifted_index", idx),
                 # Dati verticali termodinamici
-                "t850": dati_orari.get("temperature_850hPa", [None])[idx],
-                "t500": dati_orari.get("temperature_500hPa", [None])[idx],
-                "gh500": dati_orari.get("geopotential_height_500hPa", [None])[idx],
-                "rh700": dati_orari.get("relative_humidity_700hPa", [None])[idx],
+                "t850": get_val("temperature_850hPa", idx),
+                "t500": get_val("temperature_500hPa", idx),
+                "gh500": get_val("geopotential_height_500hPa", idx),
+                "rh700": get_val("relative_humidity_700hPa", idx),
             }
             g_data["ore"].append(orario_info)
             
