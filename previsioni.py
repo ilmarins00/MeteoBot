@@ -714,6 +714,7 @@ Modello meteorologico di riferimento utilizzato per il fetching: {modello_displa
 
 REGOLE DI COMPILAZIONE DEL BOLLETTINO:
 Genera l'output strutturato esattamente nei seguenti 4 macro-blocchi. Non inventare i dati, attieniti ai valori fisici forniti e applica la modellistica concettuale ARPAL (es. l'interazione tra tramontana scura e scirocco, gradienti termici verticali pesanti con aria fredda a 500hPa in estate, o tetti termo-igrometrici estivi).
+ASSOLUTAMENTE NESSUNA FORMATTAZIONE MARKDOWN (NO ASTERISCHI, HASHTAG, GRASSETTO, ITALICO, CODICE, LINK, IMMAGINI). Tutto il testo deve essere in chiaro e leggibile.
 
 1. PREVISIONI SEMPLICI
 Fornisci per ogni giorno un riassunto chiaro e accessibile sull'evoluzione dello stato del cielo, dei venti e delle temperature (es. quando e quanto si annuvola, tempistiche precise delle piogge).
