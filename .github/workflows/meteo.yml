@@ -1,75 +1,35 @@
-name: MeteoBot - Esegui meteo.py
+name: Generazione Bollettino Meteo La Spezia
 
 on:
+  schedule:
+    # Gira ogni giorno alle 05:00 UTC (ovvero le 07:00 italiane estive o 06:00 solari)
+    # Perfetto per avere il bollettino fresco al mattino basato sui run notturni
+    - cron: '0 5 * * *'
   workflow_dispatch:
-
-concurrency:
-  group: meteo
-  cancel-in-progress: false
-
-permissions:
-  contents: write
+    # Ti permette di avviare lo script manualmente premendo un tasto su GitHub se vuoi fare un test
 
 jobs:
-  run-meteo:
+  run-meteo-script:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Run meteo.py
-        env:
-          TUYA_ACCESS_ID: ${{ secrets.TUYA_ACCESS_ID }}
-          TUYA_ACCESS_SECRET: ${{ secrets.TUYA_ACCESS_SECRET }}
-          TUYA_DEVICE_ID: ${{ secrets.TUYA_DEVICE_ID }}
-          TUYA_ENDPOINT: ${{ secrets.TUYA_ENDPOINT }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
-        run: |
-          python meteo.py
-      - name: Commit JSON aggiornati
-        if: always()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            cp state.json /tmp/local_state.json 2>/dev/null || true
-            cp storico_24h.json /tmp/local_storico.json 2>/dev/null || true
-            git reset --hard origin/main
-            python3 << 'PYEOF'
-          import json, os
-          with open('/tmp/local_state.json') as f: local = json.load(f)
-          remote = {}
-          if os.path.exists('state.json'):
-              with open('state.json') as f: remote = json.load(f)
-          for s in ['meteo', 'sbcape']:
-              if s in local: remote[s] = local[s]
-          with open('state.json', 'w') as f: json.dump(remote, f, indent=4, ensure_ascii=False)
-          PYEOF
-            cp /tmp/local_storico.json storico_24h.json 2>/dev/null || true
-            git add state.json storico_24h.json || true
-            if git diff --cached --quiet; then
-              echo "Nessuna modifica da committare"
-              exit 0
-            fi
-            git commit -m "Aggiorna JSON da GitHub Actions [skip ci]"
-            if git push; then
-              echo "Push riuscito (tentativo $attempt)"
-              exit 0
-            fi
-            echo "Push rifiutato, ritento ($attempt/5)..."
-            sleep $((attempt * 2))
-          done
-          echo "Push fallito dopo 5 tentativi"
-          exit 1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Esamina il codice del repository
+      uses: actions/checkout@v4
+
+    - name: Configura Python
+      uses: actions/setup-python@v5
+      with:
+        python-node-version: '3.10'
+
+    - name: Installa le dipendenze
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+
+    - name: Esegui lo Script Meteo
+      env:
+        # Inietta i Secrets di GitHub dentro le variabili d'ambiente dello script
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: previsioni.py
