@@ -824,33 +824,29 @@ def main(target_chat_id=None):
         f"{freshness_warning}\n"
     )
 
-    SEP_TECH = "---SEZIONE TECNICA---"
-SEP_INDEX = "---SEZIONE INDICE---"
-SEP_RISK = "---SEZIONE RISCHI---"
+SEP_TECH = "---SEZIONE TECNICA---"
+    SEP_INDEX = "---SEZIONE INDICE---"
+    SEP_RISK = "---SEZIONE RISCHI---"
 
-remaining = forecast_text
-if SEP_TECH in remaining:
-    simple_part, remaining = remaining.split(SEP_TECH, 1)
-else:
-    simple_part, remaining = remaining, ""
+    remaining = forecast_text
+    if SEP_TECH in remaining:
+        simple_part, remaining = remaining.split(SEP_TECH, 1)
+    else:
+        simple_part, remaining = remaining, ""
 
-if SEP_INDEX in remaining:
-    tech_part, remaining = remaining.split(SEP_INDEX, 1)
-else:
-    tech_part, remaining = remaining, ""
+    if SEP_INDEX in remaining:
+        tech_part, remaining = remaining.split(SEP_INDEX, 1)
+    else:
+        tech_part, remaining = remaining, ""
 
-if SEP_RISK in remaining:
-    index_part, risk_part = remaining.split(SEP_RISK, 1)
-else:
-    index_part, risk_part = remaining, ""
-
-simple_part = simple_part.strip()
-tech_part = tech_part.strip()
-index_part = index_part.strip()
-risk_part = risk_part.strip()
+    if SEP_RISK in remaining:
+        index_part, risk_part = remaining.split(SEP_RISK, 1)
+    else:
+        index_part, risk_part = remaining, ""
 
     simple_part = simple_part.strip()
     tech_part = tech_part.strip()
+    index_part = index_part.strip()
     risk_part = risk_part.strip()
 
     RISK_COLORS = {
@@ -867,11 +863,11 @@ risk_part = risk_part.strip()
         risk_block = "🟢 RISCHI POSSIBILI\n\nNessun rischio previsto."
 
     body = simple_part
-if tech_part:
-    body += "\n\n📊 Analisi Tecnica\n\n" + tech_part
-if index_part:
-    body += "\n\n📈 Indice di Rischio Oggettivo\n\n" + index_part
-body += "\n\n" + risk_block
+    if tech_part:
+        body += "\n\n📊 Analisi Tecnica\n\n" + tech_part
+    if index_part:
+        body += "\n\n📈 Indice di Rischio Oggettivo\n\n" + index_part
+    body += "\n\n" + risk_block
     full_msg = header + body
 
     if send_telegram(full_msg, target_chat_id=target_chat_id):
