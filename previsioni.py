@@ -433,17 +433,36 @@ CONTRIBUTO VENTO (max 1.5):
 - 70-80 km/h: contributo 1.
 - Oltre 80 km/h: contributo 1.5.
 
-CONTRIBUTO CALDO/AFA (max 1.5, è un unico contributo che copre sia caldo secco sia afa):
-- Caldo secco: temperatura massima inferiore a 34°C non contribuisce. Da 34°C: contributo 0.5; da 36°C: contributo 1; da 38°C: contributo 1.5.
-- Afa: contribuisce SOLO se temperatura ≥27°C E umidità relativa >70% contemporaneamente (altrimenti 0). In tal caso: contributo 0.5 nei casi moderati, fino a 1.5 se il disagio è marcato (dew point molto elevato, VPD molto basso).
-- Se entrambi i meccanismi (caldo secco e afa) sono attivi nello stesso giorno, usa il valore più alto dei due, NON sommarli: il contributo caldo/afa resta comunque un unico numero, max 1.5.
+CONTRIBUTO CALDO (max 1.5):
+- Temperatura massima inferiore a 34°C: contributo 0.
+- Da 34°C: contributo 0.5.
+- Da 36°C: contributo 1.
+- Da 38°C: contributo 1.5.
+
+CONTRIBUTO AFA (max 1.5):
+- Contribuisce SOLO se temperatura ≥27°C E umidità relativa >70% contemporaneamente. Altrimenti contributo 0.
+- Disagio moderato (dew point elevato, VPD ridotto): contributo 0.5.
+- Disagio marcato: contributo 1.
+- Disagio molto marcato (dew point molto elevato, VPD molto basso, saturazione quasi completa): contributo 1.5.
+
 
 REGOLA DI OUTPUT — IMPORTANTE:
-NON scrivere la metodologia, le soglie o spiegazioni di come funziona il sistema di calcolo. L'utente NON deve leggere la logica, solo il risultato. Per ciascun giorno riporta SOLO:
+NON scrivere la metodologia, le soglie o spiegazioni di come funziona il sistema di calcolo. L'utente NON deve leggere la logica, solo il risultato.
 
-[Giorno data]: LRO X/5 — contributi: pioggia A, temporali B, vento C, caldo/afa D
+ECCEZIONE ALLA REGOLA GENERALE SULLE EMOJI: SOLO in questa sezione (---SEZIONE INDICE---) è OBBLIGATORIO usare le emoji indicate sotto, esattamente come specificato, in deroga alla regola generale "NON usare emoji" che resta valida per tutte le altre sezioni.
 
-dove X è il punteggio totale e A, B, C, D sono i singoli contributi calcolati (anche se 0). Nessuna frase aggiuntiva, nessuna spiegazione della scala, nessun disclaimer.
+Per ciascun giorno presente nei dati, riporta ESATTAMENTE in questo formato, senza markdown, senza testo aggiuntivo, senza spiegazioni:
+
+[📅Giorno/Mese/Anno]
+❗️PUNTEGGIO: X/5
+
+🌧Pioggia: A/1.5
+🌩Temporali: B/1.5
+🍃Vento: C/1.5
+🔥Caldo: D/1.5
+🥵Afa: E/1.5
+
+Lascia ESATTAMENTE 3 righe vuote tra un giorno e il successivo. Non aggiungere intestazioni, non aggiungere commenti, non aggiungere unità di misura diverse da quelle indicate, non aggiungere alcuna frase prima o dopo il blocco.
 
 ═══ QUARTA SEZIONE: VALUTAZIONE RISCHI ═══
 
