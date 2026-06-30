@@ -146,8 +146,8 @@ MAX_RUN_AGE_H = 12
 MIN_FUTURE_HOURS = 24
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
-GEMINI_MODEL_PRIMARY = "gemini-1.5-pro" # Aggiornato ai modelli correnti consigliati
-GEMINI_MODEL_FALLBACK = "gemini-1.5-flash"
+GEMINI_MODEL_PRIMARY = "gemini-3.5-flash" # Aggiornato ai modelli correnti consigliati
+GEMINI_MODEL_FALLBACK = "gemini-3.1-flash-lite"
 
 
 # ==============================================================================
@@ -564,42 +564,39 @@ def _calcola_lro_afa(temp_orarie, rh_orarie, vpd_orarie):
 def calcola_lro_giornaliero(dati_orari, dati_giornalieri, data_target_str):
     """
     Raccoglie i dati orari di un singolo giorno e calcola l'indice LRO completo.
-    Ritorna un dizionario con i punteggi e la stringa formattata richiesta dal prompt.
+    Versione ultra-protetta contro disallineamenti di liste e IndexError.
     """
     times = dati_orari.get("time", [])
     
-    # Indici che corrispondono al giorno richiesto
+    # Trova gli indici delle ore che appartengono alla giornata target
     indici_giorno = [i for i, t in enumerate(times) if t.startswith(data_target_str)]
     
     if not indici_giorno:
         return None
         
-    # Estrazione array giornalieri
-    def estrai(chiave):
+    # Funzione interna ultra-sicura: estrae ESATTAMENTE i 24 valori (o meno) di quel giorno
+    def estrai_sicuro(chiave):
         arr = dati_orari.get(chiave, [])
         risultato = []
         for i in indici_giorno:
-            # Controllo di sicurezza: l'indice deve esistere nell'array E il valore non deve essere None
             if i < len(arr) and arr[i] is not None:
                 risultato.append(arr[i])
             else:
-                # Fallback neutro se il dato manca in quell'ora specifica (evita il crash)
-                risultato.append(0.0) 
+                risultato.append(0.0) # Valore neutro di fallback se manca il dato orario
         return risultato
 
-    pioggia = estrai("precipitation")
-    cape = estrai("cape")
-    rh = estrai("relative_humidity_2m")
-    vento_dir = estrai("wind_direction_10m")
-    raffiche = estrai("wind_gusts_10m")
-    temp = estrai("temperature_2m")
-    vpd = estrai("vapour_pressure_deficit")
+    pioggia = estrai_sicuro("precipitation")
+    cape = estrai_sicuro("cape")
+    rh = estrai_sicuro("relative_humidity_2m")
+    vento_dir = estrai_sicuro("wind_direction_10m")
+    raffiche = estrai_sicuro("wind_gusts_10m")
+    temp = estrai_sicuro("temperature_2m")
+    vpd = estrai_sicuro("vapour_pressure_deficit")
     
-    # Per il caldo prendiamo la massima dal file orario per sicurezza, 
-    # oppure dal file giornaliero aggregato se corrisponde
-    t_max = max((t for t in temp if t is not None), default=0)
+    # Calcolo della temperatura massima del giorno in modo sicuro
+    t_max = max(temp) if temp else 0.0
 
-    # Calcolo parziali
+    # Calcolo dei punteggi parziali passandogli le liste pulite e della stessa identica lunghezza
     score_pioggia = _calcola_lro_pioggia(pioggia)
     score_temporali = _calcola_lro_temporali(cape, rh, vento_dir, pioggia)
     score_vento = _calcola_lro_vento(raffiche)
@@ -609,9 +606,12 @@ def calcola_lro_giornaliero(dati_orari, dati_giornalieri, data_target_str):
     totale_grezzo = score_pioggia + score_temporali + score_vento + score_caldo + score_afa
     lro_totale = min(totale_grezzo, 5.0)
 
-    # Formattazione stringa richiesta
-    dt_obj = datetime.strptime(data_target_str, "%Y-%m-%d")
-    data_formattata = dt_obj.strftime("%d/%m/%Y")
+    # Formattazione stringa per il bollettino
+    try:
+        dt_obj = datetime.strptime(data_target_str, "%Y-%m-%d")
+        data_formattata = dt_obj.strftime("%d/%m/%Y")
+    except Exception:
+        data_formattata = data_target_str
     
     blocco_testo = (
         f"[📅{data_formattata}]\n"
