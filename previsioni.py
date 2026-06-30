@@ -825,8 +825,8 @@ def main(target_chat_id=None):
     )
 
 SEP_TECH = "---SEZIONE TECNICA---"
-    SEP_INDEX = "---SEZIONE INDICE---"
-    SEP_RISK = "---SEZIONE RISCHI---"
+SEP_INDEX = "---SEZIONE INDICE---"
+SEP_RISK = "---SEZIONE RISCHI---"
 
     remaining = forecast_text
     if SEP_TECH in remaining:
