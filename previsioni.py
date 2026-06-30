@@ -622,6 +622,8 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
         for attempt in range(1, max_retries + 1):
             try:
                 resp = requests.post(url, json=payload, timeout=180)
+                if resp.status_code == 429:
+                    print(json.dumps(resp.json(), indent=2))
 
                 # 404 = modello non disponibile → prova il fallback
                 if resp.status_code == 404:
