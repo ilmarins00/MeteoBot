@@ -609,8 +609,8 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
             "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 8192,
-                "thinkingConfig": {"thinkingLevel": "medium"},
+                "maxOutputTokens": 32768,
+                "thinkingConfig": {"thinkingLevel": "low"},
             },
         }
 
@@ -676,6 +676,9 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
         finish_reason = candidates[0].get("finishReason", "")
         if finish_reason == "SAFETY":
             print(f"  ✗ Risposta bloccata per sicurezza, provo fallback...")
+            continue
+        if finish_reason == "MAX_TOKENS":
+            print(f"  ✗ Risposta troncata per limite token, provo fallback...")
             continue
 
         text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
