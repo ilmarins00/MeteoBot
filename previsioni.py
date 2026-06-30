@@ -393,10 +393,18 @@ def fetch_forecast_data(start_date):
                             time_index = {t: i for i, t in enumerate(fb_times)}
                             added = []
                             for key, vals in fb_vars.items():
-                                aligned = [
-                                    vals[time_index[t]] if t in time_index and time_index[t] < len(vals) else None
-                                    for t in arome_times
-                                ]
+                                aligned = []
+                                for t in arome_times:
+                                    if t in time_index:
+                                        idx_fb = time_index[t]
+                                        # Verifica rigida dell'indice per evitare IndexError
+                                        if idx_fb < len(vals):
+                                            aligned.append(vals[idx_fb])
+                                        else:
+                                            aligned.append(None)
+                                    else:
+                                        aligned.append(None)
+                                
                                 if any(v is not None for v in aligned):
                                     hourly[key] = aligned
                                     added.append(key)
@@ -569,7 +577,15 @@ def calcola_lro_giornaliero(dati_orari, dati_giornalieri, data_target_str):
     # Estrazione array giornalieri
     def estrai(chiave):
         arr = dati_orari.get(chiave, [])
-        return [arr[i] for i in indici_giorno if i < len(arr)]
+        risultato = []
+        for i in indici_giorno:
+            # Controllo di sicurezza: l'indice deve esistere nell'array E il valore non deve essere None
+            if i < len(arr) and arr[i] is not None:
+                risultato.append(arr[i])
+            else:
+                # Fallback neutro se il dato manca in quell'ora specifica (evita il crash)
+                risultato.append(0.0) 
+        return risultato
 
     pioggia = estrai("precipitation")
     cape = estrai("cape")
