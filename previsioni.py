@@ -609,13 +609,13 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
             "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 32768,
+                "maxOutputTokens": 12288,
                 "thinkingConfig": {"thinkingLevel": "low"},
             },
         }
 
         url = f"{GEMINI_API_BASE}/models/{gemini_model}:generateContent?key={api_key}"
-        max_retries = 3
+        max_retries = 5
         success = False
         last_error = None
 
@@ -632,7 +632,7 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
 
                 # 429 = rate limit → attendi e riprova sullo stesso modello
                 if resp.status_code == 429 and attempt < max_retries:
-                    wait = 60
+                    wait = 30 * (2 ** (attempt - 1))
                     print(f"  ⚠ Rate limit (429), attendo {wait}s "
                           f"({attempt}/{max_retries})...")
                     time.sleep(wait)
@@ -695,10 +695,12 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
         print(f"  ✓ Risposta ottenuta da {gemini_label}")
         return text.strip(), gemini_model
 
-    raise RuntimeError(
-        "Impossibile ottenere una risposta da nessun modello Gemini "
-        f"({GEMINI_MODEL_PRIMARY} e {GEMINI_MODEL_FALLBACK})"
-    )
+    return (
+    "Le previsioni automatiche non sono disponibili al momento perché "
+    "il servizio Gemini ha raggiunto temporaneamente il limite di richieste. "
+    "Riproverò automaticamente al prossimo aggiornamento.",
+    "nessun_modello"
+)
 
 
 def send_telegram(text, target_chat_id=None):
