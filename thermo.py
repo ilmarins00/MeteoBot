@@ -352,7 +352,75 @@ def lifted_index(
     T_parcel_500 = parcel_temperature_moist(T_lcl, p_lcl, target_p)
     return round(T_env_500 - T_parcel_500, 1)
 
-# \u2500\u2500 Calcolo completo di tutti gli indici termodinamici da profilo \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# — Calcolo completo di tutti gli indici termodinamici da profilo ────────────────
+
+def dcape_from_profile(
+    pressure: List[float],
+    temperature: List[float],
+    dewpoint: List[float],
+) -> float:
+    """
+    Downdraft CAPE (J/kg): energia disponibile per raffiche discendenti / downburst.
+
+    Algoritmo (Brooks & Doswell 1994; Emanuel 1994):
+    1. Trova il livello con minima θe nella fascia 600-300 hPa (sorgente del downdraft)
+    2. Calcola la parcella che scende in pseudoadiabatica umida fino alla superficie
+    3. Integra il buoyancy NEGATIVO (parcel fredda) → energia disponibile per la discesa
+
+    V_max_downburst ≈ √(2 · DCAPE) in m/s
+      DCAPE 500 J/kg → ~114 km/h
+      DCAPE 1000 J/kg → ~161 km/h
+    """
+    if len(pressure) < 4:
+        return 0.0
+
+    # Livelli ordinati dal basso verso l'alto (pressione decrescente)
+    levels = sorted(zip(pressure, temperature, dewpoint), key=lambda x: -x[0])
+
+    # Trova il livello con minima θe nella fascia 600-300 hPa
+    source_level: Optional[Tuple[float, float, float]] = None
+    min_the = float("inf")
+    for p, T, Td in levels:
+        if 30000.0 <= p <= 60000.0:
+            the = theta_e(T, Td, p)
+            if the < min_the:
+                min_the = the
+                source_level = (p, T, Td)
+
+    if source_level is None:
+        return 0.0
+
+    p_src, T_src, Td_src = source_level
+
+    # Integra buoyancy negativo dalla sorgente alla superficie
+    dcape = 0.0
+    p_prev = T_parcel_prev = T_env_prev = None
+
+    for p, T_env, _ in levels:
+        if p < p_src:
+            continue  # sopra la sorgente → non consideriamo
+
+        T_parcel = parcel_temperature_moist(T_src, p_src, p)
+
+        if p_prev is not None:
+            T_env_mid = (T_env_prev + T_env) / 2.0
+            dz = abs(Rd / g * T_env_mid * math.log(p_prev / p))
+            Tv_parcel_mid = (T_parcel_prev + T_parcel) / 2.0
+            buoy = g * (Tv_parcel_mid - T_env_mid) / T_env_mid
+            if buoy < 0:
+                dcape += abs(buoy) * dz
+
+        p_prev = p
+        T_parcel_prev = T_parcel
+        T_env_prev = T_env
+
+    return round(dcape, 1)
+
+
+def dcape_gust_kmh(dcape: float) -> float:
+    """Stima raffica massima da downburst: V = √(2·DCAPE) convertita in km/h."""
+    return round(math.sqrt(2.0 * max(dcape, 0.0)) * 3.6, 0)
+
 
 def compute_all_thermo(
     pressure: List[float],
@@ -388,6 +456,7 @@ def compute_all_thermo(
         theta_e(T, Td, p) for p, T, Td in zip(pressure, temperature, dewpoint)
         if p >= max(pressure) - 30000
     )
+    dcape = dcape_from_profile(pressure, temperature, dewpoint)
 
     return {
         "SBCAPE": sb_cape,  "SBCIN": sb_cin,
@@ -397,4 +466,5 @@ def compute_all_thermo(
         "LI":     li,
         "LCL":    lcl,
         "theta_e_max": round(the_max, 1),
+        "DCAPE": dcape,
     }

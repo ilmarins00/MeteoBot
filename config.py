@@ -308,6 +308,37 @@ class Thresholds:
     # ── Suolo saturo ──────────────────────────────────────────────────────────
     SOIL_VERY_SATURATED: float = 185.0
 
+    # ── DCAPE – energia disponibile per downburst (J/kg) ─────────────────────
+    # V_max = √(2·DCAPE): 100→45km/h, 500→114km/h, 1000→161km/h
+    DCAPE_LOW:      float = 100.0    # basso rischio raffiche discendenti
+    DCAPE_MODERATE: float = 500.0    # raffiche fino a ~115 km/h
+    DCAPE_HIGH:     float = 1000.0   # raffiche severe >140 km/h
+
+    # ── Flash Flood Guidance (FFG) – WMO + ARPAL Levante Ligure ─────────────
+    # Soil moisture: m³/m³ (Open-Meteo ERA5-Land 0-10cm)
+    SOIL_MOISTURE_FIELD_CAP: float = 0.30   # capacità di campo tipica Liguria
+    SOIL_MOISTURE_SATURATION: float = 0.42  # saturazione
+    # Precipitazione totale 48h precedenti che precondiciona il suolo
+    PRECIP_48H_PRESAT:  float = 60.0    # mm → suolo parzialmente saturo
+    PRECIP_48H_SAT:     float = 120.0   # mm → suolo saturo
+    # FFG rate critico (ARPAL Zone A/B): pioggia che scatena allagamento
+    FFG_RATE_MODERATE:  float = 20.0    # mm/h su suolo saturo = alluvione lampo
+    FFG_RATE_HIGH:      float = 35.0    # mm/h critico anche su suolo asciutto
+
+    # ── Ondata di calore – WMO / ARPAL Liguria ───────────────────────────────
+    # WMO: ondata di calore = ≥3 giorni consecutivi con Tmax ≥ percentile 90°
+    # ARPAL Liguria: Tmax ≥ 35°C (costa), Tmin ≥ 25°C (notti tropicali)
+    HEATWAVE_TMAX:         float = 35.0   # °C – soglia giornaliera Tmax
+    HEATWAVE_TMIN:         float = 25.0   # °C – notte tropicale
+    HEATWAVE_DAYS_MIN:     int   = 3      # giorni consecutivi minimi
+    HEATWAVE_EHF_MODERATE: float = 1.0    # Excess Heat Factor moderato
+    HEATWAVE_EHF_HIGH:     float = 3.0    # EHF alto (emergenza)
+
+    # ── UWYO sounding (radiosondaggio) ────────────────────────────────────────
+    UWYO_STATION_PRIMARY:   str = "16080"   # Milano Linate (WMO 16080)
+    UWYO_STATION_SECONDARY: str = "16090"   # Cuneo/Levaldigi (WMO 16090)
+    UWYO_MAX_AGE_HOURS:     int = 13        # radiosondaggio valido per max 13h
+
 thresholds = Thresholds()
 
 # ─────────────────────────────────────────────────────────────────────────────

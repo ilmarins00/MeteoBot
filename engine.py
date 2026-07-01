@@ -153,8 +153,19 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
                 ), 1
             )
 
+        # — DCAPE dal profilo (se non già calcolato in io_ingest)
+        dcape_pre = obs.get("DCAPE")
+        if dcape_pre is not None:
+            params["DCAPE"] = dcape_pre
+        else:
+            try:
+                from thermo import dcape_from_profile as _dcape_fn
+                params["DCAPE"] = _dcape_fn(pres, temp, dewp)
+            except Exception:
+                params["DCAPE"] = 0.0
+
     else:
-        # \u2014 Fallback: osservazioni superficiali
+        # — Fallback: osservazioni superficiali
         params.update({
             "CAPE":   obs.get("CAPE",      0),
             "SBCAPE": obs.get("SBCAPE",    obs.get("CAPE", 0)),
@@ -188,6 +199,8 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
         "snow_level_m":      obs.get("snow_level_m",     2000),
         "rain_24h_mm":       obs.get("rain_24h_mm",      0),
         "wmo_code":          obs.get("wmo_code",         0),
+        "soil_moisture":      obs.get("soil_moisture",    None),
+        "DCAPE":              obs.get("DCAPE",             params.get("DCAPE", 0)),
         "front_present":             obs.get("front_present",             False),
         "low_level_convergence":     obs.get("low_level_convergence",     False),
         "upper_level_tropospheric_vorticity": obs.get(

@@ -320,14 +320,33 @@ _SURF_VARS_MULTIDAY = [
     "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
     "surface_pressure", "cape", "lifted_index", "convective_inhibition",
     "freezing_level_height", "snowfall_height", "visibility",
+    "soil_moisture_0_to_10cm",   # per Flash Flood Guidance
 ]
 
 _PLEVEL_VARS_MULTIDAY = [
-    "temperature_850hPa", "temperature_700hPa", "temperature_500hPa",
-    "dewpoint_850hPa",    "dewpoint_700hPa",    "dewpoint_500hPa",
-    "geopotential_height_500hPa", "geopotential_height_850hPa",
-    "wind_speed_850hPa",  "wind_speed_700hPa",  "wind_speed_500hPa",
-    "wind_direction_850hPa", "wind_direction_700hPa", "wind_direction_500hPa",
+    # Temperatura (8 livelli: 1000→300 hPa)
+    "temperature_1000hPa", "temperature_925hPa",
+    "temperature_850hPa",  "temperature_700hPa",
+    "temperature_600hPa",  "temperature_500hPa",
+    "temperature_400hPa",  "temperature_300hPa",
+    # Dewpoint (livelli disponibili su Open-Meteo)
+    "dew_point_1000hPa", "dew_point_925hPa",
+    "dew_point_850hPa",  "dew_point_700hPa",
+    "dew_point_500hPa",  "dew_point_300hPa",
+    # Geopotenziale
+    "geopotential_height_1000hPa", "geopotential_height_925hPa",
+    "geopotential_height_850hPa",  "geopotential_height_700hPa",
+    "geopotential_height_500hPa",  "geopotential_height_300hPa",
+    # Vento velocità (8 livelli)
+    "wind_speed_1000hPa", "wind_speed_925hPa",
+    "wind_speed_850hPa",  "wind_speed_700hPa",
+    "wind_speed_600hPa",  "wind_speed_500hPa",
+    "wind_speed_400hPa",  "wind_speed_300hPa",
+    # Vento direzione (8 livelli)
+    "wind_direction_1000hPa", "wind_direction_925hPa",
+    "wind_direction_850hPa",  "wind_direction_700hPa",
+    "wind_direction_600hPa",  "wind_direction_500hPa",
+    "wind_direction_400hPa",  "wind_direction_300hPa",
 ]
 
 
@@ -474,14 +493,29 @@ def build_day_obs(
 
     import math as _math
 
-    # Profilo verticale da livelli isobarici (con vento per shear/SRH)
-    LVLS = {"850hPa": (85000.0, 1460.0),
-             "700hPa": (70000.0, 3010.0),
-             "500hPa": (50000.0, 5570.0)}
+    # Soil moisture (per Flash Flood Guidance)
+    soil_moist = _agg("soil_moisture_0_to_10cm")  # m³/m³
+
+    # Profilo verticale da 8 livelli isobarici (shear 0-1km, DCAPE, EHI accurati)
+    LVLS = {
+        "1000hPa": (100000.0,  100.0),
+        "925hPa":  ( 92500.0,  760.0),
+        "850hPa":  ( 85000.0, 1460.0),
+        "700hPa":  ( 70000.0, 3010.0),
+        "600hPa":  ( 60000.0, 4500.0),
+        "500hPa":  ( 50000.0, 5570.0),
+        "400hPa":  ( 40000.0, 7180.0),
+        "300hPa":  ( 30000.0, 9180.0),
+    }
+    # Open-Meteo usa 'dew_point_' come prefisso per i livelli isobarici
+    _DEW_POINT_LEVELS = {"1000hPa", "925hPa", "850hPa", "700hPa", "500hPa", "300hPa"}
+
     s_p, s_T, s_Td, s_h, s_u, s_v = [], [], [], [], [], []
     for sfx, (pa, zm) in LVLS.items():
         T  = _agg(f"temperature_{sfx}")
-        Td = _agg(f"dewpoint_{sfx}")
+        # Open-Meteo: 'dew_point_' per livelli isobarici, 'dewpoint_' non sempre disponibile
+        Td = (_agg(f"dew_point_{sfx}") if sfx in _DEW_POINT_LEVELS
+              else _agg(f"dewpoint_{sfx}"))
         ws = _agg(f"wind_speed_{sfx}")      # km/h da Open-Meteo
         wd = _agg(f"wind_direction_{sfx}")  # gradi meteorologici
         if T is not None:
@@ -555,9 +589,16 @@ def build_day_obs(
         "LI": li, "CIN": cin, "SBCIN": cin,
         "snow_level_m": snow_lvl,
         "visibility_m": vis_m,
+        "soil_moisture": soil_moist,   # m³/m³ per FFG
         "hour_utc": 14,
     }
     if len(s_p) >= 3:
+        # Calcola DCAPE dal profilo
+        try:
+            from thermo import dcape_from_profile as _dcape_fn
+            obs["DCAPE"] = _dcape_fn(s_p, s_T, s_Td)
+        except Exception:
+            obs["DCAPE"] = None
         obs["sounding"] = {
             "pressure_pa": s_p, "temperature_k": s_T,
             "dewpoint_k": s_Td, "height_m": s_h,
@@ -566,8 +607,17 @@ def build_day_obs(
     return obs
 
 
-def build_day_hourly_list(day_hourly: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Costruisce la lista hourly_forecast per engine.run_pipeline() da un giorno."""
+def build_day_hourly_list(
+    day_hourly: Dict[str, Any],
+    day_hourly_secondary: Optional[Dict[str, Any]] = None,
+    primary_label: str = "primary",
+    secondary_label: str = "secondary",
+) -> List[Dict[str, Any]]:
+    """
+    Costruisce la lista hourly_forecast per engine.run_pipeline() da un giorno.
+    Se day_hourly_secondary è fornito, aggiunge CAPE del modello secondario
+    per il calcolo dello spread multi-modello.
+    """
     times   = day_hourly.get("time", [])
     temps   = day_hourly.get("temperature_2m", [])
     rhs     = day_hourly.get("relative_humidity_2m", [])
@@ -580,6 +630,13 @@ def build_day_hourly_list(day_hourly: Dict[str, Any]) -> List[Dict[str, Any]]:
     cins    = day_hourly.get("convective_inhibition", [])
     wmos    = day_hourly.get("weather_code", [])
 
+    # CAPE dal modello secondario (per spread)
+    times2 = (day_hourly_secondary or {}).get("time", [])
+    capes2 = (day_hourly_secondary or {}).get("cape", [])
+    gusts2 = (day_hourly_secondary or {}).get("wind_gusts_10m", [])
+    precip2= (day_hourly_secondary or {}).get("precipitation", [])
+    t2_idx: Dict[str, int] = {str(t)[-5:]: i for i, t in enumerate(times2)}
+
     from config import thresholds as thr
     cum = 0.0
     result = []
@@ -589,8 +646,16 @@ def build_day_hourly_list(day_hourly: Dict[str, Any]) -> List[Dict[str, Any]]:
         alert = ("🔴" if p >= thr.ARPAL_RAIN_1H_ROSSO
                  else "🟠" if p >= thr.ARPAL_RAIN_1H_ARANCIONE
                  else "🟡" if p >= thr.ARPAL_RAIN_1H_GIALLO else "🟢")
+        t_key = str(t)[-5:] if t else "??:??"
+
+        # Valori dal modello secondario per lo stesso timestamp
+        j = t2_idx.get(t_key)
+        cape2_v = float(capes2[j] or 0) if j is not None and j < len(capes2) else None
+        gust2_v = float(gusts2[j] or 0) if j is not None and j < len(gusts2) else None
+        prec2_v = float(precip2[j] or 0) if j is not None and j < len(precip2) else None
+
         result.append({
-            "time":       str(t)[-5:] if t else "??:??",
+            "time":       t_key,
             "T":          temps[i]  if i < len(temps)  else None,
             "RH":         rhs[i]    if i < len(rhs)    else None,
             "wind":       float(winds[i]) if i < len(winds) and winds[i] is not None else None,
@@ -599,11 +664,15 @@ def build_day_hourly_list(day_hourly: Dict[str, Any]) -> List[Dict[str, Any]]:
             "cloud":      clouds[i] if i < len(clouds) and clouds[i] is not None else None,
             "precip":     p,
             "precip_cum": round(cum, 1),
-            "CAPE":       capes[i]  if i < len(capes) else 0,
+            "CAPE":       float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0,
             "CIN":        cins[i]   if i < len(cins)  else 0,
             "shear": 0, "SRH": 0, "PWAT": 0,
             "wmo_code":   wmos[i]   if i < len(wmos)  else None,
             "alert":      alert,
+            # Valori modello secondario per spread
+            f"CAPE_{secondary_label}":  cape2_v,
+            f"gust_{secondary_label}":  gust2_v,
+            f"precip_{secondary_label}": prec2_v,
         })
     return result
 
@@ -645,9 +714,12 @@ def fetch_forecast_3days(
 
     merged = _merge_hourly(arome_data, icon_data)
     return {
-        "day0": extract_day_hourly(merged,     0),
-        "day1": extract_day_hourly(merged,     1),
-        "day2": extract_day_hourly(icon_data,  2),
+        "day0":         extract_day_hourly(merged,     0),
+        "day1":         extract_day_hourly(merged,     1),
+        "day2":         extract_day_hourly(icon_data,  2),
+        # Raw ICON-EU per giorno (usato per calcolo spread)
+        "day0_icon":    extract_day_hourly(icon_data,  0),
+        "day1_icon":    extract_day_hourly(icon_data,  1),
         "model_primary":  "AROME+ICON-EU" if arome_data else "ICON-EU",
         "model_fallback": "ICON-EU",
     }
@@ -657,11 +729,9 @@ def fetch_forecast_3days(
 # Stub GRIB / NetCDF / Sounding / Radar (pronti per implementazione)
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Stub forward declarations per compatibilità legacy
 def read_model_grib(path: str) -> Dict[str, Any]:
     raise NotImplementedError("pip install cfgrib eccodes")
-
-def read_sounding_uwyo(station: str = "16080", date=None, hour: int = 12) -> Dict[str, Any]:
-    raise NotImplementedError("Parser UWYO sounding da weather.uwyo.edu")
 
 def read_radar(radar_source: str) -> Dict[str, Any]:
     raise NotImplementedError("pip install pyart wradlib")
@@ -686,21 +756,247 @@ def read_model_grib(path: str) -> Dict[str, Any]:
     )
 
 
-def read_sounding_uwyo(
-    station: str = "16080",   # Roma Ciampino – stazione radiosondaggio più vicina
-    date: Optional[datetime.date] = None,
-    hour: int = 12,
+def fetch_uwyo_sounding(
+    station_id: str = "16080",
+    hour_utc: int = 12,
+    timeout: int = 15,
+) -> Optional[Dict[str, Any]]:
+    """
+    Scarica il radiosondaggio in tempo reale dall'archivio University of Wyoming.
+
+    Stazioni consigliate (la più vicina a La Spezia con dati regolari):
+      16080 – Milano Linate  (≈ 250 km, disponibile 00Z e 12Z)
+      16090 – Cuneo/Levaldigi (stagionale, disponibile solo 12Z)
+
+    Ritorna un dict compatibile con il sounding di engine.run_pipeline(),
+    o None in caso di errore / dati non recenti.
+
+    NOTA: i dati UWYO sono disponibili solo a 00Z e 12Z UTC.
+    Il sounding integra / sostituisce il profilo da modello se entro UWYO_MAX_AGE_HOURS.
+    """
+    import re
+    from config import thresholds as thr
+
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    # Scegli il run più vicino (00Z o 12Z)
+    if hour_utc not in (0, 12):
+        hour_utc = 0 if now_utc.hour < 6 or now_utc.hour >= 18 else 12
+    sounding_dt = now_utc.replace(hour=hour_utc, minute=0, second=0, microsecond=0)
+    if now_utc < sounding_dt:
+        sounding_dt -= datetime.timedelta(days=1)
+    age_h = (now_utc - sounding_dt).total_seconds() / 3600
+    if age_h > thr.UWYO_MAX_AGE_HOURS:
+        # Prova l'altro run
+        hour_utc = 12 if hour_utc == 0 else 0
+        sounding_dt = now_utc.replace(hour=hour_utc, minute=0, second=0, microsecond=0)
+        if now_utc < sounding_dt:
+            sounding_dt -= datetime.timedelta(days=1)
+        age_h = (now_utc - sounding_dt).total_seconds() / 3600
+        if age_h > thr.UWYO_MAX_AGE_HOURS:
+            print(f"  [UWYO] Nessun sounding recente (età minima: {age_h:.0f}h > {thr.UWYO_MAX_AGE_HOURS}h)")
+            return None
+
+    url = (
+        "https://weather.uwyo.edu/cgi-bin/sounding.py"
+        f"?TYPE=TEXT%3ALIST"
+        f"&YEAR={sounding_dt.year}"
+        f"&MONTH={sounding_dt.month:02d}"
+        f"&FROM={sounding_dt.day:02d}{sounding_dt.hour:02d}"
+        f"&TO={sounding_dt.day:02d}{sounding_dt.hour:02d}"
+        f"&STNM={station_id}"
+    )
+    print(f"  [UWYO] Fetch sounding {station_id} {sounding_dt.strftime('%Y-%m-%d %HZ')} ...")
+
+    try:
+        resp = requests.get(url, timeout=timeout,
+                            headers={"User-Agent": "MeteoBot/2.0 research use"})
+        resp.raise_for_status()
+        html = resp.text
+
+        # Estrai la tabella dati dal formato UWYO text
+        # Cerca il blocco tra i tag <pre>
+        pre_match = re.search(r"<pre>(.*?)</pre>", html, re.DOTALL)
+        if not pre_match:
+            print("  [UWYO] Tag <pre> non trovato")
+            return None
+
+        lines = pre_match.group(1).strip().splitlines()
+        # Riga di intestazione: PRES HGHT TEMP DWPT RELH MIXR DRCT SKNT THTA THTE THTV
+        # Cerchiamo la riga con i dati numerici (dopo le 5 righe di header)
+        data_start = 0
+        for idx, line in enumerate(lines):
+            if re.match(r"^\s*\d", line):
+                data_start = idx
+                break
+
+        pres_pa, temp_k, dewp_k, hgt_m = [], [], [], []
+        u_ms, v_ms = [], []
+
+        for line in lines[data_start:]:
+            parts = line.split()
+            if len(parts) < 8:
+                continue
+            try:
+                pres = float(parts[0]) * 100.0  # hPa → Pa
+                hgt  = float(parts[1])           # m
+                temp = float(parts[2]) + 273.15  # °C → K
+                dwpt = float(parts[3]) + 273.15  # °C → K
+                drct = float(parts[6])            # gradi
+                sknt = float(parts[7]) * 0.5144  # kt → m/s
+            except (ValueError, IndexError):
+                continue
+            if pres < 5000:
+                break  # sopra 50 hPa, nessun interesse pratico
+
+            import math as _math
+            rad = _math.radians(drct)
+            pres_pa.append(pres)
+            hgt_m.append(hgt)
+            temp_k.append(temp)
+            dewp_k.append(dwpt)
+            u_ms.append(-sknt * _math.sin(rad))
+            v_ms.append(-sknt * _math.cos(rad))
+
+        if len(pres_pa) < 6:
+            print(f"  [UWYO] Dati insufficienti: {len(pres_pa)} livelli")
+            return None
+
+        print(f"  [UWYO] OK: {len(pres_pa)} livelli, "
+              f"p={pres_pa[0]/100:.0f}→{pres_pa[-1]/100:.0f} hPa, "
+              f"età {age_h:.1f}h")
+        return {
+            "source":     f"UWYO-{station_id}",
+            "valid_utc":  sounding_dt.isoformat(),
+            "age_hours":  round(age_h, 1),
+            "pressure_pa":   pres_pa,
+            "temperature_k": temp_k,
+            "dewpoint_k":    dewp_k,
+            "height_m":      hgt_m,
+            "u_ms":          u_ms,
+            "v_ms":          v_ms,
+        }
+
+    except requests.exceptions.Timeout:
+        print("  [UWYO] Timeout connessione")
+    except Exception as e:
+        print(f"  [UWYO] Errore: {e}")
+    return None
+
+
+def compute_model_spread(
+    arome_hourly: Optional[Dict[str, Any]],
+    icon_hourly: Optional[Dict[str, Any]],
+    day_offset: int = 0,
+    tz: str = TIMEZONE,
 ) -> Dict[str, Any]:
     """
-    Scarica radiosondaggio da University of Wyoming.
-    station: codice SYNOP (16080=Roma, 16114=Milano, 16144=La Spezia proxy)
-    Implementazione: richiede parsing HTML di weather.uwyo.edu
+    Calcola lo spread tra AROME e ICON-EU per le variabili chiave del giorno.
+    Ritorna un dict con variabili dove c'è disaccordo significativo.
+    Soglie di significatività:
+      CAPE:    >500 J/kg   (WMO: impatto su previsione temporali)
+      precip:  >5 mm/h     (ARPAL: soglia allerta)
+      T_max:   >2°C        (WMO: soglia forecast skill)
+      gust:    >15 km/h    (ARPAL: rilevante per allerte vento)
     """
-    raise NotImplementedError(
-        "Integrare parser UWYO: requests + BeautifulSoup\n"
-        "URL: https://weather.uwyo.edu/cgi-bin/sounding.py"
-        "?TYPE=TEXT%3ALIST&YEAR=...&MONTH=...&FROM=...&TO=...&STNM=..."
-    )
+    if arome_hourly is None or icon_hourly is None:
+        return {}
+
+    def _daily_max(data, key, day_offset=day_offset, tz=tz):
+        """Massimo giornaliero di una variabile dal dataset orario raw."""
+        from zoneinfo import ZoneInfo as _ZI
+        import datetime as _dt
+        today  = _dt.datetime.now(_ZI(tz)).date()
+        target = (today + _dt.timedelta(days=day_offset)).strftime("%Y-%m-%d")
+        h = data.get("hourly", {})
+        times = h.get("time", [])
+        vals = h.get(key, [])
+        day_vals = [vals[i] for i, t in enumerate(times)
+                    if str(t).startswith(target) and i < len(vals) and vals[i] is not None]
+        return max(day_vals) if day_vals else None
+
+    def _daily_sum(data, key):
+        from zoneinfo import ZoneInfo as _ZI
+        import datetime as _dt
+        today  = _dt.datetime.now(_ZI(tz)).date()
+        target = (today + _dt.timedelta(days=day_offset)).strftime("%Y-%m-%d")
+        h = data.get("hourly", {})
+        times = h.get("time", [])
+        vals = h.get(key, [])
+        day_vals = [vals[i] for i, t in enumerate(times)
+                    if str(t).startswith(target) and i < len(vals) and vals[i] is not None]
+        return sum(day_vals) if day_vals else None
+
+    spread: Dict[str, Any] = {}
+
+    checks = [
+        ("CAPE_peak",    "cape",              "max", 500.0,  "J/kg"),
+        ("precip_sum",   "precipitation",     "sum", 5.0,    "mm"),
+        ("gust_max",     "wind_gusts_10m",    "max", 15.0,   "km/h"),
+        ("T_max",        "temperature_2m",    "max", 2.0,    "°C"),
+    ]
+
+    for label, key, mode, threshold, unit in checks:
+        fn = _daily_max if mode == "max" else _daily_sum
+        v_a = fn(arome_hourly, key)
+        v_i = fn(icon_hourly,  key)
+        if v_a is None or v_i is None:
+            continue
+        diff = abs(v_a - v_i)
+        if diff >= threshold:
+            spread[label] = {
+                "AROME": round(v_a, 1),
+                "ICON":  round(v_i, 1),
+                "diff":  round(diff, 1),
+                "unit":  unit,
+                "high":  diff >= threshold * 2,
+            }
+
+    return spread
+
+
+def fetch_temperature_history(
+    past_days: int = 7,
+    lat: float = LATITUDE,
+    lon: float = LONGITUDE,
+    timeout: int = 20,
+) -> List[Dict[str, Any]]:
+    """
+    Scarica gli ultimi past_days di temperature giornaliere per l'analisi
+    delle ondate di calore (EHF - Excess Heat Factor, WMO 2014).
+    Usa l'endpoint Open-Meteo con past_days.
+    """
+    try:
+        params = {
+            "latitude":    lat,
+            "longitude":   lon,
+            "daily":       "temperature_2m_max,temperature_2m_min,apparent_temperature_max",
+            "past_days":   past_days,
+            "forecast_days": 3,
+            "timezone":    TIMEZONE,
+        }
+        resp = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params=params, timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        daily = data.get("daily", {})
+        dates  = daily.get("time", [])
+        t_max  = daily.get("temperature_2m_max", [])
+        t_min  = daily.get("temperature_2m_min", [])
+        t_app  = daily.get("apparent_temperature_max", [])
+        result = []
+        for i, d in enumerate(dates):
+            result.append({
+                "date":   d,
+                "T_max":  t_max[i]  if i < len(t_max)  else None,
+                "T_min":  t_min[i]  if i < len(t_min)  else None,
+                "T_app":  t_app[i]  if i < len(t_app)  else None,
+            })
+        return result
+    except Exception as e:
+        print(f"  [io] Errore fetch temperature history: {e}")
+        return []
 
 
 def read_radar(radar_source: str) -> Dict[str, Any]:

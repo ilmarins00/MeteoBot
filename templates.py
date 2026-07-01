@@ -156,11 +156,12 @@ def render_section2_detailed(
             emoji = ALERT_EMOJI.get(lvl, "⚪")
             lines.append(f"   {emoji} {risk.capitalize()}: {lvl.upper()}")
 
-    # \u2014 Indici di instabilità
+    # — Indici di instabilità
     lines.append("\n▌ INDICI DI INSTABILITÀ:")
     sbcape = params.get("SBCAPE", params.get("CAPE", 0))
     mucape = params.get("MUCAPE", sbcape)
     mlcape = params.get("MLCAPE", sbcape)
+    dcape  = params.get("DCAPE", 0) or 0
     lines.append(f"   SBCAPE : {_fmt(sbcape, '.0f', ' J/kg')} | "
                  f"MUCAPE : {_fmt(mucape, '.0f', ' J/kg')} | "
                  f"MLCAPE : {_fmt(mlcape, '.0f', ' J/kg')}")
@@ -169,6 +170,17 @@ def render_section2_detailed(
                  f"(inibizione {'forte' if abs(sbcin) >= 200 else 'moderata' if abs(sbcin) >= 100 else 'debole'})")
     lines.append(f"   LI     : {_fmt(params.get('LI'), '.1f', ' (neg=instabile)')}")
     lines.append(f"   θe max : {_fmt(params.get('theta_e_max'), '.1f', ' K')}")
+    # DCAPE — energia per raffiche discendenti
+    if dcape > 0:
+        try:
+            from thermo import dcape_gust_kmh as _dg
+            v_est = _dg(dcape)
+            lines.append(
+                f"   DCAPE  : {dcape:.0f} J/kg  "
+                f"(raffica downburst stimata ≈{v_est:.0f} km/h)"
+            )
+        except Exception:
+            lines.append(f"   DCAPE  : {dcape:.0f} J/kg")
 
     # \u2014 Indici classici
     lines.append("\n▌ INDICI CLASSICI:")
@@ -749,6 +761,10 @@ def build_gemini_prompt_tecnico(
     giorno_label: str = "oggi",
     is_tendency: bool = False,
     hourly_table: Optional[str] = None,
+    spread_data: Optional[Dict] = None,       # spread multi-modello
+    ffg_result: Optional[Dict] = None,        # Flash Flood Guidance
+    heatwave_result: Optional[Dict] = None,   # analisi ondata di calore
+    uwyo_summary: Optional[str] = None,       # estratto radiosondaggio UWYO
 ) -> str:
     """
     Prompt focalizzato per Gemini: genera SOLO la descrizione narrativa
@@ -817,7 +833,63 @@ def build_gemini_prompt_tecnico(
     if extra:
         prompt += "AVVERTENZE SPECIALI:\n" + "\n".join(f"⚠ {e}" for e in extra) + "\n"
 
-    if hourly_table:
+    # ── Radiosondaggio UWYO (solo estratto derivato, NON il profilo raw) ─────
+    if uwyo_summary:
+        prompt += (
+            f"\nRADIOSONDAGGIO OSSERVATO (UWYO – Milano Linate):\n{uwyo_summary}\n"
+            "Usa questi valori per calibrare l'analisi; hanno precedenza sul modello "
+            "quando concordanti.\n"
+        )
+
+    # ── Spread multi-modello (solo variabili con disaccordo significativo) ────
+    if spread_data:
+        spread_lines = []
+        labels = {
+            "CAPE_peak":  "CAPE picco", "precip_sum": "Pioggia totale",
+            "gust_max":   "Raffica max", "T_max":     "Tmax",
+        }
+        for key, info in spread_data.items():
+            lbl   = labels.get(key, key)
+            a_val = info.get("AROME", "n.d.")
+            i_val = info.get("ICON", "n.d.")
+            diff  = info.get("diff", 0)
+            unit  = info.get("unit", "")
+            high  = info.get("high", False)
+            pfx   = "⚠ ALTA INCERTEZZA" if high else "Disaccordo"
+            spread_lines.append(
+                f"  {pfx} – {lbl}: AROME={a_val}{unit} vs ICON-EU={i_val}{unit} "
+                f"(diff {diff}{unit})"
+            )
+        if spread_lines:
+            prompt += (
+                "\nINCERTEZZA MODELLI (disaccordo significativo – menzionalo!):\n"
+                + "\n".join(spread_lines)
+                + "\nISTRUZIONE: Cita l'incertezza dove i modelli divergono. "
+                "Il riferimento principale rimane AROME+ICON-EU; non inventare scenari.\n"
+            )
+
+    # ── Flash Flood Guidance ──────────────────────────────────────────────────
+    if ffg_result and ffg_result.get("score", 0) >= 0.20:
+        score_ffg = ffg_result.get("score", 0)
+        desc_ffg  = ffg_result.get("desc", "")
+        prompt += (
+            f"\nFLASH FLOOD GUIDANCE (ARPAL/WMO): score={score_ffg:.2f}/1.0 – {desc_ffg}\n"
+            "Se il FFG score è ≥0.45, menziona esplicitamente il rischio alluvioni "
+            "lampo per i torrenti del Levante Ligure (Vara, Magra, Parmignola).\n"
+        )
+
+    # ── Analisi ondata di calore ──────────────────────────────────────────────
+    if heatwave_result and heatwave_result.get("severity") not in ("nessuna", None):
+        hw_desc = heatwave_result.get("desc", "")
+        hw_sev  = heatwave_result.get("severity", "")
+        prompt += (
+            f"\nONDATA DI CALORE (WMO/ARPAL): {hw_desc}\n"
+            "Includi raccomandazioni per persone anziane e soggetti vulnerabili "
+            "se la severità è 'moderata' o superiore.\n"
+        )
+
+    # ── Tabella oraria (solo se non è tendenza) ───────────────────────────────
+    if hourly_table and not is_tendency:
         prompt += (
             f"\nTABELLA ORARIA COMPLETA (tutti i parametri ora per ora):\n"
             f"{hourly_table}\n\n"

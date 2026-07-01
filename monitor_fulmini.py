@@ -502,7 +502,11 @@ def save_state(state: Dict[str, Any]):
 
 
 def should_send(state: Dict[str, Any], n_strikes: int, force: bool = False) -> bool:
-    """Evita spam: non re-inviare se già inviato di recente per stesso livello."""
+    """
+    Anti-spam con finestra di 15 minuti (stesso intervallo cron).
+    NON salta mai aggiornamenti per 'count simile': un meteorologo
+    ha bisogno di aggiornamenti costanti sull'evoluzione.
+    """
     if force:
         return True
     last_send = state.get("last_send_ts")
@@ -511,14 +515,13 @@ def should_send(state: Dict[str, Any], n_strikes: int, force: bool = False) -> b
             last_dt = datetime.fromisoformat(last_send)
             if last_dt.tzinfo is None:
                 last_dt = last_dt.replace(tzinfo=TZ_ROME)
-            if datetime.now(TZ_ROME) - last_dt < timedelta(minutes=30):
-                prev_n = state.get("last_strike_count", 0)
-                if n_strikes < prev_n * 2:
-                    print(
-                        f"Notifica recente ({last_dt.strftime('%H:%M')}), "
-                        f"conteggio simile ({n_strikes} vs {prev_n}), skip"
-                    )
-                    return False
+            delta_min = (datetime.now(TZ_ROME) - last_dt).total_seconds() / 60
+            if delta_min < 15:
+                print(
+                    f"Notifica inviata {delta_min:.0f} min fa (< 15 min), skip "
+                    f"– prossimo aggiornamento tra {15 - delta_min:.0f} min"
+                )
+                return False
         except Exception:
             pass
     return True
@@ -589,35 +592,40 @@ def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dic
             all_strikes.append(s)
 
     now = datetime.now(TZ_ROME)
-    cutoff_fresh = now - timedelta(minutes=15)
+    # Finestra principale: 15 minuti (fresca, per la notifica)
+    # Fallback: window_min (per il conteggio di stato)
+    cutoff_15min  = now - timedelta(minutes=15)
     cutoff_window = now - timedelta(minutes=window_min)
-    recent_valid = []
+
+    recent_valid = []   # fulmini degli ultimi 15 min (per la notifica)
+    window_valid = []   # fulmini nell'intera finestra (per stato e conteggio)
+
     for s in all_strikes:
         try:
             t = datetime.fromisoformat(s["time"])
             if t.tzinfo is None:
                 t = t.replace(tzinfo=TZ_ROME)
-            if t >= cutoff_fresh:
+            if t >= cutoff_window:
+                window_valid.append(s)
+            if t >= cutoff_15min:
                 recent_valid.append(s)
         except Exception:
             continue
-    if not recent_valid:
-        for s in all_strikes:
-            try:
-                t = datetime.fromisoformat(s["time"])
-                if t.tzinfo is None:
-                    t = t.replace(tzinfo=TZ_ROME)
-                if t >= cutoff_window:
-                    recent_valid.append(s)
-            except Exception:
-                continue
+
+    # La notifica usa sempre i fulmini freschi (15 min).
+    # Se non ce ne sono di freschi ma ce ne sono nella finestra più ampia,
+    # usiamo la finestra più ampia (scenario: cron è partito in ritardo).
+    strikes_for_alert = recent_valid if recent_valid else window_valid
 
     state["last_check_ts"] = datetime.now(TZ_ROME).isoformat()
-    state["recent_strikes"] = recent_valid[-200:]
-    state["total_in_window"] = len(recent_valid)
+    state["recent_strikes"] = window_valid[-200:]
+    state["total_in_window"] = len(window_valid)
 
-    n = len(recent_valid)
-    print(f"Scariche nella finestra {window_min} min: {n} (soglia: {threshold_count})")
+    n = len(strikes_for_alert)
+    print(
+        f"Scariche 15-min: {len(recent_valid)} | finestra {window_min}-min: {len(window_valid)} "
+        f"(soglia: {threshold_count})"
+    )
 
     if n < threshold_count:
         print("Sotto soglia, nessuna notifica")
@@ -631,8 +639,8 @@ def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dic
         save_state(state)
         return None
 
-    radar_img = generate_lightning_map(recent_valid, radius_km=radius)
-    msg = build_message(recent_valid, window_min)
+    radar_img = generate_lightning_map(strikes_for_alert, radius_km=radius)
+    msg = build_message(strikes_for_alert, 15 if recent_valid else window_min)
     save_state(state)
 
     return {

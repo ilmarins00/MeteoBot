@@ -26,9 +26,13 @@ from io_ingest import (
     fetch_forecast_3days,
     build_day_obs,
     build_day_hourly_list,
+    fetch_uwyo_sounding,
+    compute_model_spread,
+    fetch_temperature_history,
+    extract_day_hourly,
 )
 from engine import run_pipeline, export_json
-from logic import maltempo_score, livello_attenzione
+from logic import maltempo_score, livello_attenzione, flash_flood_guidance, heatwave_analysis
 from templates import (
     render_analisi_semplice,
     render_section2_detailed,
@@ -154,12 +158,16 @@ def send_telegram(text: str, max_len: int = 4000):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_day_message(
-    day_date:    datetime.date,
-    day_hourly:  dict,
-    day_label:   str,
-    model_label: str,
-    is_tendency: bool = False,
-    api_key:     str  = "",
+    day_date:         datetime.date,
+    day_hourly:       dict,
+    day_label:        str,
+    model_label:      str,
+    is_tendency:      bool = False,
+    api_key:          str  = "",
+    day_hourly_icon:  dict = None,   # dati ICON-EU raw per spread
+    day_offset:       int  = 0,
+    temp_history:     list = None,   # storia T per heatwave
+    uwyo_sounding:    dict = None,   # sounding UWYO se disponibile
 ) -> str:
     """
     Costruisce il testo completo per un giorno:
@@ -168,11 +176,29 @@ def build_day_message(
     if not day_hourly:
         return f"\n{'─'*50}\n{day_label.upper()}\n(dati non disponibili per questo giorno)\n"
 
-    obs     = build_day_obs(day_hourly, model_label)
-    hourly  = build_day_hourly_list(day_hourly)
+    # Hourly list con confronto modello secondario
+    obs    = build_day_obs(day_hourly, model_label)
+    hourly = build_day_hourly_list(
+        day_hourly,
+        day_hourly_secondary=day_hourly_icon,
+        primary_label="arome",
+        secondary_label="icon",
+    )
 
     if not obs:
         return f"\n{'─'*50}\n{day_label.upper()}\n(dati insufficienti)\n"
+
+    # Se c'è un sounding UWYO valido, sostituisce il sounding da modello
+    if uwyo_sounding and len(uwyo_sounding.get("pressure_pa", [])) >= 6:
+        obs["sounding"] = {
+            "pressure_pa":   uwyo_sounding["pressure_pa"],
+            "temperature_k": uwyo_sounding["temperature_k"],
+            "dewpoint_k":    uwyo_sounding["dewpoint_k"],
+            "height_m":      uwyo_sounding["height_m"],
+            "u_ms":          uwyo_sounding.get("u_ms", []),
+            "v_ms":          uwyo_sounding.get("v_ms", []),
+        }
+        obs["sounding_source"] = uwyo_sounding.get("source", "UWYO")
 
     # Pipeline motore
     try:
@@ -195,8 +221,73 @@ def build_day_message(
     m_score  = maltempo_score(params, rain_obs)
     livello, emoji_liv = livello_attenzione(m_score)
 
+    # Flash Flood Guidance
+    ffg_score, ffg_desc = flash_flood_guidance(params, rain_obs,
+        soil_moisture=obs.get("soil_moisture"))
+    ffg_result = {"score": ffg_score, "desc": ffg_desc} if ffg_score >= 0.20 else None
+
+    # Ondata di calore
+    hw_result = heatwave_analysis(
+        temp_history   = temp_history or [],
+        temp_max_today = obs.get("temp_max_c"),
+        temp_min_today = obs.get("temp_min_c"),
+        heat_index_today = obs.get("heat_index"),
+    ) if temp_history else None
+
+    # Spread modelli (AROME vs ICON-EU)
+    spread = {}
+    if day_hourly_icon:
+        try:
+            from io_ingest import fetch_forecast_3days as _unused
+            # build_day_obs restituisce obs aggregato; per lo spread usiamo
+            # i raw hourly che abbiamo già nei campi cape_icon ecc.
+            cape_arome = max((h.get("CAPE") or 0 for h in hourly), default=0)
+            cape_icon  = max((h.get("CAPE_icon") or 0 for h in hourly), default=None)
+            gust_arome = max((h.get("wind_gust") or 0 for h in hourly), default=0)
+            gust_icon  = max((h.get("gust_icon") or 0 for h in hourly), default=None)
+            prec_arome = sum((h.get("precip") or 0 for h in hourly))
+            prec_icon  = sum((h.get("precip_icon") or 0 for h in hourly
+                              if h.get("precip_icon") is not None))
+            tmax_arome = max((h.get("T") or 0 for h in hourly if h.get("T")), default=None)
+            tmax_icon_vals = [h.get("T") for h in hourly if h.get("T") is not None]
+            tmax_icon = max(tmax_icon_vals) if tmax_icon_vals else None  # stessa serie
+
+            checks = [
+                ("CAPE_peak",  cape_arome, cape_icon,  500.0, "J/kg"),
+                ("precip_sum", prec_arome, prec_icon,  5.0,   "mm"),
+                ("gust_max",   gust_arome, gust_icon,  15.0,  "km/h"),
+            ]
+            for lbl, va, vi, thr_v, unit in checks:
+                if va is not None and vi is not None:
+                    diff = abs(va - vi)
+                    if diff >= thr_v:
+                        spread[lbl] = {
+                            "AROME": round(va, 1), "ICON": round(vi, 1),
+                            "diff": round(diff, 1), "unit": unit,
+                            "high": diff >= thr_v * 2,
+                        }
+        except Exception as e:
+            print(f"  [spread] Calcolo spread fallito: {e}")
+
+    # Estratto sounding UWYO per Gemini (solo indici derivati, non il profilo raw)
+    uwyo_summary = None
+    if uwyo_sounding and obs.get("sounding_source", "").startswith("UWYO"):
+        age = uwyo_sounding.get("age_hours", "?")
+        src = uwyo_sounding.get("source", "UWYO")
+        shear06 = params.get("shear_0_6")
+        srh03   = params.get("srh_0_3")
+        sbcape  = params.get("SBCAPE", 0)
+        uwyo_summary = (
+            f"Fonte: {src} (età {age}h) | "
+            f"SBCAPE={sbcape:.0f} J/kg | "
+            f"Shear 0-6km={shear06:.1f} kt | SRH 0-3km={srh03:.1f} m²/s²"
+            if shear06 is not None and srh03 is not None
+            else f"Fonte: {src} (età {age}h) – indici calcolati dal sounding osservato"
+        )
+
     # ── Intestazione ──────────────────────────────────────────────────────
     sep = "═" * 50
+    sounding_tag = f" [OBS:{obs.get('sounding_source','')}]" if obs.get("sounding_source") else ""
     lines = [
         "",
         sep,
@@ -204,7 +295,7 @@ def build_day_message(
         f"  {_format_date(day_date)}",
         sep,
         f"Livello di ATTENZIONE: {emoji_liv} {livello}  (score {m_score:.1f}/5)",
-        f"Modello: {model_label}",
+        f"Modello: {model_label}{sounding_tag}",
         "",
     ]
 
@@ -213,35 +304,52 @@ def build_day_message(
     lines.append("─" * 40)
     semplice = render_analisi_semplice(obs, params, hourly, giorno_label=day_label)
     lines.append(semplice)
+
+    # FFG / heatwave nella sezione semplice se rilevante
+    if ffg_result and ffg_score >= 0.45:
+        lines.append(f"⚠ FFG: {ffg_desc}")
+    if hw_result and hw_result.get("is_heatwave"):
+        lines.append(f"🌡 {hw_result.get('desc', '')}")
     lines.append("")
 
     # ── ANALISI TECNICA ──────────────────────────────────────────────────
     lines.append("◆ ANALISI TECNICA")
     lines.append("─" * 40)
 
-    # Dati avanzati (testo script)
     sbcape  = float(params.get("SBCAPE", params.get("CAPE", 0)) or 0)
     mucape  = float(params.get("MUCAPE", sbcape) or sbcape)
     pwat    = params.get("PWAT")
     shear06 = params.get("shear_0_6")
     srh03   = params.get("srh_0_3")
+    shear01 = params.get("shear_0_1")
     scp     = params.get("SCP")
     stp     = params.get("STP")
     li_v    = params.get("LI")
     cin_v   = params.get("CIN") or params.get("SBCIN")
+    dcape_v = params.get("DCAPE", 0) or 0
 
     def fv(v, fmt=".1f", u=""):
         return f"{v:{fmt}}{u}" if v is not None else "n.d."
 
     tech_lines = [
         f"SBCAPE: {fv(sbcape,'.0f',' J/kg')}  |  MUCAPE: {fv(mucape,'.0f',' J/kg')}",
-        f"CIN:    {fv(cin_v, '.0f',' J/kg')}  |  LI:     {fv(li_v,'.1f')}",
-        f"Shear 0-6 km: {fv(shear06,'.1f',' kt')}  |  SRH 0-3 km: {fv(srh03,'.0f',' m²/s²')}",
+        f"CIN: {fv(cin_v,'.0f',' J/kg')}  |  LI: {fv(li_v,'.1f')}",
+        f"Shear 0-1 km: {fv(shear01,'.1f',' kt')}  |  Shear 0-6 km: {fv(shear06,'.1f',' kt')}",
+        f"SRH 0-3 km: {fv(srh03,'.0f',' m²/s²')}",
         f"PWAT: {fv(pwat,'.1f',' mm')}  |  SCP: {fv(scp,'.2f')}  |  STP: {fv(stp,'.2f')}",
     ]
+    if dcape_v > 50:
+        try:
+            from thermo import dcape_gust_kmh as _dg
+            v_est = _dg(dcape_v)
+            tech_lines.append(
+                f"DCAPE: {dcape_v:.0f} J/kg  (downburst stim. {v_est:.0f} km/h)"
+            )
+        except Exception:
+            tech_lines.append(f"DCAPE: {dcape_v:.0f} J/kg")
 
-    # Evoluzione CAPE (ore con convezione attiva)
-    cape_hrs = [(h.get("time", ""), float(h.get("CAPE") or 0)) for h in hourly]
+    # CAPE evolution
+    cape_hrs    = [(h.get("time", ""), float(h.get("CAPE") or 0)) for h in hourly]
     cape_active = [(t, c) for t, c in cape_hrs if c >= 200]
     if cape_active:
         cpeak = max(cape_active, key=lambda x: x[1])
@@ -249,7 +357,7 @@ def build_day_message(
             f"CAPE>200: {len(cape_active)}h (picco {cpeak[1]:.0f} J/kg alle {cpeak[0]})"
         )
 
-    # Range orario precipitazioni
+    # Range precipitazioni
     rain_hrs = [(h.get("time", ""), float(h.get("precip") or 0))
                 for h in hourly if (h.get("precip") or 0) > 0.1]
     if rain_hrs:
@@ -259,6 +367,23 @@ def build_day_message(
             f"Pioggia: {rain_hrs[0][0]}–{rain_hrs[-1][0]}, "
             f"{rtot:.1f} mm tot, picco {rpeak[1]:.1f} mm/h alle {rpeak[0]}"
         )
+
+    # FFG nella sezione tecnica
+    if ffg_result:
+        tech_lines.append(f"FFG: {ffg_score:.2f}/1.0 – {ffg_desc}")
+
+    # Heatwave nella sezione tecnica
+    if hw_result and hw_result.get("severity") not in ("nessuna", None, ""):
+        tech_lines.append(f"Calore: {hw_result.get('desc', '')}")
+
+    # Spread modelli
+    if spread:
+        for lbl, info in spread.items():
+            pfx = "⚠" if info.get("high") else "Δ"
+            tech_lines.append(
+                f"{pfx} Spread {lbl}: AROME={info['AROME']}{info['unit']} "
+                f"ICON={info['ICON']}{info['unit']}"
+            )
 
     tech_lines.append(f"Modalità: {mode}")
     if hazards:
@@ -277,6 +402,10 @@ def build_day_message(
             giorno_label       = f"{day_label} {_format_date(day_date)}",
             is_tendency        = is_tendency,
             hourly_table       = hourly_table,
+            spread_data        = spread if spread else None,
+            ffg_result         = ffg_result,
+            heatwave_result    = hw_result,
+            uwyo_summary       = uwyo_summary,
         )
         narrativa, gem_model = call_gemini(prompt_gemini, api_key)
         lines.append(narrativa)
@@ -313,7 +442,28 @@ def main():
         print(f"  ✗ Errore fetch: {e}")
         sys.exit(1)
 
-    # ── 2. Header messaggio ───────────────────────────────────────────────
+    # ── 2. Radiosondaggio UWYO (solo per oggi/domani, stazione Milano Linate) ─
+    print("\n🌡 Tentativo fetch sounding UWYO (Milano Linate 16080)...")
+    uwyo_sounding = None
+    try:
+        uwyo_sounding = fetch_uwyo_sounding(station_id="16080")
+        if uwyo_sounding is None:
+            print("  [UWYO] Non disponibile, uso profilo da modello")
+        else:
+            print(f"  [UWYO] OK – {uwyo_sounding['age_hours']:.1f}h fa")
+    except Exception as e:
+        print(f"  [UWYO] Errore: {e}")
+
+    # ── 3. Storico temperature (per analisi ondata di calore) ──────────────
+    print("\n🌡 Fetch storico temperature (7 giorni)...")
+    try:
+        temp_history = fetch_temperature_history(past_days=7)
+        print(f"  ✓ {len(temp_history)} giorni di storico")
+    except Exception as e:
+        print(f"  ✗ Errore storico: {e}")
+        temp_history = []
+
+    # ── 4. Header messaggio ───────────────────────────────────────────────
     header = (
         f"Previsioni Meteo La Spezia\n"
         f"Emissione: {now.strftime('%d/%m/%Y %H:%M')}\n"
@@ -321,23 +471,29 @@ def main():
         f"{'=' * 50}\n"
     )
 
-    # ── 3. Costruisci messaggi per i 3 giorni ─────────────────────────────
+    # ── 5. Costruisci messaggi per i 3 giorni ─────────────────────────────
     day_configs = [
-        (today,                     "OGGI",     forecast["day0"], model_primary, False),
-        (today + datetime.timedelta(1), "DOMANI", forecast["day1"], model_primary, False),
-        (today + datetime.timedelta(2), "TENDENZA", forecast["day2"], forecast["model_fallback"], True),
+        (today,                        "OGGI",     forecast["day0"], forecast.get("day0_icon"), model_primary, False, 0),
+        (today + datetime.timedelta(1),"DOMANI",   forecast["day1"], forecast.get("day1_icon"), model_primary, False, 1),
+        (today + datetime.timedelta(2),"TENDENZA", forecast["day2"], None,                      forecast["model_fallback"], True, 2),
     ]
 
     messages = []
-    for day_date, label, day_hourly, mdl, is_tend in day_configs:
+    for day_date, label, day_hourly, icon_raw, mdl, is_tend, day_off in day_configs:
         print(f"\n⚙️  Elaborazione {label} ({_format_date(day_date)})...")
+        # Il sounding UWYO è usato solo per oggi/domani (se fresco)
+        uwyo_for_day = uwyo_sounding if (not is_tend and uwyo_sounding) else None
         msg = build_day_message(
-            day_date   = day_date,
-            day_hourly = day_hourly,
-            day_label  = label,
-            model_label = mdl,
-            is_tendency = is_tend,
-            api_key    = GEMINI_API_KEY,
+            day_date        = day_date,
+            day_hourly      = day_hourly,
+            day_label       = label,
+            model_label     = mdl,
+            is_tendency     = is_tend,
+            api_key         = GEMINI_API_KEY,
+            day_hourly_icon = icon_raw,
+            day_offset      = day_off,
+            temp_history    = temp_history,
+            uwyo_sounding   = uwyo_for_day,
         )
         messages.append(msg)
         print(f"  ✓ {label}: {len(msg)} chars")
@@ -353,292 +509,6 @@ def main():
     # ── 5. Salva JSON ──────────────────────────────────────────────────────
     export_json({"messages": messages, "generated": now.isoformat()}, "previsioni_output.json")
     print(f"\n✅ Completato. Output in previsioni_output.json")
-
-
-if __name__ == "__main__":
-    main()
-
-
-import json
-import sys
-import time
-import requests
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
-from config import (
-    TELEGRAM_TOKEN,
-    TELEGRAM_CHAT_IDS as LISTA_CHAT,
-    GEMINI_API_KEY,
-    LATITUDE, LONGITUDE, TIMEZONE,
-)
-from io_ingest import (
-    fetch_openmeteo_current,
-    build_obs_from_openmeteo,
-    build_hourly_forecast_from_openmeteo,
-)
-from engine import run_pipeline, export_json
-
-TZ_ROME = ZoneInfo(TIMEZONE)
-LOCATION_NAME = "La Spezia"
-GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
-
-# Modelli Gemini – stesso ordine di precedenza di previsioni.py
-GEMINI_MODELS = [
-    ("gemini-3.5-flash",          "Gemini 3.5 Flash"),
-    ("gemini-3-flash-preview",          "Gemini 2.0 Flash"),
-    ("gemini-1.5-flash",          "Gemini 1.5 Flash"),
-]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Gemini call (con retry e fallback modello)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def call_gemini(prompt: str, api_key: str) -> tuple[str, str]:
-    """
-    Chiama Gemini con il prompt fornito.
-    Ritorna (testo_risposta, nome_modello_usato).
-    """
-    payload = {
-        "system_instruction": {
-            "parts": [{"text": (
-                "Sei un meteorologo professionista italiano esperto del territorio ligure. "
-                "Ricevi l'analisi tecnica completa del motore meteorologico MeteoBot "
-                "per La Spezia e il Levante Ligure. "
-                "Devi scrivere un bollettino meteorologico completo e professionale. "
-                "NON usare formattazione Markdown (no asterischi, no underscore). "
-                "Scrivi in italiano, tono professionale ma comprensibile. "
-                "Segui ESATTAMENTE le istruzioni contenute nel prompt fornito."
-            )}]
-        },
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.3,
-            "maxOutputTokens": 8192,
-            "topP": 0.8,
-        },
-        "safetySettings": [
-            {"category": c, "threshold": "BLOCK_NONE"}
-            for c in [
-                "HARM_CATEGORY_HARASSMENT",
-                "HARM_CATEGORY_HATE_SPEECH",
-                "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "HARM_CATEGORY_DANGEROUS_CONTENT",
-            ]
-        ],
-    }
-
-    for model_id, model_label in GEMINI_MODELS:
-        url = f"{GEMINI_API_BASE}/models/{model_id}:generateContent?key={api_key}"
-        print(f"  Provo {model_label}...")
-        max_retries = 4
-
-        for attempt in range(1, max_retries + 1):
-            try:
-                resp = requests.post(url, json=payload, timeout=180)
-
-                if resp.status_code == 404:
-                    print(f"  ⚠ {model_label} non disponibile (404), passo al successivo")
-                    break
-
-                if resp.status_code == 429:
-                    if attempt < max_retries:
-                        wait = 30 * (2 ** (attempt - 1))
-                        print(f"  ⚠ Rate limit, attendo {wait}s ({attempt}/{max_retries})...")
-                        time.sleep(wait)
-                        continue
-                    print(f"  ✗ Rate limit persistente su {model_label}")
-                    break
-
-                resp.raise_for_status()
-
-                result = resp.json()
-                candidates = result.get("candidates", [])
-                if not candidates:
-                    reason = result.get("promptFeedback", {}).get("blockReason", "sconosciuto")
-                    print(f"  ✗ Risposta bloccata ({reason}), passo al successivo")
-                    break
-
-                finish = candidates[0].get("finishReason", "")
-                if finish in ("SAFETY", "MAX_TOKENS"):
-                    print(f"  ✗ finishReason={finish}, passo al successivo")
-                    break
-
-                text = (
-                    candidates[0]
-                    .get("content", {})
-                    .get("parts", [{}])[0]
-                    .get("text", "")
-                )
-                if not text.strip():
-                    print(f"  ✗ Risposta vuota, passo al successivo")
-                    break
-
-                print(f"  ✓ Risposta ottenuta da {model_label} ({len(text)} chars)")
-                return text.strip(), model_label
-
-            except requests.exceptions.Timeout:
-                print(f"  ⚠ Timeout ({attempt}/{max_retries})...")
-                if attempt < max_retries:
-                    time.sleep(5)
-                    continue
-                break
-            except requests.exceptions.RequestException as e:
-                print(f"  ✗ Errore rete: {e}")
-                if attempt < max_retries:
-                    time.sleep(3)
-                    continue
-                break
-
-    return (
-        "Le previsioni automatiche non sono disponibili al momento "
-        "(Gemini non raggiungibile o rate limit esaurito).",
-        "nessun_modello",
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Telegram
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _send_telegram_message(chat_id: str, text: str) -> bool:
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    try:
-        resp = requests.post(
-            url,
-            data={"chat_id": chat_id, "text": text, "parse_mode": ""},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        if resp.json().get("ok"):
-            print(f"  ✓ Inviato a {chat_id}")
-            return True
-        print(f"  ✗ Errore Telegram per {chat_id}: {resp.json()}")
-        return False
-    except Exception as e:
-        print(f"  ✗ Eccezione invio {chat_id}: {e}")
-        return False
-
-
-def send_telegram(text: str, max_len: int = 4096):
-    """Invia il testo a tutti i chat_id; spezza se >4096 caratteri."""
-    if not TELEGRAM_TOKEN or not LISTA_CHAT:
-        print("Telegram non configurato, skip")
-        return
-    # Spezza in chunk di max_len preservando le righe
-    chunks = []
-    current = ""
-    for line in text.splitlines(keepends=True):
-        if len(current) + len(line) > max_len:
-            if current:
-                chunks.append(current.rstrip())
-            current = line
-        else:
-            current += line
-    if current.strip():
-        chunks.append(current.rstrip())
-
-    for chat_id in LISTA_CHAT:
-        for i, chunk in enumerate(chunks):
-            if i > 0:
-                chunk = f"(continua {i+1}/{len(chunks)})\n" + chunk
-            _send_telegram_message(chat_id, chunk)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────────────────────────────────────
-
-def main():
-    print("=" * 60)
-    print("  METEOBOT – PREVISIONI AI (nuovo motore)")
-    print("=" * 60)
-
-    if not GEMINI_API_KEY:
-        print("❌ GEMINI_API_KEY non configurata")
-        sys.exit(1)
-
-    now = datetime.now(TZ_ROME)
-    print(f"\nOra: {now.strftime('%d/%m/%Y %H:%M')} – {LOCATION_NAME}")
-    print(f"Posizione: {LATITUDE}°N, {LONGITUDE}°E")
-
-    # ── 1. Dati Open-Meteo ──────────────────────────────────────────────────
-    print("\n📡 Scaricamento dati Open-Meteo...")
-    try:
-        raw_data = fetch_openmeteo_current()
-        obs = build_obs_from_openmeteo(raw_data)
-        hourly = build_hourly_forecast_from_openmeteo(raw_data, n_hours=48)
-        n_hours = len(hourly)
-        print(f"  ✓ {n_hours} ore di previsione scaricate")
-    except Exception as e:
-        print(f"  ✗ Errore Open-Meteo: {e}")
-        sys.exit(1)
-
-    # ── 2. Pipeline motore meteorologico ────────────────────────────────────
-    print("\n⚙️  Calcolo indici con motore MeteoBot...")
-    try:
-        result = run_pipeline(obs, hourly)
-        meta = result["meta"]
-        print(f"  ✓ Pipeline completata")
-        print(f"     Allerta : {meta.get('alert_emoji','⚪')} {meta['alert_level'].upper()}")
-        print(f"     Score   : {meta['score']}/12")
-        print(f"     Modo    : {meta['mode']}")
-        print(f"     SCP     : {result['params'].get('SCP', 0):.2f}")
-        print(f"     STP     : {result['params'].get('STP', 0):.2f}")
-        print(f"     SBCAPE  : {result['params'].get('SBCAPE', result['params'].get('CAPE', 0)):.0f} J/kg")
-        export_json(result, "previsioni_output.json")
-    except Exception as e:
-        print(f"  ✗ Errore pipeline: {e}")
-        import traceback; traceback.print_exc()
-        sys.exit(1)
-
-    # ── 3. Chiama Gemini con il prompt del motore ────────────────────────────
-    print("\n🤖 Generazione bollettino AI con Gemini...")
-    gemini_prompt = result["gemini_prompt"]
-    ai_text, gemini_model = call_gemini(gemini_prompt, GEMINI_API_KEY)
-
-    # ── 4. Componi messaggio Telegram ────────────────────────────────────────
-    print("\n📤 Invio via Telegram...")
-
-    emoji_allerta = meta.get("alert_emoji", "⚪")
-    livello = meta["alert_level"].upper()
-
-    header = (
-        f"Previsioni Meteo - {LOCATION_NAME}\n"
-        f"Data: {now.strftime('%d/%m/%Y %H:%M')}\n"
-        f"Allerta ARPAL: {emoji_allerta} {livello}\n"
-        f"Score convettivo: {meta['score']}/12\n"
-        f"AI: {gemini_model}\n"
-        f"{'─' * 40}\n\n"
-    )
-
-    # Analisi tecnica sintetica (solo valori chiave per non appesantire)
-    p = result["params"]
-    sbcape = p.get("SBCAPE", p.get("CAPE", 0)) or 0
-    shear  = p.get("shear_0_6", 0) or 0
-    srh    = p.get("srh_0_3", p.get("srh_0_1", 0)) or 0
-    pwat   = p.get("PWAT", 0) or 0
-    scp    = p.get("SCP", 0) or 0
-    stp    = p.get("STP", 0) or 0
-
-    tech_summary = (
-        f"[ANALISI TECNICA]\n"
-        f"SBCAPE: {sbcape:.0f} J/kg | PWAT: {pwat:.1f} mm\n"
-        f"Shear 0-6: {shear:.1f} kt | SRH 0-3: {srh:.0f} m2/s2\n"
-        f"SCP: {scp:.2f} | STP: {stp:.2f}\n"
-        f"Modo: {meta['mode']}\n"
-    )
-    if result.get("hazards"):
-        tech_summary += "Fenomeni: " + "; ".join(result["hazards"][:4]) + "\n"
-
-    tech_summary += f"{'─' * 40}\n\n"
-
-    full_message = header + tech_summary + ai_text
-
-    send_telegram(full_message)
-
-    print(f"\n✅ Completato. Messaggio: {len(full_message)} caratteri")
 
 
 if __name__ == "__main__":

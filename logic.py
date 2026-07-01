@@ -15,7 +15,7 @@ Soglie calibrate su:
   - SPC Supercell/Tornado Composite parameters
 """
 
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from config import THRESHOLDS, ALERT_LEVELS, ALERT_EMOJI, thresholds
 
 # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -200,8 +200,9 @@ def severe_hazards(params: Dict[str, float]) -> List[str]:
     lr03   = params.get("lr_0_3km", 0) or 0
     p_sfc  = params.get("pressure_hpa", 1013)
     temp   = params.get("temp_c", None)
+    dcape  = float(params.get("DCAPE", 0) or 0)
 
-    # \u2500\u2500 Fenomeni ad alto impatto \u2500\u2500
+    # ── Fenomeni ad alto impatto ──
 
     # Tornado / trombe d'aria
     if stp >= thresholds.STP_VIOLENT:
@@ -219,8 +220,23 @@ def severe_hazards(params: Dict[str, float]) -> List[str]:
     elif cape >= 1500 and shear >= thresholds.SHEAR_06_ORGANIZED:
         hazards.append("grandine di dimensioni significative (1–2 cm)")
 
-    # Raffiche severe e downburst
-    if shear >= thresholds.SHEAR_06_SUPERCELL and cape >= thresholds.SBCAPE_MODERATE:
+    # Raffiche severe e downburst (DCAPE + shear)
+    # V_max ≈ √(2·DCAPE): DCAPE 500 J/kg → 114 km/h
+    if dcape >= thresholds.DCAPE_HIGH:
+        from thermo import dcape_gust_kmh as _dcape_gust
+        v_est = _dcape_gust(dcape)
+        hazards.append(
+            f"DOWNBURST SEVERO – DCAPE {dcape:.0f} J/kg, "
+            f"raffica stimata fino a {v_est:.0f} km/h"
+        )
+    elif dcape >= thresholds.DCAPE_MODERATE:
+        from thermo import dcape_gust_kmh as _dcape_gust
+        v_est = _dcape_gust(dcape)
+        hazards.append(
+            f"raffiche discendenti intense (downburst) – DCAPE {dcape:.0f} J/kg, "
+            f"stima {v_est:.0f} km/h"
+        )
+    elif shear >= thresholds.SHEAR_06_SUPERCELL and cape >= thresholds.SBCAPE_MODERATE:
         hazards.append("raffiche severe (>90 km/h) e possibili microburst/downburst")
     elif wind >= thresholds.ARPAL_WIND_ARANCIONE or shear >= thresholds.SHEAR_06_ORGANIZED:
         hazards.append("raffiche di vento intense – possibili downburst")
@@ -548,5 +564,205 @@ def livello_attenzione(score: float) -> Tuple[str, str]:
         return "ALTO", "🟠"
     if score >= 1.0:
         return "MODERATO", "🟡"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Flash Flood Guidance (FFG)
+# Riferimenti: WMO No.1072 Flash Flood Guidance Systems (2013)
+#              ARPAL Liguria – Valori soglia Zona A/B (Levante Ligure)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def flash_flood_guidance(
+    params: Dict[str, float],
+    rain_obs: Optional[Dict[str, float]] = None,
+    soil_moisture: Optional[float] = None,   # m³/m³ (Open-Meteo ERA5-Land 0-10cm)
+    precip_48h_mm: float = 0.0,
+) -> Tuple[float, str]:
+    """
+    Flash Flood Guidance (FFG) score (0.0–1.0) e descrizione del rischio.
+
+    Combina:
+    - Precipitazioni istantanee e cumulate (ARPAL soglie 1h, 3h, 6h)
+    - Umidità del suolo (Open-Meteo ERA5-Land, piena capacità di campo)
+    - Precipitazioni pregresse 48h (precondizionamento suolo)
+    - Forzante orografico (Appennino Ligure: fattore moltiplicativo 1.4x)
+    - PWAT (serbatoio idrico atmosferico disponibile)
+
+    WMO FFG logic: la soglia di alluvione lampo è raggiunta quando:
+      rate_precipitazione ≥ FFG_critico(soil_moisture, basin_time_of_concentration)
+    Per il Levante Ligure: tempo concentrazione bacini principali ≈ 1-3h (Vara, Magra).
+    """
+    rain = rain_obs or {}
+    thr = thresholds
+
+    rain_1h  = max(float(rain.get("1h",  0) or 0),
+                   float(params.get("precip_rate_mm_h", 0) or 0))
+    rain_3h  = float(rain.get("3h",  0) or 0)
+    rain_6h  = float(rain.get("6h",  0) or 0)
+    rain_24h = float(rain.get("24h", params.get("rain_24h_mm", 0)) or 0)
+    pwat     = float(params.get("PWAT", 0) or 0)
+    oro      = float(params.get("orographic_factor", 0) or 0)
+
+    score = 0.0
+
+    # — Precipitazioni (ARPAL Zona A/B) ──────────────────────────────────
+    if (rain_1h  >= thr.ARPAL_RAIN_1H_ROSSO or
+        rain_3h  >= thr.ARPAL_RAIN_3H_ROSSO or
+        rain_6h  >= thr.ARPAL_RAIN_6H_ROSSO):
+        score += 0.45
+    elif (rain_1h  >= thr.ARPAL_RAIN_1H_ARANCIONE or
+          rain_3h  >= thr.ARPAL_RAIN_3H_ARANCIONE or
+          rain_6h  >= thr.ARPAL_RAIN_6H_ARANCIONE):
+        score += 0.30
+    elif (rain_1h  >= thr.ARPAL_RAIN_1H_GIALLO or
+          rain_3h  >= thr.ARPAL_RAIN_3H_GIALLO):
+        score += 0.15
+
+    # — Precondizionamento suolo (precipitazioni 48h precedenti) ─────────
+    if precip_48h_mm >= thr.PRECIP_48H_SAT:
+        score += 0.20
+    elif precip_48h_mm >= thr.PRECIP_48H_PRESAT:
+        score += 0.10
+
+    # — Umidità del suolo (misura diretta) ────────────────────────────────
+    if soil_moisture is not None:
+        if soil_moisture >= thr.SOIL_MOISTURE_SATURATION:
+            score += 0.15
+        elif soil_moisture >= thr.SOIL_MOISTURE_FIELD_CAP:
+            score += 0.08
+
+    # — PWAT elevato (serbatoio idrico atmosferico) ────────────────────────
+    if pwat >= thr.PWAT_EXTREME:
+        score += 0.15
+    elif pwat >= thr.PWAT_HUMID:
+        score += 0.08
+
+    # — Forzante orografico (amplifica il rischio sulle aste torrentizie) ──
+    if oro >= 0.6 and score > 0.10:
+        score = min(score * 1.35, 1.0)
+    elif oro >= 0.3 and score > 0.10:
+        score = min(score * 1.15, 1.0)
+
+    score = round(min(score, 1.0), 2)
+
+    if score >= 0.70:
+        desc = "RISCHIO ALLUVIONI LAMPO ELEVATO – suolo saturo + piogge intense"
+    elif score >= 0.45:
+        desc = "rischio alluvioni lampo moderato – monitorare accumuli orari"
+    elif score >= 0.20:
+        desc = "rischio alluvioni lampo basso – attenzione in zone pianeggianti"
+    else:
+        desc = "nessun rischio alluvioni lampo significativo"
+
+    return score, desc
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Analisi ondate di calore – WMO + ARPAL Liguria
+# Riferimenti: WMO No.1142 (2014) – Heatwave definition and impacts
+#              ARPAL Liguria – Piano regionale emergenze caldo
+# ─────────────────────────────────────────────────────────────────────────────
+
+def heatwave_analysis(
+    temp_history: List[Dict[str, Any]],
+    temp_max_today: Optional[float] = None,
+    temp_min_today: Optional[float] = None,
+    heat_index_today: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    Analisi ondata di calore multi-giorno.
+
+    WMO HeatWave definition:
+      Un'ondata di calore inizia quando la temperatura massima supera di 5°C
+      la media climatologica per almeno 5 giorni consecutivi.
+
+    Definizione operativa ARPAL Liguria (più conservativa per la salute):
+      Tmax ≥ 35°C per ≥ 3 giorni consecutivi  E
+      Tmin ≥ 20°C (notti tropicali, disagio termico notturno).
+
+    Excess Heat Factor (EHF, Nairn & Fawcett 2013):
+      EHI_sig = (T3d_mean - T90_period) / σ   (anomalia di calore significativa)
+      EHI_acc = (T3d_mean - T30d_mean)         (accumulazione del calore)
+      EHF = EHI_sig × max(1, EHI_acc)
+
+    Qui usiamo un'approssimazione pratica con i dati disponibili.
+    temp_history: lista [{'date':..., 'T_max':..., 'T_min':..., 'T_app':...}]
+                  ordinate dalla più vecchia alla più recente.
+    """
+    thr = thresholds
+    result: Dict[str, Any] = {
+        "is_heatwave":         False,
+        "consecutive_days":    0,
+        "tropical_nights":     0,
+        "ehf":                 None,
+        "severity":            "nessuna",
+        "desc":                "",
+    }
+
+    if not temp_history:
+        return result
+
+    # Aggiungi oggi se fornito
+    all_days = list(temp_history)
+    if temp_max_today is not None:
+        all_days.append({"date": "oggi", "T_max": temp_max_today,
+                         "T_min": temp_min_today, "T_app": heat_index_today})
+
+    # Conta giorni consecutivi con Tmax >= soglia (partendo da oggi)
+    consecutive = 0
+    for day in reversed(all_days):
+        t_max = day.get("T_max")
+        if t_max is not None and t_max >= thr.HEATWAVE_TMAX:
+            consecutive += 1
+        else:
+            break
+    result["consecutive_days"] = consecutive
+
+    # Notti tropicali (Tmin >= 20°C) negli ultimi 7 giorni
+    tropical = sum(
+        1 for d in all_days[-7:]
+        if (d.get("T_min") or 0) >= thr.HEATWAVE_TMIN
+    )
+    result["tropical_nights"] = tropical
+
+    # EHF approssimato
+    recent_7  = [d.get("T_max") for d in all_days[-7:]  if d.get("T_max") is not None]
+    recent_3  = [d.get("T_max") for d in all_days[-3:]  if d.get("T_max") is not None]
+    recent_30 = [d.get("T_max") for d in all_days[-30:] if d.get("T_max") is not None]
+
+    if len(recent_3) >= 3 and len(recent_7) >= 5:
+        t3_mean  = sum(recent_3)  / len(recent_3)
+        t30_mean = sum(recent_30) / len(recent_30) if recent_30 else t3_mean
+        # Usufruiamo di EHI_acc e una EHI_sig approssimata
+        ehf = (t3_mean - thr.HEATWAVE_TMAX) * max(1.0, t3_mean - t30_mean)
+        result["ehf"] = round(ehf, 1)
+    else:
+        result["ehf"] = None
+
+    # Determina se è una vera ondata di calore
+    if consecutive >= thr.HEATWAVE_DAYS_MIN:
+        result["is_heatwave"] = True
+        ehf_v = result["ehf"] or 0.0
+        if ehf_v >= thr.HEATWAVE_EHF_HIGH or consecutive >= 7:
+            result["severity"] = "SEVERA"
+            result["desc"] = (
+                f"ONDATA DI CALORE SEVERA: {consecutive} giorni consecutivi con "
+                f"Tmax≥{thr.HEATWAVE_TMAX:.0f}°C, {tropical} notti tropicali. "
+                "Rischio salute pubblica elevato. EHF={:.1f}.".format(ehf_v)
+            )
+        elif consecutive >= thr.HEATWAVE_DAYS_MIN:
+            result["severity"] = "moderata"
+            result["desc"] = (
+                f"Ondata di calore: {consecutive} giorni consecutivi Tmax≥{thr.HEATWAVE_TMAX:.0f}°C"
+                + (f", {tropical} notti tropicali" if tropical >= 2 else "") + "."
+            )
+    elif (temp_max_today or 0) >= thr.HEATWAVE_TMAX:
+        result["severity"] = "inizio_possibile"
+        result["desc"] = (
+            f"Caldo intenso (Tmax {temp_max_today:.0f}°C): "
+            "monitorare nei prossimi giorni per possibile ondata di calore."
+        )
+
+    return result
     return "BASSO", "🟢"
 
