@@ -693,6 +693,16 @@ def interroga_gemini(modello_display, compendio_dati, lro_testo_collettivo, grou
         print("  ⚠ API Key di Gemini non configurata. Salto la generazione del testo.")
         return None
 
+    giorni_presenti = [g.get("data") for g in compendio_dati if g.get("data")]
+    elenco_giorni_str = ", ".join(giorni_presenti) if giorni_presenti else "N/D"
+    n_giorni = len(giorni_presenti) if giorni_presenti else 0
+
+    righe_disponibilita = []
+    for g in compendio_dati:
+        n_ore = len(g.get("ore", []))
+        righe_disponibilita.append(f"- {g.get('data')}: {n_ore} ore di dati disponibili")
+    disponibilita_str = "\n".join(righe_disponibilita) if righe_disponibilita else "N/D"
+
     # Strutturazione del prompt con le 4 macro-aree richieste
     prompt = f"""
 Sei un meteorologo professionista esperto del territorio della Liguria e in particolare della provincia di La Spezia (caratterizzata da microclimi complessi, interazioni sciroccali, convergenze nel Golfo e sollevamento orografico appenninico).
