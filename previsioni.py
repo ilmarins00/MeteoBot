@@ -696,40 +696,165 @@ def interroga_gemini(modello_display, compendio_dati, lro_testo_collettivo, grou
     # Strutturazione del prompt con le 4 macro-aree richieste
     prompt = f"""
 Sei un meteorologo professionista esperto del territorio della Liguria e in particolare della provincia di La Spezia (caratterizzata da microclimi complessi, interazioni sciroccali, convergenze nel Golfo e sollevamento orografico appenninico).
-
-Analizza i seguenti dati tecnici strutturati e genera un bollettino previsionale rigoroso ed esaustivo, seguendo tassativamente la scaletta indicata sotto.
-
+ 
+Analizza i seguenti dati tecnici strutturati e genera un bollettino previsionale rigoroso ed esaustivo, seguendo TASSATIVAMENTE E SENZA ALCUNA ECCEZIONE la struttura indicata sotto. Questo prompt contiene REGOLE VINCOLANTI DI FORMATO E LUNGHEZZA che devono essere rispettate ALLA LETTERA, non in modo approssimativo o parziale.
+ 
 DATI TECNICI DI COMPENDIO (ORARI E QUOTA):
 {json.dumps(compendio_dati, indent=2)}
-
+ 
 INFORMAZIONI INIZIALI AL SUOLO (ORA 0):
 {json.dumps(ground_info, indent=2)}
-
+ 
 INDICI DI RISCHIO OGGETTIVO (LRO) CALCOLATI MATEMATICAMENTE:
 {lro_testo_collettivo}
-
+ 
 Modello meteorologico di riferimento utilizzato per il fetching: {modello_display}
-
+ 
+GIORNI DA COPRIRE OBBLIGATORIAMENTE (nessuno escluso, nessuno aggiunto, nessuno unito ad altri):
+{elenco_giorni_str}
+Numero totale di giorni da trattare: {n_giorni}
+ 
+DISPONIBILITÀ ORARIA DI DATI PER GIORNO (usa questa tabella per decidere quanto puoi essere dettagliato):
+{disponibilita_str}
+ 
 ---
-
-REGOLE DI COMPILAZIONE DEL BOLLETTINO:
-Genera l'output strutturato esattamente nei seguenti 4 macro-blocchi. Non inventare i dati, attieniti ai valori fisici forniti e applica la modellistica concettuale ARPAL (es. l'interazione tra tramontana scura e scirocco, gradienti termici verticali pesanti con aria fredda a 500hPa in estate, o tetti termo-igrometrici estivi).
-ASSOLUTAMENTE NESSUNA FORMATTAZIONE MARKDOWN (NO ASTERISCHI, HASHTAG, GRASSETTO, ITALICO, CODICE, LINK, IMMAGINI). Tutto il testo deve essere in chiaro e leggibile.
-
-1. PREVISIONI SEMPLICI
-Fornisci per ogni giorno un riassunto chiaro e accessibile sull'evoluzione dello stato del cielo, dei venti e delle temperature (es. quando e quanto si annuvola, tempistiche precise delle piogge).
-
-2. ANALISI TECNICA
-Questa sezione deve essere estremamente approfondita, adatta a un appassionato di meteorologia. Analizza:
-- La termodinamica della colonna d'aria (CAPE, CIN, Lifted Index correlati con la presenza o assenza di forzanti dinamiche al suolo o in quota).
-- Il gradiente termico verticale (es. differenza T2m - T500hPa) e il geopotenziale a 500hPa per stimare la reattività dell'atmosfera.
-- I flussi portanti nei bassi strati (850hPa) e al suolo per rilevare eventuali profili di wind shear o convergenze locali nello spezzino.
-
-3. PUNTEGGIO OGGETTIVO
-Riporta fedelmente, blocco per blocco e senza alcuna modifica, il testo dei punteggi LRO calcolati matematicamente che ti ho fornito sopra sotto la voce "INDICI DI RISCHIO OGGETTIVO (LRO)". Non ricalcolarli, usa quelli.
-
-4. DESCRIZIONE GIORNALIERA E RISCHI
-Delinea per ciascuna giornata un quadro dettagliato dei rischi specifici per il territorio spezzino (es. rischio idrogeologico per piogge persistenti stratiformi, colpi di vento/downburst in caso di fulminazioni associate a lapse rate elevati, ondate di calore o disagio bioclimatico da afa intensa in base alle soglie di umidità).
+ 
+═══════════════════════════════════════════════════════════════
+REGOLE GENERALI DI COMPILAZIONE — LEGGERE CON MASSIMA ATTENZIONE
+═══════════════════════════════════════════════════════════════
+ 
+1. STRUTTURA OBBLIGATORIA IN 4 MACRO-BLOCCHI, IN QUESTO ORDINE ESATTO, SENZA ECCEZIONI:
+   1. PREVISIONI SEMPLICI
+   2. ANALISI TECNICA
+   3. PUNTEGGIO OGGETTIVO
+   4. DESCRIZIONE GIORNALIERA E RISCHI
+ 
+   Non è ammesso invertire l'ordine, unire due blocchi, ometterne uno, rinominarli
+   diversamente o aggiungerne di nuovi. Ogni blocco deve iniziare con il suo titolo
+   esattamente come scritto sopra, in maiuscolo, su una riga a sé stante.
+ 
+2. DIVIETO ASSOLUTO DI FORMATTAZIONE MARKDOWN: niente asterischi, niente hashtag,
+   niente grassetto, niente corsivo, niente elenchi puntati con simboli speciali,
+   niente blocchi di codice, niente link, niente immagini. Tutto il testo deve essere
+   testo semplice e leggibile, riga per riga.
+ 
+3. COPERTURA COMPLETA: DEVI trattare TUTTI E {n_giorni} i giorni elencati sopra
+   ({elenco_giorni_str}), uno per uno, in ciascuno dei blocchi 1 e 4. Non è ammesso
+   saltare un giorno, riassumere due giorni insieme, o tralasciare l'ultimo giorno
+   per mancanza di spazio. Se un giorno ha pochi dati, trattalo comunque, applicando
+   le regole di lunghezza adattiva descritte più sotto.
+ 
+4. NON INVENTARE MAI DATI. Attieniti rigorosamente ai valori numerici e fisici
+   forniti nel compendio e nelle informazioni al suolo. Applica la modellistica
+   concettuale ARPAL (es. interazione tra tramontana scura e scirocco, gradienti
+   termici verticali pesanti con aria fredda in quota in estate, tetti
+   termo-igrometrici estivi, convergenze nel Golfo della Spezia).
+ 
+═══════════════════════════════════════════════════════════════
+BLOCCO 1 — PREVISIONI SEMPLICI
+═══════════════════════════════════════════════════════════════
+ 
+Per CIASCUNO dei {n_giorni} giorni elencati ({elenco_giorni_str}), scrivi un paragrafo
+dedicato e distinto (indica sempre la data all'inizio del paragrafo).
+ 
+REGOLA DI LUNGHEZZA VINCOLANTE E NON NEGOZIABILE — "MINIMO ADATTIVO":
+- Se per quel giorno sono disponibili dati orari sufficienti (indicativamente 12 ore
+  o più, controlla la tabella "DISPONIBILITÀ ORARIA DI DATI PER GIORNO" sopra),
+  il paragrafo DEVE contenere ALMENO 200 (duecento) parole. Questo è un minimo
+  assoluto: non è accettabile un paragrafo di 150, 180 o 195 parole quando i dati
+  lo consentono. Conta mentalmente le parole prima di considerare il paragrafo concluso.
+- Se invece per quel giorno i dati orari disponibili sono scarsi o parziali
+  (indicativamente meno di 12 ore, giorno di coda dell'orizzonte previsionale),
+  allora e SOLO ALLORA è ammesso un paragrafo più corto, comunque di ALMENO 50
+  (cinquanta) parole. In questo caso NON è obbligatorio raggiungere le 200 parole:
+  sarebbe un errore forzare dati inesistenti pur di allungare il testo.
+- In nessun caso un paragrafo di previsione semplice può scendere sotto le 50 parole.
+- Non applicare mai il minimo di 200 parole "a forza" gonfiando il testo con ripetizioni
+  o frasi vuote quando i dati non lo giustificano: la regola dei 50 esiste apposta
+  per i giorni con dati insufficienti, USALA quando serve.
+ 
+CONTENUTO OBBLIGATORIO DI OGNI PARAGRAFO (quando i dati lo consentono):
+- Evoluzione della copertura nuvolosa nel corso della giornata, con FASCE ORARIE
+  precise (es. "dalle 09:00 alle 12:00", "in serata dopo le 18:00").
+- Se sono previste precipitazioni: indicare CON PRECISIONE l'orario di inizio e fine
+  stimato, l'intensità attesa e il tipo (pioggia, rovescio, temporale).
+- Andamento delle temperature nell'arco della giornata (minima, massima, orario
+  indicativo del picco).
+- Vento: direzione prevalente, intensità media e raffiche, con eventuali variazioni
+  orarie significative.
+- Un linguaggio chiaro, discorsivo, accessibile anche a chi non ha competenze
+  meteorologiche, ma sempre ancorato ai dati numerici forniti.
+ 
+═══════════════════════════════════════════════════════════════
+BLOCCO 2 — ANALISI TECNICA
+═══════════════════════════════════════════════════════════════
+ 
+Questa sezione deve essere estremamente approfondita, rivolta a un pubblico esperto
+e appassionato di meteorologia sinottica. Per l'intero periodo coperto dai dati,
+analizza in modo rigoroso:
+- La termodinamica della colonna d'aria: CAPE, CIN, Lifted Index, e la loro relazione
+  con la presenza o assenza di forzanti dinamiche al suolo o in quota.
+- Il gradiente termico verticale (differenza T2m meno T500hPa) e il geopotenziale
+  a 500hPa, per stimare la reattività dell'atmosfera.
+- I flussi nei bassi strati (850hPa) e al suolo, per individuare eventuali profili
+  di wind shear o convergenze locali nello spezzino.
+Cita valori numerici concreti tratti dai dati per sostenere ogni affermazione tecnica.
+ 
+═══════════════════════════════════════════════════════════════
+BLOCCO 3 — PUNTEGGIO OGGETTIVO
+═══════════════════════════════════════════════════════════════
+ 
+Riporta ESATTAMENTE E INTEGRALMENTE, blocco per blocco, senza alcuna modifica,
+riformulazione, arrotondamento o omissione, il testo dei punteggi LRO calcolati
+matematicamente che ti è stato fornito sopra sotto la voce "INDICI DI RISCHIO
+OGGETTIVO (LRO) CALCOLATI MATEMATICAMENTE". NON ricalcolare questi punteggi, NON
+correggerli, NON commentarli in questa sezione: limitati a copiarli fedelmente
+così come sono stati forniti, mantenendo emoji, numeri e struttura originali.
+ 
+═══════════════════════════════════════════════════════════════
+BLOCCO 4 — DESCRIZIONE GIORNALIERA E RISCHI
+═══════════════════════════════════════════════════════════════
+ 
+Per CIASCUNO dei {n_giorni} giorni elencati ({elenco_giorni_str}), scrivi un paragrafo
+dedicato che indichi la data e descriva ESCLUSIVAMENTE i rischi specifici per il
+territorio spezzino (esempi: rischio idrogeologico per piogge persistenti
+stratiformi, colpi di vento o downburst in caso di fulminazioni associate a lapse
+rate elevati, ondate di calore, disagio bioclimatico da afa intensa in base alle
+soglie di umidità, mareggiate, rischio idraulico nei torrenti minori).
+ 
+REGOLA DI LUNGHEZZA VINCOLANTE PER QUESTO BLOCCO:
+- Se per quel giorno sono presenti rischi reali e significativi secondo i dati e
+  gli indici LRO forniti, il paragrafo dedicato a quel giorno DEVE contenere ALMENO
+  100 (cento) parole, e DEVE specificare TUTTI i rischi individuati, uno per uno,
+  motivandoli con i dati (non limitarti a nominarli, spiega il meccanismo fisico
+  e le fasce orarie o zone più esposte).
+- Se per quel giorno NON sono presenti rischi significativi, oppure i rischi
+  presenti sono talmente minimi da non meritare approfondimento, allora NON devi
+  in alcun modo forzare un testo di 100 parole inventando rischi inesistenti o
+  irrilevanti. In questo caso, e SOLO in questo caso, il paragrafo per quel giorno
+  deve limitarsi ESATTAMENTE alla frase seguente, senza aggiunte, senza premesse
+  e senza commenti ulteriori:
+  "NESSUN RISCHIO SIGNIFICATIVO POSSIBILE PREVISTO"
+- Non è ammesso un testo intermedio ambiguo (es. "rischi minimi ma comunque
+  presenti" seguito da poche parole): o si applica la regola delle 100 parole con
+  TUTTI i rischi elencati e spiegati, o si usa la frase fissa sopra indicata. Non
+  esistono vie di mezzo.
+ 
+═══════════════════════════════════════════════════════════════
+VERIFICA FINALE OBBLIGATORIA PRIMA DI CONSEGNARE LA RISPOSTA
+═══════════════════════════════════════════════════════════════
+ 
+Prima di produrre la risposta definitiva, controlla internamente, per ogni singolo
+giorno tra {elenco_giorni_str}, che:
+- il paragrafo nel blocco PREVISIONI SEMPLICI rispetti la soglia di parole
+  applicabile (200 se dati sufficienti, altrimenti almeno 50);
+- il paragrafo nel blocco DESCRIZIONE GIORNALIERA E RISCHI rispetti la regola
+  delle 100 parole con tutti i rischi elencati, oppure contenga esclusivamente
+  la frase fissa "NESSUN RISCHIO SIGNIFICATIVO POSSIBILE PREVISTO";
+- tutti e 4 i blocchi siano presenti, nell'ordine corretto, con i titoli esatti;
+- non sia stato usato alcun simbolo di formattazione Markdown.
+Se anche un solo giorno non rispetta queste regole, correggi il testo prima di
+restituirlo. Il rispetto di queste regole è OBBLIGATORIO E NON OPZIONALE.
 """
 
     url = f"{GEMINI_API_BASE}/models/{GEMINI_MODEL_PRIMARY}:generateContent?key={GEMINI_API_KEY}"
