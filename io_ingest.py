@@ -326,6 +326,8 @@ _PLEVEL_VARS_MULTIDAY = [
     "temperature_850hPa", "temperature_700hPa", "temperature_500hPa",
     "dewpoint_850hPa",    "dewpoint_700hPa",    "dewpoint_500hPa",
     "geopotential_height_500hPa", "geopotential_height_850hPa",
+    "wind_speed_850hPa",  "wind_speed_700hPa",  "wind_speed_500hPa",
+    "wind_direction_850hPa", "wind_direction_700hPa", "wind_direction_500hPa",
 ]
 
 
@@ -470,24 +472,58 @@ def build_day_obs(
     wmo_vals    = [int(v) for v in (day_hourly.get("weather_code") or []) if v is not None]
     wmo_dom     = max(set(wmo_vals), key=wmo_vals.count) if wmo_vals else 0
 
-    # Profilo verticale da livelli isobarici
+    import math as _math
+
+    # Profilo verticale da livelli isobarici (con vento per shear/SRH)
     LVLS = {"850hPa": (85000.0, 1460.0),
              "700hPa": (70000.0, 3010.0),
              "500hPa": (50000.0, 5570.0)}
-    s_p, s_T, s_Td, s_h = [], [], [], []
+    s_p, s_T, s_Td, s_h, s_u, s_v = [], [], [], [], [], []
     for sfx, (pa, zm) in LVLS.items():
         T  = _agg(f"temperature_{sfx}")
         Td = _agg(f"dewpoint_{sfx}")
+        ws = _agg(f"wind_speed_{sfx}")      # km/h da Open-Meteo
+        wd = _agg(f"wind_direction_{sfx}")  # gradi meteorologici
         if T is not None:
             s_p.append(pa); s_T.append(T + 273.15)
             s_Td.append((Td + 273.15) if Td is not None else T + 271.15)
             s_h.append(zm)
+            if ws is not None and wd is not None:
+                rad = _math.radians(wd)
+                ws_ms = ws / 3.6
+                s_u.append(-ws_ms * _math.sin(rad))
+                s_v.append(-ws_ms * _math.cos(rad))
+            else:
+                s_u.append(0.0)
+                s_v.append(0.0)
 
     t_rep = temp_max
     if t_rep is not None:
         p_pa = (p_hpa * 100) if p_hpa else 101300.0
         s_p.insert(0, p_pa); s_T.insert(0, t_rep + 273.15)
         s_Td.insert(0, t_rep + 268.15); s_h.insert(0, float(ELEVATION))
+        # Vento superficiale (10 m) → componenti u/v
+        if wind_spd is not None and wind_dir is not None:
+            rad = _math.radians(wind_dir)
+            ws_ms = wind_spd / 3.6
+            s_u.insert(0, -ws_ms * _math.sin(rad))
+            s_v.insert(0, -ws_ms * _math.cos(rad))
+        else:
+            s_u.insert(0, 0.0)
+            s_v.insert(0, 0.0)
+
+    # Finestra temporale precipitazioni
+    precip_vals = day_hourly.get("precipitation", [])
+    rain_times  = [times[i] for i, v in enumerate(precip_vals)
+                   if i < len(times) and v is not None and v > 0.1]
+    if rain_times and precip_vals:
+        peak_i    = max(range(len(precip_vals)),
+                        key=lambda i: float(precip_vals[i] or 0))
+        p_peak_mm = float(precip_vals[peak_i] or 0)
+        p_peak_h  = str(times[peak_i])[-5:] if peak_i < len(times) else None
+    else:
+        p_peak_mm = precip_max
+        p_peak_h  = None
 
     obs: Dict[str, Any] = {
         "time_generated": datetime.datetime.now().isoformat() + "Z",
@@ -500,6 +536,10 @@ def build_day_obs(
         "precip_rate_mm_h": precip_max,
         "rain_1h_mm":       precip_max,
         "rain_24h_mm":      precip_sum,
+        "precip_start":  str(rain_times[0])[-5:]  if rain_times else None,
+        "precip_end":    str(rain_times[-1])[-5:] if rain_times else None,
+        "precip_peak_mm": p_peak_mm,
+        "precip_peak_h":  p_peak_h,
         "wind_gust_kmh":    gust,
         "wind_speed_kmh":   wind_spd,
         "wind_dir_deg":     wind_dir,
@@ -521,7 +561,7 @@ def build_day_obs(
         obs["sounding"] = {
             "pressure_pa": s_p, "temperature_k": s_T,
             "dewpoint_k": s_Td, "height_m": s_h,
-            "u_ms": [], "v_ms": [],
+            "u_ms": s_u, "v_ms": s_v,
         }
     return obs
 
@@ -533,6 +573,8 @@ def build_day_hourly_list(day_hourly: Dict[str, Any]) -> List[Dict[str, Any]]:
     rhs     = day_hourly.get("relative_humidity_2m", [])
     winds   = day_hourly.get("wind_speed_10m", [])
     dirs    = day_hourly.get("wind_direction_10m", [])
+    gusts   = day_hourly.get("wind_gusts_10m", [])
+    clouds  = day_hourly.get("cloud_cover", [])
     precips = day_hourly.get("precipitation", [])
     capes   = day_hourly.get("cape", [])
     cins    = day_hourly.get("convective_inhibition", [])
@@ -548,18 +590,20 @@ def build_day_hourly_list(day_hourly: Dict[str, Any]) -> List[Dict[str, Any]]:
                  else "🟠" if p >= thr.ARPAL_RAIN_1H_ARANCIONE
                  else "🟡" if p >= thr.ARPAL_RAIN_1H_GIALLO else "🟢")
         result.append({
-            "time":      str(t)[-5:] if t else "??:??",
-            "T":         temps[i]  if i < len(temps) else None,
-            "RH":        rhs[i]    if i < len(rhs)   else None,
-            "wind":      winds[i]  if i < len(winds)  else None,
-            "wind_dir":  dirs[i]   if i < len(dirs)   else None,
-            "precip":    p,
+            "time":       str(t)[-5:] if t else "??:??",
+            "T":          temps[i]  if i < len(temps)  else None,
+            "RH":         rhs[i]    if i < len(rhs)    else None,
+            "wind":       float(winds[i]) if i < len(winds) and winds[i] is not None else None,
+            "wind_dir":   dirs[i]   if i < len(dirs)   else None,
+            "wind_gust":  float(gusts[i]) if i < len(gusts) and gusts[i] is not None else 0.0,
+            "cloud":      clouds[i] if i < len(clouds) and clouds[i] is not None else None,
+            "precip":     p,
             "precip_cum": round(cum, 1),
-            "CAPE":      capes[i]  if i < len(capes) else 0,
-            "CIN":       cins[i]   if i < len(cins)  else 0,
+            "CAPE":       capes[i]  if i < len(capes) else 0,
+            "CIN":        cins[i]   if i < len(cins)  else 0,
             "shear": 0, "SRH": 0, "PWAT": 0,
-            "wmo_code":  wmos[i]   if i < len(wmos)  else None,
-            "alert":     alert,
+            "wmo_code":   wmos[i]   if i < len(wmos)  else None,
+            "alert":      alert,
         })
     return result
 

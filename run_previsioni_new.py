@@ -238,8 +238,29 @@ def build_day_message(
         f"CIN:    {fv(cin_v, '.0f',' J/kg')}  |  LI:     {fv(li_v,'.1f')}",
         f"Shear 0-6 km: {fv(shear06,'.1f',' kt')}  |  SRH 0-3 km: {fv(srh03,'.0f',' m²/s²')}",
         f"PWAT: {fv(pwat,'.1f',' mm')}  |  SCP: {fv(scp,'.2f')}  |  STP: {fv(stp,'.2f')}",
-        f"Modalità: {mode}",
     ]
+
+    # Evoluzione CAPE (ore con convezione attiva)
+    cape_hrs = [(h.get("time", ""), float(h.get("CAPE") or 0)) for h in hourly]
+    cape_active = [(t, c) for t, c in cape_hrs if c >= 200]
+    if cape_active:
+        cpeak = max(cape_active, key=lambda x: x[1])
+        tech_lines.append(
+            f"CAPE>200: {len(cape_active)}h (picco {cpeak[1]:.0f} J/kg alle {cpeak[0]})"
+        )
+
+    # Range orario precipitazioni
+    rain_hrs = [(h.get("time", ""), float(h.get("precip") or 0))
+                for h in hourly if (h.get("precip") or 0) > 0.1]
+    if rain_hrs:
+        rpeak = max(rain_hrs, key=lambda x: x[1])
+        rtot  = sum(r[1] for r in rain_hrs)
+        tech_lines.append(
+            f"Pioggia: {rain_hrs[0][0]}–{rain_hrs[-1][0]}, "
+            f"{rtot:.1f} mm tot, picco {rpeak[1]:.1f} mm/h alle {rpeak[0]}"
+        )
+
+    tech_lines.append(f"Modalità: {mode}")
     if hazards:
         tech_lines.append("Fenomeni: " + " | ".join(hazards[:5]))
     lines.extend(tech_lines)
@@ -248,12 +269,14 @@ def build_day_message(
     # Narrativa Gemini
     if api_key and GEMINI_API_KEY:
         analisi_tecnica_str = "\n".join(tech_lines)
+        hourly_table = result.get("section3", "")
         prompt_gemini = build_gemini_prompt_tecnico(
-            analisi_tecnica  = analisi_tecnica_str,
-            params           = params,
+            analisi_tecnica    = analisi_tecnica_str,
+            params             = params,
             maltempo_score_val = m_score,
-            giorno_label     = f"{day_label} {_format_date(day_date)}",
-            is_tendency      = is_tendency,
+            giorno_label       = f"{day_label} {_format_date(day_date)}",
+            is_tendency        = is_tendency,
+            hourly_table       = hourly_table,
         )
         narrativa, gem_model = call_gemini(prompt_gemini, api_key)
         lines.append(narrativa)

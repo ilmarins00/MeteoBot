@@ -281,17 +281,21 @@ def render_section3_objective_table(hourly_list: List[Dict]) -> str:
              PWAT_mm, wmo_code, alert
     """
     header = (
-        "time,T_C,RH_pct,wind_kmh,wind_dir_deg,precip_mm_h,"
+        "time,T_C,RH_pct,wind_kmh,wind_gust_kmh,cloud_pct,wind_dir_deg,precip_mm_h,"
         "precip_cum_mm,CAPE_Jkg,CIN_Jkg,shear_kt,SRH_m2s2,"
         "PWAT_mm,wmo_code,alert"
     )
     rows = [header]
     for h in hourly_list:
+        gust_v = h.get('wind_gust', 0) or 0
+        cloud_v = h.get('cloud', '')
         rows.append(
             f"{h.get('time','?')},"
             f"{h.get('T','')},"
             f"{h.get('RH','')},"
             f"{h.get('wind','')},"
+            f"{gust_v:.0f},"
+            f"{cloud_v},"
             f"{h.get('wind_dir','')},"
             f"{h.get('precip', 0):.1f},"
             f"{h.get('precip_cum', 0):.1f},"
@@ -420,22 +424,22 @@ def _nome_vento(deg: float) -> str:
     return "Tramontana"
 
 def _wmo_sky(wmo: int) -> str:
-    if wmo == 0:             return "cielo sereno e soleggiato"
-    if wmo == 1:             return "cielo in prevalenza sereno"
-    if wmo == 2:             return "cielo parzialmente nuvoloso"
-    if wmo == 3:             return "cielo coperto"
-    if wmo in (45, 48):     return "nebbia"
-    if wmo in (51, 53, 55): return "pioviggine"
-    if wmo in (61, 63):     return "pioggia leggera o moderata"
-    if wmo == 65:            return "pioggia intensa"
+    if wmo == 0:             return "sereno e soleggiato"
+    if wmo == 1:             return "in prevalenza sereno"
+    if wmo == 2:             return "parzialmente nuvoloso"
+    if wmo == 3:             return "coperto"
+    if wmo in (45, 48):     return "nebbioso"
+    if wmo in (51, 53, 55): return "coperto con pioviggine"
+    if wmo in (61, 63):     return "coperto con pioggia"
+    if wmo == 65:            return "coperto con pioggia intensa"
     if wmo in (71, 73):     return "neve leggera o moderata"
     if wmo == 75:            return "neve abbondante"
     if wmo in (80, 81):     return "rovesci moderati"
     if wmo == 82:            return "rovesci violenti"
-    if wmo == 95:            return "temporale"
-    if wmo == 96:            return "temporale con grandine"
-    if wmo == 99:            return "temporale con grandine intensa"
-    return "condizioni variabili"
+    if wmo == 95:            return "temporalesco"
+    if wmo == 96:            return "temporali con grandine"
+    if wmo == 99:            return "temporali violenti con grandine"
+    return "variabile"
 
 
 def render_analisi_semplice(
@@ -486,6 +490,38 @@ def render_analisi_semplice(
     nome_v = _nome_vento(wind_dir)
     sky    = _wmo_sky(wmo_dom)
 
+    # Descrizione nuvolosità: evolutiva se i dati orari lo permettono
+    def _cloud_evo_str(hl):
+        if not hl:
+            return None
+        def _avg(lo, hi):
+            vs = [h.get("cloud") for h in hl
+                  if h.get("cloud") is not None and lo <= (h.get("time") or "") < hi]
+            return sum(vs) / len(vs) if vs else None
+        def _lbl(c):
+            if c is None: return None
+            if c < 20: return "sereno"
+            if c < 40: return "poco nuvoloso"
+            if c < 70: return "variabile"
+            if c < 85: return "molto nuvoloso"
+            return "coperto"
+        lm = _lbl(_avg("00:00", "12:00"))
+        la = _lbl(_avg("12:00", "18:00"))
+        le = _lbl(_avg("18:00", "26:00"))
+        if lm == la == le or (lm is None and la is None and le is None):
+            return None
+        parts = []
+        if lm:
+            parts.append(f"{lm} al mattino")
+        if la and la != lm:
+            parts.append(f"{la} nel pomeriggio")
+        if le and le != (la if la else lm):
+            parts.append(f"{le} in serata")
+        return ("Cielo " + ", ".join(parts) + ".") if len(parts) > 1 else None
+
+    sky_evo  = _cloud_evo_str(hourly)
+    sky_line = sky_evo if sky_evo else f"Cielo {sky}."
+
     # ── Frase apertura con cielo e temperatura ────────────────────────────
     if t_max is not None and t_min is not None:
         delta = t_max - t_min
@@ -493,41 +529,41 @@ def render_analisi_semplice(
             lines.append(
                 f"{giorno_label} porta un'ondata di calore eccezionale con temperature "
                 f"massime intorno a {t_max:.0f}°C e minime di {t_min:.0f}°C. "
-                f"Cielo {sky}."
+                + sky_line
             )
         elif t_max >= 32:
             lines.append(
                 f"{giorno_label} si presenta molto caldo: massime attorno a {t_max:.0f}°C, "
-                f"minime di {t_min:.0f}°C. Cielo {sky}."
+                f"minime di {t_min:.0f}°C. " + sky_line
             )
         elif t_max >= 26:
             lines.append(
                 f"Giornata estiva con massime di {t_max:.0f}°C e minime di {t_min:.0f}°C. "
-                f"Cielo {sky}."
+                + sky_line
             )
         elif t_max >= 20:
             lines.append(
                 f"Temperature gradevoli con massima di {t_max:.0f}°C e minima di {t_min:.0f}°C. "
-                f"Cielo {sky}."
+                + sky_line
             )
         elif t_max >= 10:
             lines.append(
                 f"Giornata fresca con massima di {t_max:.0f}°C e minima di {t_min:.0f}°C. "
-                f"Cielo {sky}."
+                + sky_line
             )
         elif t_max >= 2:
             lines.append(
                 f"Giornata fredda con temperature massime di {t_max:.0f}°C. "
                 f"Possibile gelata notturna con minime di {t_min:.0f}°C. "
-                f"Cielo {sky}."
+                + sky_line
             )
         else:
             lines.append(
                 f"Giornata rigida con temperature sotto zero: massima {t_max:.0f}°C, "
-                f"minima {t_min:.0f}°C. Cielo {sky}."
+                f"minima {t_min:.0f}°C. " + sky_line
             )
     else:
-        lines.append(f"{giorno_label}: cielo {sky}.")
+        lines.append(f"{giorno_label}. " + sky_line)
 
     # ── Umidità e afa ─────────────────────────────────────────────────────
     if rh >= 90 and t_max is not None and t_max >= 20:
@@ -615,7 +651,21 @@ def render_analisi_semplice(
         )
     else:
         lines.append("Nessuna precipitazione significativa prevista.")
-
+    # ── Dettaglio orario precipitazioni ───────────────────────────────────────
+    if hourly and r_tot > 0.5:
+        rain_pairs = [(h.get("time", ""), float(h.get("precip") or 0))
+                      for h in hourly if (h.get("precip") or 0) > 0.1]
+        if rain_pairs:
+            pp = max(rain_pairs, key=lambda x: x[1])
+            detail_parts = []
+            if len(rain_pairs) > 1:
+                detail_parts.append(f"Pioggia ore {rain_pairs[0][0]}–{rain_pairs[-1][0]}")
+            else:
+                detail_parts.append(f"Pioggia alle {rain_pairs[0][0]}")
+            detail_parts.append(f"accumulo {r_tot:.1f} mm")
+            if pp[1] > 1.0:
+                detail_parts.append(f"picco {pp[1]:.1f} mm/h alle {pp[0]}")
+            lines.append("; ".join(detail_parts) + ".")
     # ── Vento ─────────────────────────────────────────────────────────────
     if g_max >= 90:
         lines.append(
@@ -645,7 +695,36 @@ def render_analisi_semplice(
         )
     else:
         lines.append("Vento debole o assente, condizioni di calma in mare e a terra.")
-
+    # ── Evoluzione raffiche per fascia oraria ─────────────────────────────────────
+    if hourly:
+        def _mg(lo, hi):
+            return max(
+                (float(h.get("wind_gust") or 0) for h in hourly
+                 if lo <= (h.get("time") or "") < hi),
+                default=0.0,
+            )
+        def _mw(lo, hi):
+            ws = [float(h.get("wind") or 0) for h in hourly
+                  if lo <= (h.get("time") or "") < hi]
+            return sum(ws) / len(ws) if ws else 0.0
+        g_mat = _mg("00:00", "12:00")
+        g_pom = _mg("12:00", "18:00")
+        g_ser = _mg("18:00", "26:00")
+        w_mat = _mw("00:00", "12:00")
+        w_pom = _mw("12:00", "18:00")
+        w_ser = _mw("18:00", "26:00")
+        periods = [(n, gv, wv) for n, gv, wv in [
+            ("mattino",    g_mat, w_mat),
+            ("pomeriggio", g_pom, w_pom),
+            ("serata",     g_ser, w_ser),
+        ] if gv > 5 or wv > 5]
+        if periods:
+            g_vals = [gv for _, gv, _ in periods]
+            if max(g_vals) - min(g_vals) > 20 or (max(g_vals) > 40 and min(g_vals) < 20):
+                evo_parts = [f"{n}: medi {wv:.0f} km/h, raffiche {gv:.0f} km/h"
+                             for n, gv, wv in periods if gv > 10 or wv > 5]
+                if len(evo_parts) > 1:
+                    lines.append("Evoluzione vento: " + "; ".join(evo_parts) + ".")
     # ── Note orografiche ──────────────────────────────────────────────────
     if oro >= 0.6 and (wmo_dom >= 61 or cape >= 800):
         lines.append(
@@ -669,6 +748,7 @@ def build_gemini_prompt_tecnico(
     maltempo_score_val: float,
     giorno_label: str = "oggi",
     is_tendency: bool = False,
+    hourly_table: Optional[str] = None,
 ) -> str:
     """
     Prompt focalizzato per Gemini: genera SOLO la descrizione narrativa
@@ -737,99 +817,15 @@ def build_gemini_prompt_tecnico(
     if extra:
         prompt += "AVVERTENZE SPECIALI:\n" + "\n".join(f"⚠ {e}" for e in extra) + "\n"
 
-    return prompt
-
-
-    # Nuvole basse
-    if obs.get("cloud_low_pct", 0) >= 50:
-        parts.append("alle 19 arriveranno nuvole basse")
-
-    # Precipitazioni
-    if obs.get("precip_rate_mm_h", 0) > 0:
-        start = obs.get("precip_start", "19:00")
-        end = obs.get("precip_end", "21:00")
-        peak = obs.get("precip_peak_mm", obs.get("precip_rate_mm_h"))
-        parts.append(f"Precipitazione dalle {start} alle {end} con picco alle {end} di {peak:.1f} mm")
-
-    # Rischio temporali
-    if score >= 3:
-        parts.append("Rischio di temporali forti tra le 21 e le 02 del giorno dopo")
-
-    # Altri elementi
-    if obs.get("wind_gust_kmh", 0) > 60:
-        parts.append(f"raffiche di vento fino a {obs['wind_gust_kmh']} km/h")
-    if obs.get("heat_index", None):
-        parts.append(f"afa percepita: indice {obs['heat_index']}")
-
-    return ". ".join(parts) + "."
-
-    lines.append(f"Shear 0–6 km: {params.get('shear_0_6',0):.1f} kt")
-    if params.get("srh_0_1", None) is not None:
-        lines.append(f"SRH 0–1 km: {params.get('srh_0_1',0):.1f} m^2/s^2")
-    if params.get("CIN", None) is not None:
-        lines.append(f"CIN: {params.get('CIN',0)} J/kg")
-    if params.get("LCL", None) is not None:
-        lines.append(f"LCL: {params.get('LCL',0):.0f} m")
-    if params.get("PWAT", None) is not None:
-        lines.append(f"PWAT: {params.get('PWAT',0):.1f} mm")
-    if params.get("LI", None) is not None:
-        lines.append(f"Lifted Index: {params.get('LI')}")
-
-    lines.append(f"Modalità convettiva attesa: {mode}")
-
-    # Determinazione meccanismi fisici
-    mech = []
-    # Forcing sinottico
-    if obs.get("front_present", False):
-        mech.append("forzante frontale")
-    if obs.get("low_level_convergence", False):
-        mech.append("convergenza ai bassi livelli")
-    if obs.get("upper_level_tropospheric_vorticity", False):
-        mech.append("vorticità in quota")
-    if mech:
-        lines.append("Meccanismi di innesco: " + ", ".join(mech))
-
-    # Fenomeni possibili
-    lines.append("Fenomeni possibili: " + (", ".join(hazards) if hazards else "nessuno significativo"))
-
-    # Inserire valori numerici chiave in linea
-    numeric = f"Valori chiave: CAPE={params.get('CAPE',0)} J/kg; shear0-6={params.get('shear_0_6',0):.1f} kt; CIN={params.get('CIN',0)} J/kg; PWAT={params.get('PWAT',0):.1f} mm."
-    lines.append(numeric)
-
-    return "\n".join(lines)
-
-def render_section3_objective_table(hourly_list: List[Dict]) -> str:
-    """
-    hourly_list: lista di dict con keys: time,T,RH,wind,precip,CAPE,shear
-    Ritorna CSV-like table stringa.
-    """
-    header = "time,T_C,RH_pct,wind_kmh,precip_mm_h,CAPE_Jkg,shear_kt"
-    rows = [header]
-    for h in hourly_list:
-        rows.append(
-            f"{h.get('time')},{h.get('T',None)},{h.get('RH',None)},{h.get('wind',None)},{h.get('precip',0)},{h.get('CAPE',0)},{h.get('shear',0):.1f}"
+    if hourly_table:
+        prompt += (
+            f"\nTABELLA ORARIA COMPLETA (tutti i parametri ora per ora):\n"
+            f"{hourly_table}\n\n"
+            f"REGOLA CRITICA: usa questa tabella per descrivere l'EVOLUZIONE dei fenomeni "
+            f"indicando gli orari specifici. La giornata NON è uniforme: "
+            f"una raffica alle 16:00 non significa che ha soffiato tutto il giorno; "
+            f"un picco CAPE alle 15:00 non significa instabilità dalla mattina. "
+            f"Descrivi solo ciò che i dati mostrano, ora per ora.\n"
         )
-    return "\n".join(rows)
 
-def build_gemini_prompt(section1: str, section2: str, score: int, params: Dict) -> str:
-    """
-    Costruisce prompt rigoroso per Gemini. Vincoli:
-    - Usa SOLO i testi forniti (section1 e section2).
-    - Se rischio significativo (score >= 3) richiede almeno 200 parole per giornata.
-    - Se rischio trascurabile scrive breve paragrafo.
-    """
-    severity = "significativi" if score >= 3 else "trascurabili"
-    min_words = 200 if score >= 3 else 30
-    prompt = (
-        "USARE SOLO I SEGUENTI TESTI. NON CONSULTARE ALTRE FONTI.\n\n"
-        "SEZIONE 1 PREVISIONE SEMPLICE:\n"
-        f"{section1}\n\n"
-        "SEZIONE 2 ANALISI TECNICA:\n"
-        f"{section2}\n\n"
-        "ISTRUZIONI RIGOROSE:\n"
-        f"- Valuta i rischi per la giornata. Se i rischi sono {severity}, scrivi almeno {min_words} parole per giornata.\n"
-        "- Indica probabilità, intensità attesa, orari critici, meccanismi fisici che portano ai fenomeni, consigli di autoprotezione, incertezza e indicatori di monitoraggio (radar, fulminazioni, accumuli orari).\n"
-        "- Non inventare numeri: riporta solo i valori presenti nelle sezioni 1 e 2.\n"
-        "- Mantieni tono severo e preciso. Output in italiano.\n"
-    )
     return prompt

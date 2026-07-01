@@ -176,7 +176,7 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
             "STP":       obs.get("STP",        None),
         })
 
-    # \u2014 Parametri superficiali sempre presenti
+    # — Parametri superficiali sempre presenti
     params.update({
         "precip_rate_mm_h":  obs.get("precip_rate_mm_h", 0),
         "wind_gust_kmh":     obs.get("wind_gust_kmh",    0),
@@ -187,6 +187,7 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
         "wave_height_m":     obs.get("wave_height_m",    0),
         "snow_level_m":      obs.get("snow_level_m",     2000),
         "rain_24h_mm":       obs.get("rain_24h_mm",      0),
+        "wmo_code":          obs.get("wmo_code",         0),
         "front_present":             obs.get("front_present",             False),
         "low_level_convergence":     obs.get("low_level_convergence",     False),
         "upper_level_tropospheric_vorticity": obs.get(
