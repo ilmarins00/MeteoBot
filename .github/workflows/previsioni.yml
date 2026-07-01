@@ -1,6 +1,7 @@
-name: MeteoBot - Previsioni Meteo AI
+name: MeteoBot - Previsioni Meteo AI (nuovo motore)
 
-# Genera previsioni meteo per il giorno successivo usando Open-Meteo + Google Gemini.
+# Genera previsioni meteo usando il nuovo motore MeteoBot:
+# Open-Meteo → engine.py (CAPE/SRH/SCP/STP/ARPAL) → Gemini → Telegram.
 # Trigger manuale via API (cronjob.org).
 #
 # ── Configurazione cronjob.org ─────────────────────────────────────────────
@@ -28,10 +29,10 @@ jobs:
   previsioni:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -40,9 +41,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Genera e invia previsioni
+      - name: Genera e invia previsioni (nuovo motore)
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python previsioni.py
+        run: python run_previsioni_new.py
