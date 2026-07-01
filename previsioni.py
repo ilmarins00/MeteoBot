@@ -876,7 +876,7 @@ restituirlo. Il rispetto di queste regole è OBBLIGATORIO E NON OPZIONALE.
         }],
         "generationConfig": {
             "temperature": 0.2,
-            "maxOutputTokens": 4096
+            "maxOutputTokens": 16384
         }
     }
     headers = {"Content-Type": "application/json"}
@@ -887,12 +887,12 @@ restituirlo. Il rispetto di queste regole è OBBLIGATORIO E NON OPZIONALE.
                 url = f"{GEMINI_API_BASE}/models/{GEMINI_MODEL_FALLBACK}:generateContent?key={GEMINI_API_KEY}"
                 print(f"  🔄 Tentativo di fallback con il modello {GEMINI_MODEL_FALLBACK}...")
             
-            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            response = requests.post(url, json=payload, headers=headers, timeout=180)
             
             if response.status_code == 429:
                 print("  ⚠ Errore 429 (Quota Exceeded). Attesa di 10 secondi prima del retry...")
                 time.sleep(10)
-                response = requests.post(url, json=payload, headers=headers, timeout=60)
+                response = requests.post(url, json=payload, headers=headers, timeout=180)
                 
             response.raise_for_status()
             res_json = response.json()
