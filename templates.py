@@ -629,9 +629,14 @@ def render_analisi_semplice(
             "disagio per i pedoni, attenzione alla navigazione nel Golfo."
         )
     elif g_max >= 40:
+        area_desc = (
+            "sul promontorio di Portovenere e all'imboccatura del Golfo"
+            if nome_v in ("Libeccio", "Maestrale")
+            else "sulle zone esposte della costa"
+        )
         lines.append(
             f"Vento moderato da {nome_v} con raffiche fino a {g_max:.0f} km/h, "
-            f"in particolare {'sul promontorio di Portovenere e all\'imboccatura del Golfo' if nome_v in ('Libeccio','Maestrale') else 'sulle zone esposte della costa'}."
+            f"in particolare {area_desc}."
         )
     elif w_max >= 15:
         lines.append(
