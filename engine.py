@@ -138,9 +138,11 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
             ), 3
         )
 
-        # SWEAT (se disponibili venti a 850/500 hPa dal profilo)
-        wind_850 = _interp_wind_level(u_prof, v_prof, heights, 1500)
-        wind_500 = _interp_wind_level(u_prof, v_prof, heights, 5500)
+        # SWEAT (solo se il profilo vento è disponibile)
+        wind_850, wind_500 = None, None
+        if u_prof and v_prof and len(u_prof) == len(heights):
+            wind_850 = _interp_wind_level(u_prof, v_prof, heights, 1500)
+            wind_500 = _interp_wind_level(u_prof, v_prof, heights, 5500)
         if wind_850 and wind_500 and params.get("TT"):
             params["SWEAT"] = round(
                 sweat_index(

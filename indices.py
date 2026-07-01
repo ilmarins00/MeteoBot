@@ -33,7 +33,9 @@ def interpolate_wind(
     target_z: float,
 ) -> Tuple[float, float]:
     """Interpolazione lineare vento a quota target_z (m)."""
-    if not heights:
+    if not heights or not u_profile or not v_profile:
+        return 0.0, 0.0
+    if len(u_profile) != len(heights) or len(v_profile) != len(heights):
         return 0.0, 0.0
     if target_z <= heights[0]:
         return u_profile[0], v_profile[0]
