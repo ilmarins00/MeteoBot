@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Previsioni Meteo La Spezia – Generazione automatica con AI e Motore LRO (Soglie ARPAL)
+Previsioni Meteo – Generazione automatica con AI
 """
 import json
 import sys
@@ -9,15 +9,12 @@ import requests
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-# ==============================================================================
-# CONFIGURAZIONE INIZIALE
-# ==============================================================================
-
-from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_IDS, GEMINI_API_KEY, LATITUDE, LONGITUDE
-
-# Alternative coordinates (currently using config.py values)
-# LATITUDE = 44.1025  # La Spezia
-# LONGITUDE = 9.8241  # La Spezia
+from config import (
+    TELEGRAM_TOKEN,
+    TELEGRAM_CHAT_IDS as LISTA_CHAT,
+    GEMINI_API_KEY,
+    LATITUDE, LONGITUDE,
+)
 
 TZ_ROME = ZoneInfo("Europe/Rome")
 LOCATION_NAME = "La Spezia"
@@ -28,38 +25,29 @@ MESI_IT = [
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
 ]
 
-# ==============================================================================
-# VARIABILI METEOROLOGICHE (SUPERFICIE E QUOTA)
-# ==============================================================================
-
 HOURLY_VARS = [
-    # --- Superficie, Termodinamica e Strato Limite ---
+    # Superficie e strato limite
     "temperature_2m", "relative_humidity_2m", "dew_point_2m",
     "apparent_temperature", "wet_bulb_temperature_2m",
-    "precipitation", "rain", "showers", "snowfall", "snow_depth", 
-    "weather_code", "pressure_msl", "surface_pressure", 
-    "cloud_cover", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", 
-    "visibility",
-    
-    # --- Vento al suolo ---
+    "precipitation", "rain", "showers",
+    "snowfall", "snow_depth", "weather_code", "pressure_msl",
+    "surface_pressure", "cloud_cover", "cloud_cover_low",
+    "cloud_cover_mid", "cloud_cover_high", "visibility",
     "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
-    
-    # --- Indici Convettivi e Radiazione ---
     "uv_index", "cape", "lifted_index", "convective_inhibition",
-    "sunshine_duration", "shortwave_radiation", "direct_radiation", 
-    "diffuse_radiation", "direct_normal_irradiance",
+    "sunshine_duration",
+    "shortwave_radiation", "direct_radiation", "diffuse_radiation",
+    "direct_normal_irradiance",
     "freezing_level_height", "vapour_pressure_deficit", "is_day",
     "et0_fao_evapotranspiration",
-    
-    # --- Livelli soprasuolo (Boundary Layer) ---
+    # Livelli soprasuolo (disponibili in AROME; AROME HD non supporta >100 m)
     "temperature_20m", "temperature_50m", "temperature_100m",
     "temperature_150m", "temperature_200m",
     "wind_speed_20m", "wind_speed_50m", "wind_speed_100m",
     "wind_speed_150m", "wind_speed_200m",
     "wind_direction_20m", "wind_direction_50m", "wind_direction_100m",
     "wind_direction_150m", "wind_direction_200m",
-    
-    # --- Livelli di pressione principali (inclusi nel fetch primario) ---
+    # Livelli di pressione principali (inclusi nel fetch primario)
     "temperature_850hPa", "temperature_500hPa",
     "wind_speed_850hPa", "wind_speed_500hPa",
     "wind_direction_850hPa", "wind_direction_500hPa",
@@ -73,6 +61,7 @@ HOURLY_VARS_CORE = [
     "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "is_day",
 ]
 
+# Variabili ai livelli di pressione – fetch supplementare completo per AROME
 PRESSURE_LEVEL_VARS = [
     # Temperatura a tutti i livelli significativi
     "temperature_1000hPa", "temperature_950hPa", "temperature_925hPa",
@@ -130,32 +119,31 @@ MODELS = [
 FALLBACK_MODEL = "icon_eu"
 FALLBACK_MODEL_DISPLAY = "ICON-EU"
 
+# Finestra di richiesta in giorni. Deve superare l'orizzonte nominale
+# del modello per permettere l'inferenza dell'orario di run tramite i null di coda.
 MODEL_HORIZONS = {
-    "meteofrance_arome_france_hd": 3,
-    "meteofrance_arome_france":     3,
-    "icon_eu":                      5,
+    "meteofrance_arome_france_hd": 3,   # 72h richiesti > 51h nominali
+    "meteofrance_arome_france":     3,   # 72h richiesti > 48h nominali
+    "icon_eu":                      5,   # 120h richiesti = orizzonte nominale
 }
 
+# Orizzonti nominali in ore. Usati per inferire run_init:
+#   run_init ≈ last_valid_timestamp − horizon_hours
 MODEL_HORIZONS_HOURS = {
     "meteofrance_arome_france_hd": 51,
     "meteofrance_arome_france":    48,
     "icon_eu":                     120,
 }
 
+# Soglia di obsolescenza. AROME gira ogni 6h con ~3-4h di latenza → 12h margine ok.
 MAX_RUN_AGE_H = 12
+
 MIN_FUTURE_HOURS = 24
 
-GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
-GEMINI_MODEL_PRIMARY = "gemini-3.5-flash" # Aggiornato ai modelli correnti consigliati
-GEMINI_MODEL_FALLBACK = "gemini-3.1-flash-lite"
-
-
-# ==============================================================================
-# FUNZIONI DI UTILITA' E FETCHING
-# ==============================================================================
 
 def format_date_it(dt):
     return f"{GIORNI_IT[dt.weekday()]} {dt.day} {MESI_IT[dt.month - 1]} {dt.year}"
+
 
 def load_ground_conditions(hourly, timestamp_str):
     """Estrae le condizioni attuali (ora 0) direttamente dai dati orari del modello"""
@@ -190,6 +178,7 @@ def load_ground_conditions(hourly, timestamp_str):
 
     return ground if ground else None
 
+
 def _fetch_openmeteo(start_date_str, end_date_str, model_name, hourly_vars):
     params = {
         "latitude": LATITUDE,
@@ -210,6 +199,7 @@ def _fetch_openmeteo(start_date_str, end_date_str, model_name, hourly_vars):
         raise ValueError(data.get("reason", "Errore sconosciuto Open-Meteo"))
     return data
 
+
 def _strip_null_vars(data):
     hourly = data.get("hourly", {})
     keys_to_remove = []
@@ -224,7 +214,10 @@ def _strip_null_vars(data):
         print(f"  ⚠ Rimosse {len(keys_to_remove)} variabili senza dati")
     return data
 
+
 def _fetch_pressure_levels(start_date_str, end_date_str, model_name=None):
+    """Scarica variabili ai livelli di pressione dal modello indicato.
+    Se model_name è None, usa il best-match di Open-Meteo."""
     try:
         params = {
             "latitude": LATITUDE,
@@ -259,6 +252,10 @@ def _fetch_pressure_levels(start_date_str, end_date_str, model_name=None):
         return {}
 
 def _fetch_fallback_vars(start_date_str, end_date_str, missing_vars):
+    """Scarica SOLO le variabili mancanti dal modello primario, usando
+    ICON-EU come riserva. Restituisce (dict_variabili, lista_timestamp)
+    per permettere l'allineamento temporale con la serie principale,
+    dato che gli orizzonti dei due modelli possono differire."""
     if not missing_vars:
         return {}, []
     try:
@@ -290,7 +287,23 @@ def _fetch_fallback_vars(start_date_str, end_date_str, missing_vars):
         print(f"  ⚠ Errore fetch fallback {FALLBACK_MODEL_DISPLAY}: {e}")
         return {}, []
 
+
 def check_data_freshness(data, model_api_name, model_display, now):
+    """
+    Inferisce l'orario di inizializzazione della run NWP dall'ultimo timestamp
+    non-null di temperature_2m, poi verifica che la run non sia obsoleta.
+
+    Principio: la finestra richiesta (MODEL_HORIZONS in giorni) è volutamente
+    più larga dell'orizzonte nominale del modello (MODEL_HORIZONS_HOURS).
+    Le ore oltre il cutoff reale della run tornano come None in temperature_2m.
+    L'ultimo indice non-null è la fine effettiva della previsione; da lì:
+
+        run_init ≈ last_valid_timestamp − orizzonte_nominale_ore
+
+    Se (now − run_init) > MAX_RUN_AGE_H la run è considerata obsoleta.
+
+    Restituisce (ok: bool, messaggio: str).
+    """
     hourly = data.get("hourly", {})
     times = hourly.get("time", [])
     if not times:
@@ -300,6 +313,7 @@ def check_data_freshness(data, model_api_name, model_display, now):
     if not temps:
         return False, "temperature_2m non disponibile, impossibile verificare freshness"
 
+    # Trova l'ultimo indice con valore non-null
     last_valid_idx = None
     for i in range(len(temps) - 1, -1, -1):
         if temps[i] is not None:
@@ -346,7 +360,10 @@ def check_data_freshness(data, model_api_name, model_display, now):
         f"copertura futura {hours_ahead:.0f}h (fino a {times[last_valid_idx]})"
     )
 
+
 def fetch_forecast_data(start_date):
+    """Scarica dati da Open-Meteo usando l'orizzonte massimo per ogni modello.
+    Restituisce (data, model_api_name, model_display_name)."""
     start_str = start_date.strftime("%Y-%m-%d")
 
     for model_name, display, max_retries in MODELS:
@@ -380,6 +397,9 @@ def fetch_forecast_data(start_date):
                         if key not in hourly:
                             hourly[key] = vals
 
+                # Integra da ICON-EU SOLO le variabili ancora mancanti dopo AROME,
+                # senza toccare quelle già disponibili. Non eseguire se il modello
+                # primario è già ICON-EU, per evitare un fetch ridondante.
                 hourly = data.get("hourly", {})
                 if model_name != FALLBACK_MODEL:
                     all_expected_vars = set(HOURLY_VARS) | set(PRESSURE_LEVEL_VARS)
@@ -393,18 +413,10 @@ def fetch_forecast_data(start_date):
                             time_index = {t: i for i, t in enumerate(fb_times)}
                             added = []
                             for key, vals in fb_vars.items():
-                                aligned = []
-                                for t in arome_times:
-                                    if t in time_index:
-                                        idx_fb = time_index[t]
-                                        # Verifica rigida dell'indice per evitare IndexError
-                                        if idx_fb < len(vals):
-                                            aligned.append(vals[idx_fb])
-                                        else:
-                                            aligned.append(None)
-                                    else:
-                                        aligned.append(None)
-                                
+                                aligned = [
+                                    vals[time_index[t]] if t in time_index and time_index[t] < len(vals) else None
+                                    for t in arome_times
+                                ]
                                 if any(v is not None for v in aligned):
                                     hourly[key] = aligned
                                     added.append(key)
@@ -424,617 +436,474 @@ def fetch_forecast_data(start_date):
 
     raise RuntimeError("Impossibile ottenere dati meteo da nessun modello Open-Meteo")
 
-# --- FINE PRIMA PARTE ---
 
-# ==============================================================================
-# MOTORE MATEMATICO - CALCOLO INDICE RISCHIO OGGETTIVO (LRO) E SOGLIE ARPAL
-# ==============================================================================
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-def _calcola_lro_pioggia(precipitazioni_orarie):
-    """
-    Calcola il contributo pioggia (max 1.5).
-    Sotto i 6 mm/h senza persistenza: 0.
-    Eccezione persistenza (stratiforme): 5 mm/h ma prolungata -> 0.5 - 1.
-    Intensità >= 6 mm/h: da 0.5 a 1.5.
-    """
-    if not precipitazioni_orarie or all(p is None for p in precipitazioni_orarie):
-        return 0.0
+SYSTEM_PROMPT = f"""Sei un meteorologo professionista italiano. Ricevi dati meteo orari e giornalieri per {LOCATION_NAME} e devi scrivere le previsioni per il periodo indicato.
+I dati coprono le ore rimanenti della giornata corrente e i giorni successivi fino all'orizzonte del modello (tipicamente 2-3 giorni).
 
-    p_valide = [p for p in precipitazioni_orarie if p is not None]
-    max_oraria = max(p_valide) if p_valide else 0
-    cumulata_tot = sum(p_valide)
-    
-    # Calcolo persistenza: ore consecutive con pioggia > 2 mm/h
-    ore_consecutive = 0
-    max_consecutive = 0
-    for p in p_valide:
-        if p >= 2.0:
-            ore_consecutive += 1
-            if ore_consecutive > max_consecutive:
-                max_consecutive = ore_consecutive
-        else:
-            ore_consecutive = 0
+Il tuo output DEVE contenere QUATTRO sezioni separate dai marcatori "---SEZIONE TECNICA---", "---SEZIONE INDICE---", "---SEZIONE RISCHI---" (esattamente così, ciascuno su una riga a sé).
 
-    punteggio = 0.0
+═══ PRIMA SEZIONE: PREVISIONI SEMPLICI ═══
 
-    # Valutazione intensità di picco
-    if max_oraria >= 30.0:
-        punteggio = max(punteggio, 1.5)
-    elif max_oraria >= 20.0:
-        punteggio = max(punteggio, 1.0)
-    elif max_oraria >= 6.0:
-        punteggio = max(punteggio, 0.5)
+Scrivi un testo CONCISO in un UNICO BLOCCO CONTINUO senza andare a capo, comprensibile da chiunque. La lunghezza deve essere proporzionale al numero di giorni coperti: circa 600-800 caratteri per un giorno, fino a 1500 caratteri per tre giorni.
 
-    # Valutazione persistenza stratiforme (tipica ligure/scirocco)
-    if max_consecutive >= 6 and cumulata_tot >= 40.0:
-        punteggio = max(punteggio, 1.0)
-    elif max_consecutive >= 3 and cumulata_tot >= 15.0:
-        punteggio = max(punteggio, 0.5)
+Struttura:
+- Inizia con "Previsioni per {LOCATION_NAME}, [periodo coperto dai dati]."
+- Per le ore rimanenti di oggi: descrivi brevemente cosa aspettarsi.
+- Per ciascun giorno successivo presente nei dati: descrivi in sequenza le 4 fasce orarie (notte, mattina, pomeriggio, sera) in modo sintetico: cielo, temperature min/max, vento e precipitazioni solo se presenti. Indica alba e tramonto. OGNI fenomeno significativo (inizio/fine pioggia, aumento o diminuzione nuvolosità, rotazione o rinforzo del vento, raffiche) DEVE riportare l'orario o l'intervallo orario preciso desunto dai dati (es. "tra le 19:00 e le 20:00", "a partire dalle 11:00"), invece di formulazioni vaghe come "in serata" o "nel pomeriggio" usate da sole. Se i dati coprono solo una parte della giornata, descrivi solo le ore disponibili.
+- Concludi con una frase riepilogativa sull'intero periodo.
 
-    return min(punteggio, 1.5)
+Regole:
+- Temperature arrotondate a un decimale. Precipitazioni in mm. Vento in km/h con direzione cardinale.
+- Nuvolosità a parole: sereno, poco nuvoloso, parzialmente nuvoloso, nuvoloso, molto nuvoloso, coperto.
+- NON usare emoji. NON usare formattazione Markdown. Sii sintetico ma completo.
+- Se nel testo citi avvisi o segnalazioni, indica SOLO il tipo di fenomeno SENZA valori numerici tra parentesi (es. scrivi "pioggia forte" e NON "pioggia forte (14 mm/h)").
 
-def _calcola_lro_temporali(cape_orario, rh_orario, vento_dir_orario, pioggia_oraria):
-    """
-    Calcola contributo temporali convettivi (max 1.5).
-    Considera le specificità liguri (ARPAL): CAPE 300-800 J/kg è sufficiente 
-    se combinato con elevata umidità e convergenze/pioggia.
-    """
-    if not cape_orario or all(c is None for c in cape_orario):
-        return 0.0
+═══ SECONDA SEZIONE: ANALISI TECNICA ═══
 
-    punteggio = 0.0
-    
-    for i in range(len(cape_orario)):
-        cape = cape_orario[i] or 0
-        rh = rh_orario[i] or 0
-        pioggia = pioggia_oraria[i] or 0
-        
-        # Verifica forzanti (umidità alta e precipitazione in atto)
-        forzante_attiva = (rh >= 80 and pioggia >= 2.0)
-        
-        if forzante_attiva:
-            if cape >= 1500:
-                punteggio = max(punteggio, 1.5)
-            elif cape >= 800:
-                punteggio = max(punteggio, 1.0)
-            elif cape >= 300: # Soglia ligure abbassata
-                punteggio = max(punteggio, 0.5)
-        else:
-            # Se il CAPE è alto ma isolato, senza forzanti dinamiche/umidità
-            if cape >= 2000:
-                punteggio = max(punteggio, 0.5) # Rischio potenziale ma inespresso
-                
-    return min(punteggio, 1.5)
+Dopo il marcatore "---SEZIONE TECNICA---", scrivi un'analisi meteorologica tecnica dettagliata, anche questa in formato testo continuo (un unico blocco senza andare a capo). Questa sezione è rivolta a un appassionato di meteorologia e deve includere:
 
-def _calcola_lro_vento(raffiche_orarie):
-    """
-    Calcola contributo vento (max 1.5).
-    Sotto 60: 0 | 60-70: 0.5 | 70-80: 1.0 | >80: 1.5
-    """
-    if not raffiche_orarie or all(r is None for r in raffiche_orarie):
-        return 0.0
+- Temperature ai diversi livelli di pressione disponibili (925, 850, 700, 500, 300 hPa) con le relative variazioni nel corso della giornata.
+- Venti in quota (850, 500, 300 hPa): velocità, direzione e eventuali variazioni significative che indicano avvezione calda/fredda o rotazione.
+- Altezze geopotenziali (1000, 850, 700, 500, 300 hPa) e spessori derivati (es. 500-1000 hPa) con implicazioni per la massa d'aria.
+- Analisi termodinamica: CAPE (J/kg), Lifted Index, CIN (Convective Inhibition). Se CAPE > 0 commenta il potenziale convettivo; se Lifted Index < 0 il grado di instabilità.
+- Livello dello zero termico (freezing level height) e implicazioni per neve/pioggia.
+- Umidità relativa ai vari livelli e implicazioni per la formazione di nubi a diverse quote.
+- Gradiente termico verticale (differenza temperatura tra livelli) per valutare stabilità/instabilità.
+- Deficit di pressione di vapore (VPD) e implicazioni per evapotraspirazione.
+- Se ci sono dati di radiazione: analisi radiativa breve.
 
-    max_gust = max(r for r in raffiche_orarie if r is not None)
-    
-    if max_gust >= 80: return 1.5
-    if max_gust >= 70: return 1.0
-    if max_gust >= 60: return 0.5
-    return 0.0
+Usa terminologia tecnica appropriata (avvezione, gradiente adiabatico, baroclinia, etc.) ma rimani comprensibile per un appassionato. Cita TUTTI i dati.
 
-def _calcola_lro_caldo(t_max_giornaliera):
-    """
-    Calcola contributo caldo (max 1.5).
-    <34: 0 | >=34: 0.5 | >=36: 1.0 | >=38: 1.5
-    """
-    if t_max_giornaliera is None:
-        return 0.0
-        
-    if t_max_giornaliera >= 38: return 1.5
-    if t_max_giornaliera >= 36: return 1.0
-    if t_max_giornaliera >= 34: return 0.5
-    return 0.0
+═══ TERZA SEZIONE: INDICE DI RISCHIO OGGETTIVO (LRO) ═══
 
-def _calcola_lro_afa(temp_orarie, rh_orarie, vpd_orarie):
-    """
-    Calcola contributo afa (max 1.5).
-    Condizione base: T >= 27 E RH > 70%.
-    Valutazione tramite combinazione con VPD (Vapour Pressure Deficit).
-    """
-    if not temp_orarie or all(t is None for t in temp_orarie):
-        return 0.0
+Dopo il marcatore "---SEZIONE INDICE---", per CIASCUN GIORNO presente nei dati (incluse le ore restanti di oggi se rilevanti) calcola un UNICO Indice di Rischio Oggettivo (LRO) su scala 0-5, ottenuto come somma di contributi parziali. Il calcolo NON è discorsivo né soggettivo: applica RIGOROSAMENTE le soglie sottostanti ai dati ricevuti. Stessi dati devono sempre produrre lo stesso LRO.
 
-    punteggio = 0.0
-    
-    for i in range(len(temp_orarie)):
-        t = temp_orarie[i] or 0
-        rh = rh_orarie[i] or 0
-        vpd = vpd_orarie[i] if (vpd_orarie and i < len(vpd_orarie) and vpd_orarie[i] is not None) else 1.0
-        
-        if t >= 27.0 and rh > 70.0:
-            # Afa presente, calcoliamo la gravità
-            if rh >= 85.0 or vpd <= 0.5:
-                punteggio = max(punteggio, 1.5) # Molto marcato (saturazione vicina)
-            elif rh >= 75.0 or vpd <= 0.8:
-                punteggio = max(punteggio, 1.0) # Marcato
-            else:
-                punteggio = max(punteggio, 0.5) # Moderato
-                
-    return min(punteggio, 1.5)
+Ogni contributo parziale va da 0 a un MASSIMO di 1.5 punti, con incrementi possibili di 0.5 (es. 0, 0.5, 1, 1.5). Sotto la soglia minima indicata, il contributo è SEMPRE 0 e quel fattore non entra nel calcolo. Il LRO finale è la somma dei contributi parziali; se la somma supera 5, il LRO si ferma a 5.
 
-def calcola_lro_giornaliero(dati_orari, dati_giornalieri, data_target_str):
-    """
-    Raccoglie i dati orari di un singolo giorno e calcola l'indice LRO completo.
-    Versione ultra-protetta contro disallineamenti di liste e IndexError.
-    """
-    times = dati_orari.get("time", [])
-    
-    # Trova gli indici delle ore che appartengono alla giornata target
-    indici_giorno = [i for i, t in enumerate(times) if t.startswith(data_target_str)]
-    
-    if not indici_giorno:
-        return None
-        
-    # Funzione interna ultra-sicura: estrae ESATTAMENTE i 24 valori (o meno) di quel giorno
-    def estrai_sicuro(chiave):
-        arr = dati_orari.get(chiave, [])
-        risultato = []
-        for i in indici_giorno:
-            if i < len(arr) and arr[i] is not None:
-                risultato.append(arr[i])
-            else:
-                risultato.append(0.0) # Valore neutro di fallback se manca il dato orario
-        return risultato
+CONTRIBUTO PIOGGIA (max 1.5):
+- Sotto i 6 mm/h E senza persistenza: contributo 0, indipendentemente dal totale giornaliero.
+- Eccezione persistenza: intensità anche moderata (es. attorno a 5 mm/h) ma estesa su più ore consecutive (stratiforme, scirocco): contributo 0.5-1, crescente con la durata.
+- Intensità ≥6 mm/h: contributo a partire da 0.5, crescente con intensità e durata fino al massimo 1.5 per eventi ≥20-30 mm/h o cumulate elevate persistenti.
 
-    pioggia = estrai_sicuro("precipitation")
-    cape = estrai_sicuro("cape")
-    rh = estrai_sicuro("relative_humidity_2m")
-    vento_dir = estrai_sicuro("wind_direction_10m")
-    raffiche = estrai_sicuro("wind_gusts_10m")
-    temp = estrai_sicuro("temperature_2m")
-    vpd = estrai_sicuro("vapour_pressure_deficit")
-    
-    # Calcolo della temperatura massima del giorno in modo sicuro
-    t_max = max(temp) if temp else 0.0
+CONTRIBUTO TEMPORALI (max 1.5):
+- CAPE inferiore a 1000 J/kg: contributo 0, anche se >0, perché da solo non è significativo in questo contesto.
+- CAPE ≥1000 J/kg: contribuisce SOLO se sono presenti e collaborano altre forzanti dinamiche (wind shear marcato, convergenza al suolo, fronte in transito, umidità satura/dew point elevato, downburst osservato o probabile). Se il CAPE è alto ma isolato, senza forzanti dinamiche concomitanti, contributo 0.
+- Quando CAPE e forzanti collaborano: contributo crescente da 0.5 (caso moderato) fino a 1.5 (caso con shear forte, convergenza netta, raffiche da downburst probabili).
 
-    # Calcolo dei punteggi parziali passandogli le liste pulite e della stessa identica lunghezza
-    score_pioggia = _calcola_lro_pioggia(pioggia)
-    score_temporali = _calcola_lro_temporali(cape, rh, vento_dir, pioggia)
-    score_vento = _calcola_lro_vento(raffiche)
-    score_caldo = _calcola_lro_caldo(t_max)
-    score_afa = _calcola_lro_afa(temp, rh, vpd)
-    
-    totale_grezzo = score_pioggia + score_temporali + score_vento + score_caldo + score_afa
-    lro_totale = min(totale_grezzo, 5.0)
+CONTRIBUTO VENTO (max 1.5):
+- Raffiche al suolo inferiori a 60 km/h: contributo 0.
+- 60-70 km/h: contributo 0.5.
+- 70-80 km/h: contributo 1.
+- Oltre 80 km/h: contributo 1.5.
 
-    # Formattazione stringa per il bollettino
-    try:
-        dt_obj = datetime.strptime(data_target_str, "%Y-%m-%d")
-        data_formattata = dt_obj.strftime("%d/%m/%Y")
-    except Exception:
-        data_formattata = data_target_str
-    
-    blocco_testo = (
-        f"[📅{data_formattata}]\n"
-        f"❗️PUNTEGGIO: {lro_totale:.1f}/5\n\n"
-        f"🌧Pioggia: {score_pioggia:.1f}/1.5\n"
-        f"🌩Temporali: {score_temporali:.1f}/1.5\n"
-        f"🍃Vento: {score_vento:.1f}/1.5\n"
-        f"🔥Caldo: {score_caldo:.1f}/1.5\n"
-        f"🥵Afa: {score_afa:.1f}/1.5\n"
-    )
+CONTRIBUTO CALDO (max 1.5):
+- Temperatura massima inferiore a 34°C: contributo 0.
+- Da 34°C: contributo 0.5.
+- Da 36°C: contributo 1.
+- Da 38°C: contributo 1.5.
 
-    return {
-        "totale": lro_totale,
-        "testo_formattato": blocco_testo
-    }
+CONTRIBUTO AFA (max 1.5):
+- Contribuisce SOLO se temperatura ≥27°C E umidità relativa >70% contemporaneamente. Altrimenti contributo 0.
+- Disagio moderato (dew point elevato, VPD ridotto): contributo 0.5.
+- Disagio marcato: contributo 1.
+- Disagio molto marcato (dew point molto elevato, VPD molto basso, saturazione quasi completa): contributo 1.5.
 
-# --- FINE SECONDA PARTE ---
 
-# ==============================================================================
-# SERIALIZZAZIONE DATI E CHIAMATA API GEMINI
-# ==============================================================================
+REGOLA DI OUTPUT — IMPORTANTE:
+NON scrivere la metodologia, le soglie o spiegazioni di come funziona il sistema di calcolo. L'utente NON deve leggere la logica, solo il risultato.
 
-def prepara_compendio_orario(dati_orari, giorni_validi):
-    """
-    Raccoglie e compatta i dati orari significativi per i giorni analizzati.
-    Questo evita di inviare dump json grezzi giganteschi a Gemini, prevenendo i 502/429.
-    """
-    compendio = []
-    times = dati_orari.get("time", [])
-    
-    # Funzione interna protetta contro IndexError e chiavi mancanti
-    def get_val(chiave, index):
-        arr = dati_orari.get(chiave)
-        if arr and isinstance(arr, list) and index < len(arr):
-            return arr[index]
-        return None
+ECCEZIONE ALLA REGOLA GENERALE SULLE EMOJI: SOLO in questa sezione (---SEZIONE INDICE---) è OBBLIGATORIO usare le emoji indicate sotto, esattamente come specificato, in deroga alla regola generale "NON usare emoji" che resta valida per tutte le altre sezioni.
 
-    for g_str in giorni_validi:
-        indici = [i for i, t in enumerate(times) if t.startswith(g_str)]
-        if not indici:
-            continue
-            
-        g_data = {"data": g_str, "ore": []}
-        
-        for idx in indici:
-            ora_completa = times[idx]
-            ora_h = ora_completa.split("T")[1][:5] if "T" in ora_completa else ora_completa
-            
-            # Estrazione parametri principali e di quota sicura
-            orario_info = {
-                "ora": ora_h,
-                "t2m": get_val("temperature_2m", idx),
-                "rh2m": get_val("relative_humidity_2m", idx),
-                "prec": get_val("precipitation", idx),
-                "w_code": get_val("weather_code", idx),
-                "gust": get_val("wind_gusts_10m", idx),
-                "wind_spd": get_val("wind_speed_10m", idx),
-                "wind_dir": get_val("wind_direction_10m", idx),
-                "cape": get_val("cape", idx),
-                "cin": get_val("convective_inhibition", idx),
-                "li": get_val("lifted_index", idx),
-                # Dati verticali termodinamici
-                "t850": get_val("temperature_850hPa", idx),
-                "t500": get_val("temperature_500hPa", idx),
-                "gh500": get_val("geopotential_height_500hPa", idx),
-                "rh700": get_val("relative_humidity_700hPa", idx),
-            }
-            g_data["ore"].append(orario_info)
-            
-        compendio.append(g_data)
-        
-    return compendio
+Per ciascun giorno presente nei dati, riporta ESATTAMENTE in questo formato, senza markdown, senza testo aggiuntivo, senza spiegazioni:
 
-def interroga_gemini(modello_display, compendio_dati, lro_testo_collettivo, ground_info):
-    """
-    Costruisce l'architettura del super-prompt e interroga l'API di Gemini.
-    """
-    if not GEMINI_API_KEY or GEMINI_API_KEY == "LA_TUA_GEMINI_API_KEY":
-        print("  ⚠ API Key di Gemini non configurata. Salto la generazione del testo.")
-        return None
+[📅Giorno/Mese/Anno]
+❗️PUNTEGGIO: X/5
 
-    giorni_presenti = [g.get("data") for g in compendio_dati if g.get("data")]
-    elenco_giorni_str = ", ".join(giorni_presenti) if giorni_presenti else "N/D"
-    n_giorni = len(giorni_presenti) if giorni_presenti else 0
+🌧Pioggia: A/1.5
+🌩Temporali: B/1.5
+🍃Vento: C/1.5
+🔥Caldo: D/1.5
+🥵Afa: E/1.5
 
-    righe_disponibilita = []
-    for g in compendio_dati:
-        n_ore = len(g.get("ore", []))
-        righe_disponibilita.append(f"- {g.get('data')}: {n_ore} ore di dati disponibili")
-    disponibilita_str = "\n".join(righe_disponibilita) if righe_disponibilita else "N/D"
+Lascia ESATTAMENTE 3 righe vuote tra un giorno e il successivo. Non aggiungere intestazioni, non aggiungere commenti, non aggiungere unità di misura diverse da quelle indicate, non aggiungere alcuna frase prima o dopo il blocco.
 
-    # Strutturazione del prompt con le 4 macro-aree richieste
-    prompt = f"""
-Sei un meteorologo professionista esperto del territorio della Liguria e in particolare della provincia di La Spezia (caratterizzata da microclimi complessi, interazioni sciroccali, convergenze nel Golfo e sollevamento orografico appenninico).
- 
-Analizza i seguenti dati tecnici strutturati e genera un bollettino previsionale rigoroso ed esaustivo, seguendo TASSATIVAMENTE E SENZA ALCUNA ECCEZIONE la struttura indicata sotto. Questo prompt contiene REGOLE VINCOLANTI DI FORMATO E LUNGHEZZA che devono essere rispettate ALLA LETTERA, non in modo approssimativo o parziale.
- 
-DATI TECNICI DI COMPENDIO (ORARI E QUOTA):
-{json.dumps(compendio_dati, indent=2)}
- 
-INFORMAZIONI INIZIALI AL SUOLO (ORA 0):
-{json.dumps(ground_info, indent=2)}
- 
-INDICI DI RISCHIO OGGETTIVO (LRO) CALCOLATI MATEMATICAMENTE:
-{lro_testo_collettivo}
- 
-Modello meteorologico di riferimento utilizzato per il fetching: {modello_display}
- 
-GIORNI DA COPRIRE OBBLIGATORIAMENTE (nessuno escluso, nessuno aggiunto, nessuno unito ad altri):
-{elenco_giorni_str}
-Numero totale di giorni da trattare: {n_giorni}
- 
-DISPONIBILITÀ ORARIA DI DATI PER GIORNO (usa questa tabella per decidere quanto puoi essere dettagliato):
-{disponibilita_str}
- 
----
- 
-═══════════════════════════════════════════════════════════════
-REGOLE GENERALI DI COMPILAZIONE — LEGGERE CON MASSIMA ATTENZIONE
-═══════════════════════════════════════════════════════════════
- 
-1. STRUTTURA OBBLIGATORIA IN 4 MACRO-BLOCCHI, IN QUESTO ORDINE ESATTO, SENZA ECCEZIONI:
-   1. PREVISIONI SEMPLICI
-   2. ANALISI TECNICA
-   3. PUNTEGGIO OGGETTIVO
-   4. DESCRIZIONE GIORNALIERA E RISCHI
- 
-   Non è ammesso invertire l'ordine, unire due blocchi, ometterne uno, rinominarli
-   diversamente o aggiungerne di nuovi. Ogni blocco deve iniziare con il suo titolo
-   esattamente come scritto sopra, in maiuscolo, su una riga a sé stante.
- 
-2. DIVIETO ASSOLUTO DI FORMATTAZIONE MARKDOWN: niente asterischi, niente hashtag,
-   niente grassetto, niente corsivo, niente elenchi puntati con simboli speciali,
-   niente blocchi di codice, niente link, niente immagini. Tutto il testo deve essere
-   testo semplice e leggibile, riga per riga.
- 
-3. COPERTURA COMPLETA: DEVI trattare TUTTI E {n_giorni} i giorni elencati sopra
-   ({elenco_giorni_str}), uno per uno, in ciascuno dei blocchi 1 e 4. Non è ammesso
-   saltare un giorno, riassumere due giorni insieme, o tralasciare l'ultimo giorno
-   per mancanza di spazio. Se un giorno ha pochi dati, trattalo comunque, applicando
-   le regole di lunghezza adattiva descritte più sotto.
- 
-4. NON INVENTARE MAI DATI. Attieniti rigorosamente ai valori numerici e fisici
-   forniti nel compendio e nelle informazioni al suolo. Applica la modellistica
-   concettuale ARPAL (es. interazione tra tramontana scura e scirocco, gradienti
-   termici verticali pesanti con aria fredda in quota in estate, tetti
-   termo-igrometrici estivi, convergenze nel Golfo della Spezia).
- 
-═══════════════════════════════════════════════════════════════
-BLOCCO 1 — PREVISIONI SEMPLICI
-═══════════════════════════════════════════════════════════════
- 
-Per CIASCUNO dei {n_giorni} giorni elencati ({elenco_giorni_str}), scrivi un paragrafo
-dedicato e distinto (indica sempre la data all'inizio del paragrafo).
- 
-REGOLA DI LUNGHEZZA VINCOLANTE E NON NEGOZIABILE — "MINIMO ADATTIVO":
-- Se per quel giorno sono disponibili dati orari sufficienti (indicativamente 12 ore
-  o più, controlla la tabella "DISPONIBILITÀ ORARIA DI DATI PER GIORNO" sopra),
-  il paragrafo DEVE contenere ALMENO 200 (duecento) parole. Questo è un minimo
-  assoluto: non è accettabile un paragrafo di 150, 180 o 195 parole quando i dati
-  lo consentono. Conta mentalmente le parole prima di considerare il paragrafo concluso.
-- Se invece per quel giorno i dati orari disponibili sono scarsi o parziali
-  (indicativamente meno di 12 ore, giorno di coda dell'orizzonte previsionale),
-  allora e SOLO ALLORA è ammesso un paragrafo più corto, comunque di ALMENO 50
-  (cinquanta) parole. In questo caso NON è obbligatorio raggiungere le 200 parole:
-  sarebbe un errore forzare dati inesistenti pur di allungare il testo.
-- In nessun caso un paragrafo di previsione semplice può scendere sotto le 50 parole.
-- Non applicare mai il minimo di 200 parole "a forza" gonfiando il testo con ripetizioni
-  o frasi vuote quando i dati non lo giustificano: la regola dei 50 esiste apposta
-  per i giorni con dati insufficienti, USALA quando serve.
- 
-CONTENUTO OBBLIGATORIO DI OGNI PARAGRAFO (quando i dati lo consentono):
-- Evoluzione della copertura nuvolosa nel corso della giornata, con FASCE ORARIE
-  precise (es. "dalle 09:00 alle 12:00", "in serata dopo le 18:00").
-- Se sono previste precipitazioni: indicare CON PRECISIONE l'orario di inizio e fine
-  stimato, l'intensità attesa e il tipo (pioggia, rovescio, temporale).
-- Andamento delle temperature nell'arco della giornata (minima, massima, orario
-  indicativo del picco).
-- Vento: direzione prevalente, intensità media e raffiche, con eventuali variazioni
-  orarie significative.
-- Un linguaggio chiaro, discorsivo, accessibile anche a chi non ha competenze
-  meteorologiche, ma sempre ancorato ai dati numerici forniti.
- 
-═══════════════════════════════════════════════════════════════
-BLOCCO 2 — ANALISI TECNICA
-═══════════════════════════════════════════════════════════════
- 
-Questa sezione deve essere estremamente approfondita, rivolta a un pubblico esperto
-e appassionato di meteorologia sinottica. Per l'intero periodo coperto dai dati,
-analizza in modo rigoroso:
-- La termodinamica della colonna d'aria: CAPE, CIN, Lifted Index, e la loro relazione
-  con la presenza o assenza di forzanti dinamiche al suolo o in quota.
-- Il gradiente termico verticale (differenza T2m meno T500hPa) e il geopotenziale
-  a 500hPa, per stimare la reattività dell'atmosfera.
-- I flussi nei bassi strati (850hPa) e al suolo, per individuare eventuali profili
-  di wind shear o convergenze locali nello spezzino.
-Cita valori numerici concreti tratti dai dati per sostenere ogni affermazione tecnica.
- 
-═══════════════════════════════════════════════════════════════
-BLOCCO 3 — PUNTEGGIO OGGETTIVO
-═══════════════════════════════════════════════════════════════
- 
-Riporta ESATTAMENTE E INTEGRALMENTE, blocco per blocco, senza alcuna modifica,
-riformulazione, arrotondamento o omissione, il testo dei punteggi LRO calcolati
-matematicamente che ti è stato fornito sopra sotto la voce "INDICI DI RISCHIO
-OGGETTIVO (LRO) CALCOLATI MATEMATICAMENTE". NON ricalcolare questi punteggi, NON
-correggerli, NON commentarli in questa sezione: limitati a copiarli fedelmente
-così come sono stati forniti, mantenendo emoji, numeri e struttura originali.
- 
-═══════════════════════════════════════════════════════════════
-BLOCCO 4 — DESCRIZIONE GIORNALIERA E RISCHI
-═══════════════════════════════════════════════════════════════
- 
-Per CIASCUNO dei {n_giorni} giorni elencati ({elenco_giorni_str}), scrivi un paragrafo
-dedicato che indichi la data e descriva ESCLUSIVAMENTE i rischi specifici per il
-territorio spezzino (esempi: rischio idrogeologico per piogge persistenti
-stratiformi, colpi di vento o downburst in caso di fulminazioni associate a lapse
-rate elevati, ondate di calore, disagio bioclimatico da afa intensa in base alle
-soglie di umidità, mareggiate, rischio idraulico nei torrenti minori).
- 
-REGOLA DI LUNGHEZZA VINCOLANTE PER QUESTO BLOCCO:
-- Se per quel giorno sono presenti rischi reali e significativi secondo i dati e
-  gli indici LRO forniti, il paragrafo dedicato a quel giorno DEVE contenere ALMENO
-  100 (cento) parole, e DEVE specificare TUTTI i rischi individuati, uno per uno,
-  motivandoli con i dati (non limitarti a nominarli, spiega il meccanismo fisico
-  e le fasce orarie o zone più esposte).
-- Se per quel giorno NON sono presenti rischi significativi, oppure i rischi
-  presenti sono talmente minimi da non meritare approfondimento, allora NON devi
-  in alcun modo forzare un testo di 100 parole inventando rischi inesistenti o
-  irrilevanti. In questo caso, e SOLO in questo caso, il paragrafo per quel giorno
-  deve limitarsi ESATTAMENTE alla frase seguente, senza aggiunte, senza premesse
-  e senza commenti ulteriori:
-  "NESSUN RISCHIO SIGNIFICATIVO POSSIBILE PREVISTO"
-- Non è ammesso un testo intermedio ambiguo (es. "rischi minimi ma comunque
-  presenti" seguito da poche parole): o si applica la regola delle 100 parole con
-  TUTTI i rischi elencati e spiegati, o si usa la frase fissa sopra indicata. Non
-  esistono vie di mezzo.
- 
-═══════════════════════════════════════════════════════════════
-VERIFICA FINALE OBBLIGATORIA PRIMA DI CONSEGNARE LA RISPOSTA
-═══════════════════════════════════════════════════════════════
- 
-Prima di produrre la risposta definitiva, controlla internamente, per ogni singolo
-giorno tra {elenco_giorni_str}, che:
-- il paragrafo nel blocco PREVISIONI SEMPLICI rispetti la soglia di parole
-  applicabile (200 se dati sufficienti, altrimenti almeno 50);
-- il paragrafo nel blocco DESCRIZIONE GIORNALIERA E RISCHI rispetti la regola
-  delle 100 parole con tutti i rischi elencati, oppure contenga esclusivamente
-  la frase fissa "NESSUN RISCHIO SIGNIFICATIVO POSSIBILE PREVISTO";
-- tutti e 4 i blocchi siano presenti, nell'ordine corretto, con i titoli esatti;
-- non sia stato usato alcun simbolo di formattazione Markdown.
-Se anche un solo giorno non rispetta queste regole, correggi il testo prima di
-restituirlo. Il rispetto di queste regole è OBBLIGATORIO E NON OPZIONALE.
+═══ QUARTA SEZIONE: VALUTAZIONE RISCHI ═══
+
+Dopo il marcatore "---SEZIONE RISCHI---", scrivi una valutazione dei possibili rischi meteorologici.
+
+DEVI iniziare la sezione con ESATTAMENTE una di queste quattro righe (senza virgolette), a seconda del livello di rischio che emerge dai dati:
+- VERDE se non ci sono rischi significativi
+- GIALLO se c'è un possibile rischio locale o moderato
+- ARANCIONE se c'è un rischio probabile
+- ROSSO se il rischio è molto probabile o severo
+
+═══ SOGLIE ARPAL – APPLICAZIONE OBBLIGATORIA E NON NEGOZIABILE ═══
+
+Ho preparato questo testo per quando riguarda le soglie dei rischi, seguilo ATTENTAMENTE:
+
+Per costruire una valutazione dei rischi che sia davvero realistica per il territorio ligure, e in particolare per l’area spezzina, non è necessario ragionare per soglie isolate e rigide, ma per combinazioni di parametri che descrivono il tipo di fenomeno in atto. In Liguria, infatti, il rischio non dipende quasi mai da un solo valore (ad esempio mm/h), ma dal modo in cui più fattori si sovrappongono nello stesso intervallo temporale. Il primo passaggio fondamentale è distinguere tra due scenari meteorologici completamente diversi, perché generano rischi differenti pur con quantitativi di pioggia simili. Da un lato ci sono i temporali convettivi, dall’altro le piogge stratiformi persistenti legate a flussi umidi meridionali. Nel caso dei temporali convettivi, i parametri chiave sono l’energia disponibile (CAPE), l’intensità oraria della precipitazione e la presenza di convergenze o forzanti locali. Qui il rischio nasce dalla rapidità: anche 20–30 mm in un’ora possono creare criticità, soprattutto nei piccoli bacini o in ambito urbano. Se a questo si aggiunge attività elettrica e raffiche di vento, il quadro evolve verso temporali organizzati, anche senza accumuli giornalieri estremi. Nel caso delle piogge stratiformi, invece, il meccanismo è opposto. Non conta tanto il picco orario, ma la durata e la continuità. In presenza di flussi da sud o sud-est (scirocco), aria molto umida e precipitazioni diffuse, anche intensità modeste (5–10 mm/h) possono diventare problematiche se persistono per molte ore. Qui il parametro più importante diventa la cumulata su più intervalli temporali: 6 ore, 12 ore e 24 ore. In questo scenario, superare gli 80 mm in 24 ore è già un segnale di attenzione (solo un esempio), ma il vero salto di rischio avviene quando la pioggia continua senza pause e con intensità costante o crescente. È proprio questa tipologia di evento che in Liguria genera spesso le criticità maggiori. Un altro elemento da integrare è il vento, non tanto come rischio a sé stante (salvo casi estremi), ma come indicatore del tipo di sistema in atto. Un rinforzo del vento da sud-est sullo Spezzino è un segnale molto importante: indica richiamo umido marittimo e spesso anticipa o accompagna precipitazioni persistenti. Se le raffiche restano sotto i 50 km/h, il rischio diretto è basso, ma se aumentano oltre i 60–70 km/h iniziano a esserci effetti combinati (mare agitato, difficoltà di deflusso dei corsi d’acqua, maggiore esposizione costiera). Raffiche oltre gli 80 km/h rappresentano già una criticità autonoma. Per quanto riguarda i temporali più organizzati, bisogna considerare la combinazione tra CAPE e struttura del vento. Valori di CAPE tra 300 e 800 J/kg, sono già sufficienti in ambiente ligure se accompagnati da forte umidità e sollevamento forzato. Non servono valori elevatissimi come in pianura: il contesto orografico e marittimo amplifica l’efficienza del sistema. In queste situazioni, anche se le cumulate totali non sono eccezionali, si possono avere rovesci intensi, fulminazioni frequenti e locali criticità. Un punto cruciale è evitare di valutare i parametri in modo isolato. Alcuni esempi pratici aiutano a chiarire il metodo: Se osservi pioggia debole o moderata (5–10 mm/h), ma continua per molte ore, con vento da sud-est e umidità molto alta, il rischio è in crescita anche senza superare soglie orarie elevate. Se invece hai picchi brevi di 20–30 mm/h ma senza persistenza e senza struttura organizzata, il rischio può restare limitato e localizzato. Se compaiono contemporaneamente CAPE significativo, saturazione elevata e precipitazioni in aumento, allora il sistema può evolvere rapidamente verso fenomeni più intensi. Infine, è importante considerare che il sistema di ARPAL è costruito proprio su questa logica integrata: non esiste una singola soglia che determina un’allerta, ma una valutazione complessiva del tipo di evento, della sua durata e della sua distribuzione sul territorio. Seguendo questo metodo, anche senza il dato di saturazione del suolo, puoi ottenere una valutazione molto più vicina alla realtà operativa: meno automatica, ma decisamente più affidabile, soprattutto in un contesto complesso come quello ligure.
+
+REGOLA FERREA:
+Segui ciò che c'è scritto nel testo OBBLIGATORIAMENTE e non devi né drammatizzare né sdrammatizzare ciò che c'è scritto.
+
+DATI INTEGRATIVI disponibili nel prompt:
+- Se presenti i dati termodinamici della stazione (SBCAPE, MUCAPE, bulk_shear, lifted_index): usali per valutare il rischio convettivo. Confrontali con i valori previsti dal modello.
+
+REGOLA FONDAMENTALE SULLA BREVITÀ:
+- Se NON ci sono rischi significativi, scrivi SOLO:
+  VERDE
+  Nessun rischio significativo previsto.
+  E BASTA. Non aggiungere NIENTE altro. NIENTE. Solo quelle due righe.
+
+- Se CI SONO rischi significativi, menziona ESCLUSIVAMENTE i fenomeni rilevanti. NON parlare ASSOLUTAMENTE dei parametri nella norma. Scrivi in modo DISCORSIVO, spiegando il perché del rischio e indicando probabilità approssimative. NON elencare dati grezzi, NON citare valori numerici tra parentesi negli avvisi.
+
+═══ REGOLE GENERALI ═══
+
+- Basati SOLO sui dati numerici forniti, non inventare nulla.
+-NON citare e NON tenere in considerazione ASSOLUTAMENTE il dato dell'API (Saturazione Suolo).
+- Se un dato di quota non è disponibile (null/None), non menzionarlo.
+- Scrivi testi completi, non troncare mai a metà frase.
+- NON usare emoji in nessuna delle quattro sezioni.
+- NON usare formattazione Markdown (no asterischi, no underscore, no backtick).
 """
 
-    url = f"{GEMINI_API_BASE}/models/{GEMINI_MODEL_PRIMARY}:generateContent?key={GEMINI_API_KEY}"
-    payload = {
-        "contents": [{
-            "parts": [{
-                "text": prompt
-            }]
-        }],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 16384
+
+GEMINI_MODEL_PRIMARY = "gemini-3.5-flash"
+GEMINI_MODEL_FALLBACK = "gemini-3-flash-preview"
+
+
+def generate_forecast(weather_data, model_used, date_range_info, api_key, ground_data=None):
+    hourly = weather_data.get("hourly", {})
+    daily = weather_data.get("daily", {})
+
+    user_prompt = (
+        f"Dati meteo per {LOCATION_NAME}. {date_range_info}. "
+        f"Modello meteorologico utilizzato: {model_used}.\n\n"
+        f"DATI ORARI:\n"
+        f"{json.dumps(hourly, indent=2, ensure_ascii=False)}\n\n"
+        f"DATI GIORNALIERI AGGREGATI:\n"
+        f"{json.dumps(daily, indent=2, ensure_ascii=False)}\n\n"
+    )
+
+    if ground_data:
+        user_prompt += (
+            f"CONDIZIONI ATTUALI E TERMODINAMICA (dati estratti dal modello):\n"
+            f"{json.dumps(ground_data, indent=2, ensure_ascii=False)}\n\n"
+        )
+
+    user_prompt += "Scrivi le previsioni seguendo rigorosamente le istruzioni fornite."
+
+    # Prova prima con Gemini 3.1 Pro Preview, poi fallback su 3 Flash Preview
+    models_to_try = [
+        (GEMINI_MODEL_PRIMARY, "3.5 Flash"),
+        (GEMINI_MODEL_FALLBACK, "3 Flash Preview (fallback)"),
+    ]
+
+    for gemini_model, gemini_label in models_to_try:
+        print(f"  Modello Gemini: {gemini_label} ({gemini_model})")
+
+        payload = {
+            "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 12288,
+                "thinkingConfig": {"thinkingLevel": "low"},
+            },
         }
-    }
-    headers = {"Content-Type": "application/json"}
 
-    for modello_chiamata in [GEMINI_MODEL_PRIMARY, GEMINI_MODEL_FALLBACK]:
-        try:
-            if modello_chiamata == GEMINI_MODEL_FALLBACK:
-                url = f"{GEMINI_API_BASE}/models/{GEMINI_MODEL_FALLBACK}:generateContent?key={GEMINI_API_KEY}"
-                print(f"  🔄 Tentativo di fallback con il modello {GEMINI_MODEL_FALLBACK}...")
-            
-            response = requests.post(url, json=payload, headers=headers, timeout=180)
-            
-            if response.status_code == 429:
-                print("  ⚠ Errore 429 (Quota Exceeded). Attesa di 10 secondi prima del retry...")
-                time.sleep(10)
-                response = requests.post(url, json=payload, headers=headers, timeout=180)
-                
-            response.raise_for_status()
-            res_json = response.json()
-            
-            testo_generato = res_json['candidates'][0]['content']['parts'][0]['text']
-            return testo_generato
-            
-        except Exception as e:
-            print(f"  ✗ Errore durante la chiamata a {modello_chiamata}: {e}")
-            if modello_chiamata == GEMINI_MODEL_PRIMARY:
-                continue
-                
-    return "Impossibile generare l'analisi dettagliata tramite le API di Gemini a causa di errori persistenti."
+        url = f"{GEMINI_API_BASE}/models/{gemini_model}:generateContent?key={api_key}"
+        max_retries = 5
+        success = False
+        last_error = None
 
-# --- FINE TERZA PARTE ---
-
-# ==============================================================================
-# INVIO TELEGRAM E FUNZIONE PRINCIPALE (ORCHESTRAZIONE)
-# ==============================================================================
-
-def invia_messaggio_telegram(testo):
-    """
-    Invia il bollettino generato alle chat Telegram impostate.
-    Gestisce in automatico il limite dei 4096 caratteri di Telegram, 
-    spezzando il testo in modo intelligente sui cambi riga.
-    """
-    if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == "IL_TUO_TELEGRAM_TOKEN":
-        print("\n  ⚠ Telegram non configurato. Stampo il bollettino finale a schermo:\n")
-        print(testo)
-        return
-
-    # Margine di sicurezza sotto i 4096 caratteri nominali
-    max_length = 4000
-    parti = []
-
-    # Algoritmo di partizionamento stringa sui newline
-    while len(testo) > max_length:
-        split_idx = testo.rfind("\n", 0, max_length)
-        if split_idx == -1:
-            split_idx = max_length
-        parti.append(testo[:split_idx])
-        testo = testo[split_idx:]
-    parti.append(testo)
-
-    # Ciclo di invio per ogni chat ID registrata
-    for chat_id in TELEGRAM_CHAT_IDS:
-        if chat_id == "LA_TUA_CHAT_ID":
-            continue
-            
-        for idx, parte in enumerate(parti):
-            print(f"  📤 Invio blocco {idx + 1}/{len(parti)} alla chat Telegram {chat_id}...")
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-            payload = {
-                "chat_id": chat_id,
-                "text": parte
-            }
+        for attempt in range(1, max_retries + 1):
             try:
-                resp = requests.post(url, json=payload, timeout=25)
+                resp = requests.post(url, json=payload, timeout=180)
+                if resp.status_code == 429:
+                    print(json.dumps(resp.json(), indent=2))
+
+                # 404 = modello non disponibile → prova il fallback
+                if resp.status_code == 404:
+                    print(f"  ⚠ Modello {gemini_model} non disponibile (404), "
+                          f"provo il fallback...")
+                    last_error = f"404 per {gemini_model}"
+                    break  # esci dal loop dei retry, passa al modello successivo
+
+                # 429 = rate limit → attendi e riprova sullo stesso modello
+                if resp.status_code == 429 and attempt < max_retries:
+                    wait = 30 * (2 ** (attempt - 1))
+                    print(f"  ⚠ Rate limit (429), attendo {wait}s "
+                          f"({attempt}/{max_retries})...")
+                    time.sleep(wait)
+                    continue
+
+                if resp.status_code == 429:
+                    last_error = f"Rate limit persistente su {gemini_model}"
+                    break  # prova il fallback
+
                 resp.raise_for_status()
-            except Exception as e:
-                print(f"  ✗ Errore durante l'invio della parte {idx + 1}: {e}")
-            
-            # Pausa tecnica anti-flooding tra i blocchi di messaggio
-            time.sleep(1.5)
+                success = True
+                break
 
+            except requests.exceptions.Timeout:
+                print(f"  ⚠ Timeout ({attempt}/{max_retries})...")
+                if attempt < max_retries:
+                    time.sleep(5)
+                    continue
+                last_error = f"Timeout su {gemini_model}"
+                break
 
-def main():
-    """
-    Funzione di orchestrazione principale dell'intero script previsionale.
-    """
-    print("====================================================================")
-    print("🚀 AVVIO SISTEMA METEOROLOGICO DI ANALISI AVANZATA - LA SPEZIA")
-    print("====================================================================")
-    
-    now = datetime.now(TZ_ROME)
-    print(f"⏰ Orario locale di esecuzione: {now.strftime('%d/%m/%Y %H:%M:%S')}")
+            except requests.exceptions.RequestException as e:
+                last_error = str(e)
+                if attempt < max_retries:
+                    time.sleep(3)
+                    continue
+                break
 
-    try:
-        # 1. Fetching dinamico dei dati meteo dai modelli (AROME HD / AROME / ICON-EU)
-        data, model_api_name, display_name = fetch_forecast_data(now)
+        if not success:
+            print(f"  ✗ {last_error}")
+            continue  # prova il modello successivo
+
+        result = resp.json()
+
+        candidates = result.get("candidates", [])
+        if not candidates:
+            block_reason = result.get("promptFeedback", {}).get("blockReason", "sconosciuto")
+            print(f"  ✗ Risposta bloccata da Gemini ({block_reason}), provo fallback...")
+            continue
+
+        finish_reason = candidates[0].get("finishReason", "")
+        if finish_reason == "SAFETY":
+            print(f"  ✗ Risposta bloccata per sicurezza, provo fallback...")
+            continue
+        if finish_reason == "MAX_TOKENS":
+            print(f"  ✗ Risposta troncata per limite token, provo fallback...")
+            continue
+
+        text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        if not text:
+            print(f"  ✗ Risposta vuota (finishReason: {finish_reason}), provo fallback...")
+            continue
         
-        # 2. Verifica rigidità temporale e freschezza della run estratta
-        is_fresh, msg_freshness = check_data_freshness(data, model_api_name, display_name, now)
-        print(f"🔍 Controllo Freshness: {msg_freshness}")
-        if not is_fresh:
-            print("  ⚠ Nota: Lo script procede ugualmente, ma la run potrebbe non essere l'ultima disponibile.")
+        required_markers = ["---SEZIONE TECNICA---", "---SEZIONE INDICE---", "---SEZIONE RISCHI---"]
+        missing_markers = [m for m in required_markers if m not in text]
+        if missing_markers:
+            print(f"  ✗ Sezioni mancanti nella risposta: {missing_markers}, provo fallback...")
+            continue
 
-        hourly_data = data.get("hourly", {})
-        daily_data = data.get("daily", {})
-        times = hourly_data.get("time", [])
+        print(f"  ✓ Risposta ottenuta da {gemini_label}")
+        return text.strip(), gemini_model
 
-        if not times:
-            raise ValueError("Dati temporali orari totalmente assenti nel feed Open-Meteo.")
+    return (
+    "Le previsioni automatiche non sono disponibili al momento perché "
+    "il servizio Gemini ha raggiunto temporaneamente il limite di richieste. "
+    "Riproverò automaticamente al prossimo aggiornamento.",
+    "nessun_modello"
+)
 
-        # 3. Estrazione dei giorni reali coperti dal feed, partendo dalla giornata odierna
-        giorni_disponibili = sorted(list(set(t.split("T")[0] for t in times)))
-        oggi_str = now.strftime("%Y-%m-%d")
-        giorni_da_elaborare = [g for g in giorni_disponibili if g >= oggi_str]
 
-        print(f"📅 Giorni totali validi identificati per l'analisi: {', '.join(giorni_da_elaborare)}")
+def send_telegram(text, target_chat_id=None):
+    if not TELEGRAM_TOKEN:
+        print("Telegram non configurato")
+        return False
 
-        # 4. Calcolo dell'Indice di Rischio Oggettivo (LRO) sul motore matematico locale
-        print("📊 Calcolo matematico degli indici LRO basato sulle soglie fisiche...")
-        lro_collettivo_testo = ""
-        for g_str in giorni_da_elaborare:
-            risultato_giornaliero = calcola_lro_giornaliero(hourly_data, daily_data, g_str)
-            if risultato_giornaliero:
-                lro_collettivo_testo += risultato_giornaliero["testo_formattato"] + "\n"
-                lro_collettivo_testo += "---------------------------------------\n"
+    chat_ids = [target_chat_id] if target_chat_id else LISTA_CHAT
+    if not chat_ids:
+        print("Nessun chat_id configurato")
+        return False
 
-        # 5. Estrazione delle condizioni meteo al suolo iniziali (Ora 0)
-        timestamp_iniziale = times[0]
-        ground_info = load_ground_conditions(hourly_data, timestamp_iniziale)
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    any_ok = False
 
-        # 6. Generazione del compendio compatto orario e di quota per ottimizzare i token
-        compendio_compresso = prepara_compendio_orario(hourly_data, giorni_da_elaborare)
-
-        # 7. Interrogazione dell'API di Gemini con inserimento delle 4 macro-aree richieste
-        print("🧠 Interrogazione del modello AI Gemini per l'analisi fisica e strutturata...")
-        bollettino_finale = interroga_gemini(display_name, compendio_compresso, lro_collettivo_testo, ground_info)
-
-        # Meccanismo di Fallback protettivo se Gemini dovesse fallire completamente (errori 502/429 non gestiti)
-        if not bollettino_finale or "Impossibile generare" in bollettino_finale:
-            print("  ✗ Generazione AI fallita. Costruzione automatica del bollettino di emergenza...")
-            bollettino_finale = (
-                f"⚠️ BOLLETTINO DI EMERGENZA (SOLO DATI MATEMATICI LOCALI)\n"
-                f"Modello meteorologico base: {display_name}\n\n"
-                f"I sistemi di intelligenza artificiale hanno restituito un errore di comunicazione. "
-                f"Vengono comunque trasmessi gli indici di rischio calcolati matematicamente dallo script:\n\n"
-                f"{lro_collettivo_testo}"
+    for chat_id in chat_ids:
+        try:
+            resp = requests.post(
+                url,
+                data={"chat_id": chat_id, "text": text},
+                timeout=15,
             )
+            if resp.status_code == 400:
+                print(f"  ⚠ Messaggio troppo lungo per {chat_id} ({len(text)} char)")
+                return False
+            resp.raise_for_status()
+            if resp.json().get("ok"):
+                print(f"✓ Inviato a {chat_id}")
+                any_ok = True
+            else:
+                print(f"✗ Errore per {chat_id}: {resp.json()}")
+        except Exception as e:
+            print(f"✗ Errore invio a {chat_id}: {e}")
 
-        # 8. Smistamento del testo finale alle API di Telegram
-        invia_messaggio_telegram(bollettino_finale)
-        print("\n🏁 [FINE SCRIPT] Procedura completata con successo in tutte le sue componenti.")
+    return any_ok
 
-    except Exception as e:
-        print(f"\n❌ ERRORE CRITICO NON GESTITO: {e}")
+
+def main(target_chat_id=None):
+    print("=" * 50)
+    print("  PREVISIONI METEO – GENERAZIONE AI")
+    print("=" * 50)
+
+    if not GEMINI_API_KEY:
+        print("❌ GEMINI_API_KEY non configurata")
         sys.exit(1)
+
+    now = datetime.now(TZ_ROME)
+    today = now.date()
+    tomorrow = today + timedelta(days=1)
+    today_dt = datetime.combine(today, datetime.min.time()).replace(tzinfo=TZ_ROME)
+    tomorrow_dt = datetime.combine(tomorrow, datetime.min.time()).replace(tzinfo=TZ_ROME)
+
+    print(f"\nOra: {now.strftime('%H:%M')} di {format_date_it(today_dt)}")
+    print(f"Località: {LOCATION_NAME} ({LATITUDE}°N, {LONGITUDE}°E)")
+
+    # 1. Scarica dati meteo
+    print("\n📡 Scaricamento dati Open-Meteo...")
+    weather_data, model_api_name, model_used = fetch_forecast_data(today_dt)
+
+    # 1a. Verifica aggiornamento run NWP e ricava fine effettiva copertura
+    #     (prima del filtro sull'ora corrente, così temperature_2m è ancora
+    #     integro con i null di coda oltre l'orizzonte del modello)
+    print("\n🔍 Verifica aggiornamento run NWP...")
+    fresh_ok, fresh_msg = check_data_freshness(weather_data, model_api_name, model_used, now)
+    if fresh_ok:
+        print(f"  ✓ {fresh_msg}")
+    else:
+        print(f"  ⚠ ATTENZIONE: {fresh_msg}")
+
+    # Ricava la fine effettiva della copertura dall'ultimo valore non-null
+    # di temperature_2m — questo è il vero orizzonte della run scaricata
+    _temps_raw = weather_data.get("hourly", {}).get("temperature_2m", [])
+    _times_raw = weather_data.get("hourly", {}).get("time", [])
+    actual_end_dt = tomorrow_dt  # fallback conservativo
+    for _i in range(len(_temps_raw) - 1, -1, -1):
+        if _temps_raw[_i] is not None and _i < len(_times_raw):
+            try:
+                actual_end_dt = datetime.fromisoformat(_times_raw[_i]).replace(tzinfo=TZ_ROME)
+            except ValueError:
+                pass
+            break
+    print(f"  ✓ Fine effettiva copertura: {actual_end_dt.strftime('%d/%m %H:%M')} "
+          f"({(actual_end_dt - now).total_seconds() / 3600:.0f}h da ora)")
+
+    # 1b. Filtra dati orari: dalle ore correnti in poi
+    hourly = weather_data.get("hourly", {})
+    times = hourly.get("time", [])
+    current_hour_str = now.strftime("%Y-%m-%dT%H:00")
+    start_idx = 0
+    for i, t in enumerate(times):
+        if t >= current_hour_str:
+            start_idx = i
+            break
+    if start_idx > 0:
+        for key in hourly:
+            if isinstance(hourly[key], list):
+                hourly[key] = hourly[key][start_idx:]
+        print(f"  ✓ Dati filtrati: da {times[start_idx] if start_idx < len(times) else '?'} ({len(hourly.get('time', []))} ore)")
+
+    # 1c. Estrazione condizioni attuali dal modello
+    print("\n🌱 Estrazione condizioni attuali dal modello...")
+    current_times = hourly.get("time", [])
+    current_ts_str = current_times[0] if current_times else now.strftime("%Y-%m-%dT%H:00")
+    ground_data = load_ground_conditions(hourly, current_ts_str)
+    if ground_data:
+        print("  ✓ Condizioni attuali estratte")
+    else:
+        print("  ⚠ Condizioni attuali non disponibili")
+
+    # 2. Genera previsioni con AI
+    print("\n🤖 Generazione previsioni con AI...")
+    date_range_info = (
+        f"Periodo: dalle ore {now.strftime('%H:00')} di {format_date_it(today_dt)} "
+        f"fino alle {actual_end_dt.strftime('%H:00')} di {format_date_it(actual_end_dt)}"
+    )
+    forecast_text, gemini_model = generate_forecast(
+        weather_data, model_used, date_range_info, GEMINI_API_KEY, ground_data
+    )
+
+    print(f"\n--- Previsioni ({len(forecast_text)} caratteri) ---")
+    print(forecast_text)
+    print("---")
+
+    # 3. Componi e invia messaggio Telegram
+    print("\n📤 Invio via Telegram...")
+    freshness_warning = "" if fresh_ok else f"⚠️ {fresh_msg}\n"
+    header = (
+        f"🌤 Previsioni Meteo\n"
+        f"📍 {LOCATION_NAME}\n"
+        f"📅 {today_dt.strftime('%d/%m/%Y')} – {actual_end_dt.strftime('%d/%m/%Y')}\n"
+        f"🔬 Modello: {model_used} | AI: {gemini_model}\n"
+        f"{freshness_warning}\n"
+    )
+
+    SEP_TECH = "---SEZIONE TECNICA---"
+    SEP_INDEX = "---SEZIONE INDICE---"
+    SEP_RISK = "---SEZIONE RISCHI---"
+
+    remaining = forecast_text
+    if SEP_TECH in remaining:
+        simple_part, remaining = remaining.split(SEP_TECH, 1)
+    else:
+        simple_part, remaining = remaining, ""
+
+    if SEP_INDEX in remaining:
+        tech_part, remaining = remaining.split(SEP_INDEX, 1)
+    else:
+        tech_part, remaining = remaining, ""
+
+    if SEP_RISK in remaining:
+        index_part, risk_part = remaining.split(SEP_RISK, 1)
+    else:
+        index_part, risk_part = remaining, ""
+
+    simple_part = simple_part.strip()
+    tech_part = tech_part.strip()
+    index_part = index_part.strip()
+    risk_part = risk_part.strip()
+
+    RISK_COLORS = {
+        "VERDE": "🟢", "GIALLO": "🟡",
+        "ARANCIONE": "🟠", "ROSSO": "🔴",
+    }
+    if risk_part:
+        lines = risk_part.split("\n", 1)
+        color_word = lines[0].strip().upper()
+        emoji = RISK_COLORS.get(color_word, "🟢")
+        risk_desc = lines[1].strip() if len(lines) > 1 else "Nessun rischio previsto."
+        risk_block = f"{emoji} RISCHI POSSIBILI\n\n{risk_desc}"
+    else:
+        risk_block = "🟢 RISCHI POSSIBILI\n\nNessun rischio previsto."
+
+    body = simple_part
+    if tech_part:
+        body += "\n\n📊 Analisi Tecnica\n\n" + tech_part
+    if index_part:
+        body += "\n\n📈 Indice di Rischio Oggettivo\n\n" + index_part
+    body += "\n\n" + risk_block
+    full_msg = header + body
+
+    if send_telegram(full_msg, target_chat_id=target_chat_id):
+        print("\n✅ Previsioni inviate con successo (messaggio unico)")
+    else:
+        print("  ⚠ Messaggio unico troppo lungo, invio in 3 parti...")
+        date_line = f"📅 {today_dt.strftime('%d/%m/%Y')} – {actual_end_dt.strftime('%d/%m/%Y')}"
+
+        msg1 = header + simple_part
+        msg2 = f"📊 Analisi Tecnica\n📍 {LOCATION_NAME} · {date_line}\n\n{tech_part}" if tech_part else None
+        msg3 = f"{risk_block}"
+
+        ok = send_telegram(msg1, target_chat_id=target_chat_id)
+        if msg2:
+            ok = send_telegram(msg2, target_chat_id=target_chat_id) and ok
+        ok = send_telegram(msg3, target_chat_id=target_chat_id) and ok
+
+        if ok:
+            print("\n✅ Previsioni inviate con successo (3 messaggi)")
+        else:
+            print("\n⚠️ Invio fallito")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
-
-# --- FINE QUARTA PARTE - FILE COMPLETO ---
