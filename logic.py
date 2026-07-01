@@ -429,3 +429,124 @@ def full_alert(
     order = {"verde": 0, "gialla": 1, "arancione": 2, "rossa": 3}
     final = max(convective_level, arpal_level, key=lambda x: order.get(x, 0))
     return final, ALERT_EMOJI.get(final, "⚪")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Score maltempo e Livello di Attenzione
+# Riferimenti: ARPAL Liguria, WMO Severe Weather Guidance
+# ─────────────────────────────────────────────────────────────────────────────
+
+def maltempo_score(
+    params: Dict[str, float],
+    rain_obs: Optional[Dict[str, float]] = None,
+) -> float:
+    """
+    Score maltempo multi-categoria (0–5), cap a 5.
+
+    Cinque categorie, ognuna contribuisce max 1.5:
+      Pioggia/alluvioni | Temporali/convezione | Vento | Caldo | Afa
+    Scala di ogni categoria:
+      0.5 = media probabilità di impatto (attenzione)
+      1.0 = alta probabilità con possibili danni a persone o strutture
+      1.5 = probabilità molto alta con danni probabili a strutture o persone
+    """
+    rain = rain_obs or {}
+    score = 0.0
+
+    # ── 1. Pioggia / Alluvioni (ARPAL Zona A/B – Levante Ligure) ─────────
+    rain_1h  = max(float(rain.get("1h",  0) or 0),
+                   float(params.get("precip_rate_mm_h", 0) or 0))
+    rain_3h  = float(rain.get("3h",  0) or 0)
+    rain_6h  = float(rain.get("6h",  0) or 0)
+    rain_24h = float(rain.get("24h", params.get("rain_24h_mm", 0)) or 0)
+
+    if (rain_1h  >= thresholds.ARPAL_RAIN_1H_ROSSO
+     or rain_3h  >= thresholds.ARPAL_RAIN_3H_ROSSO
+     or rain_6h  >= thresholds.ARPAL_RAIN_6H_ROSSO
+     or rain_24h >= thresholds.ARPAL_RAIN_24H_ROSSO):
+        score += 1.5
+    elif (rain_1h  >= thresholds.ARPAL_RAIN_1H_ARANCIONE
+       or rain_3h  >= thresholds.ARPAL_RAIN_3H_ARANCIONE
+       or rain_6h  >= thresholds.ARPAL_RAIN_6H_ARANCIONE
+       or rain_24h >= thresholds.ARPAL_RAIN_24H_ARANCIONE):
+        score += 1.0
+    elif (rain_1h  >= thresholds.ARPAL_RAIN_1H_GIALLO
+       or rain_3h  >= thresholds.ARPAL_RAIN_3H_GIALLO
+       or rain_6h  >= thresholds.ARPAL_RAIN_6H_GIALLO
+       or rain_24h >= thresholds.ARPAL_RAIN_24H_GIALLO):
+        score += 0.5
+
+    # ── 2. Temporali / Convezione ─────────────────────────────────────────
+    cape = max(
+        float(params.get("SBCAPE", params.get("CAPE", 0)) or 0),
+        float(params.get("MUCAPE", 0) or 0),
+    )
+    wmo = int(params.get("wmo_code", 0) or 0)
+    scp = float(params.get("SCP", 0) or 0)
+    li  = params.get("LI")
+    li_f = float(li) if li is not None else 0.0
+
+    if cape >= thresholds.SBCAPE_EXTREME or scp >= thresholds.SCP_HIGH or wmo == 99:
+        score += 1.5
+    elif (cape >= thresholds.SBCAPE_STRONG or scp >= thresholds.SCP_MODERATE
+          or wmo in (95, 96) or li_f <= thresholds.LI_VERY_UNSTABLE):
+        score += 1.0
+    elif (cape >= thresholds.SBCAPE_MODERATE or wmo in (80, 81, 82, 91, 92)
+          or li_f <= thresholds.LI_UNSTABLE):
+        score += 0.5
+
+    # ── 3. Vento (costa spezzina) ─────────────────────────────────────────
+    wind = float(params.get("wind_gust_kmh", 0) or 0)
+
+    if wind >= thresholds.ARPAL_WIND_COAST_ROSSO:
+        score += 1.5
+    elif wind >= thresholds.ARPAL_WIND_COAST_ARANCIONE:
+        score += 1.0
+    elif wind >= thresholds.ARPAL_WIND_COAST_GIALLO:
+        score += 0.5
+
+    # ── 4. Caldo estremo ──────────────────────────────────────────────────
+    temp = params.get("temp_c")
+    temp_f = float(temp) if temp is not None else None
+
+    if temp_f is not None:
+        if temp_f >= thresholds.ARPAL_HEAT_ROSSO:
+            score += 1.5
+        elif temp_f >= thresholds.ARPAL_HEAT_ARANCIONE:
+            score += 1.0
+        elif temp_f >= thresholds.ARPAL_HEAT_GIALLO:
+            score += 0.5
+
+    # ── 5. Afa (disagio termico da caldo + umidità) ────────────────────────
+    app_temp = params.get("heat_index") or params.get("apparent_temperature")
+    if app_temp is not None:
+        app_f = float(app_temp)
+        t_base = temp_f if temp_f is not None else 0.0
+        # Disagio aggiuntivo oltre alla temperatura reale
+        disagio = app_f - t_base
+        if app_f >= thresholds.HEAT_INDEX_EXTREME or disagio >= 6:
+            score += 1.5
+        elif app_f >= thresholds.HEAT_INDEX_DANGER or disagio >= 4:
+            score += 1.0
+        elif app_f >= thresholds.HEAT_INDEX_WARNING or disagio >= 2:
+            score += 0.5
+
+    return round(min(score, 5.0), 1)
+
+
+def livello_attenzione(score: float) -> Tuple[str, str]:
+    """
+    Converte lo score maltempo (0–5+) in livello di attenzione.
+    BASSO <1 | MODERATO 1–2.5 | ALTO 2.5–4 | MOLTO ALTO 4–5 | NON CLASSIFICABILE >5
+    Ritorna (etichetta, emoji).
+    """
+    if score > 5.0:
+        return "NON CLASSIFICABILE", "⛔"
+    if score >= 4.0:
+        return "MOLTO ALTO", "🔴"
+    if score > 2.5:
+        return "ALTO", "🟠"
+    if score >= 1.0:
+        return "MODERATO", "🟡"
+    return "BASSO", "🟢"
+

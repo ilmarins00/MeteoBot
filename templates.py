@@ -399,10 +399,341 @@ def build_gemini_prompt(
     return prompt
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ANALISI SEMPLICE – testo dinamico con molte varianti
+# Usata in run_previsioni_new.py per la sezione pubblica per ogni giorno
+# ─────────────────────────────────────────────────────────────────────────────
 
-    # Velature alte
-    if obs.get("cloud_high_pct", 0) >= 60:
-        parts.append("alle 18 si svilupperanno velature estese")
+import math as _math
+
+_VENTI_NOMI = [
+    (22.5,  "Tramontana"), (67.5,  "Grecale"), (112.5, "Levante"),
+    (157.5, "Scirocco"),   (202.5, "Ostro"),   (247.5, "Libeccio"),
+    (292.5, "Ponente"),    (337.5, "Maestrale"),(360.0, "Tramontana"),
+]
+
+def _nome_vento(deg: float) -> str:
+    d = (deg or 0) % 360
+    for lim, nome in _VENTI_NOMI:
+        if d < lim:
+            return nome
+    return "Tramontana"
+
+def _wmo_sky(wmo: int) -> str:
+    if wmo == 0:             return "cielo sereno e soleggiato"
+    if wmo == 1:             return "cielo in prevalenza sereno"
+    if wmo == 2:             return "cielo parzialmente nuvoloso"
+    if wmo == 3:             return "cielo coperto"
+    if wmo in (45, 48):     return "nebbia"
+    if wmo in (51, 53, 55): return "pioviggine"
+    if wmo in (61, 63):     return "pioggia leggera o moderata"
+    if wmo == 65:            return "pioggia intensa"
+    if wmo in (71, 73):     return "neve leggera o moderata"
+    if wmo == 75:            return "neve abbondante"
+    if wmo in (80, 81):     return "rovesci moderati"
+    if wmo == 82:            return "rovesci violenti"
+    if wmo == 95:            return "temporale"
+    if wmo == 96:            return "temporale con grandine"
+    if wmo == 99:            return "temporale con grandine intensa"
+    return "condizioni variabili"
+
+
+def render_analisi_semplice(
+    obs: Dict,
+    params: Dict,
+    hourly: Optional[List[Dict]] = None,
+    giorno_label: str = "Oggi",
+) -> str:
+    """
+    Analisi meteorologica semplice con testo dinamico – MOLTE varianti.
+    Copre: temperatura (min/max), cielo, precipitazioni, vento,
+    umidità/afa, fenomeni severi, note orografiche locali.
+    """
+    lines: List[str] = []
+
+    temp_c   = obs.get("temp_c")
+    rh       = float(obs.get("humidity_pct", 0) or 0)
+    gust     = float(obs.get("wind_gust_kmh", 0) or 0)
+    wind_spd = float(obs.get("wind_speed_kmh", 0) or 0)
+    wind_dir = float(obs.get("wind_dir_deg", 0) or 0)
+    precip   = float(obs.get("precip_rate_mm_h", 0) or 0)
+    cloud    = float(obs.get("cloud_cover_pct", 0) or 0)
+    wmo      = int(obs.get("wmo_code", 0) or 0)
+    app_temp = obs.get("heat_index") or obs.get("apparent_temperature")
+    vis_m    = float(obs.get("visibility_m", 10000) or 10000)
+    snow_lvl = float(obs.get("snow_level_m", 3000) or 3000)
+    cape     = float(params.get("SBCAPE", params.get("CAPE", 0)) or 0)
+    oro      = float(params.get("orographic_factor", 0) or 0)
+
+    # Estremi giornalieri dal profilo orario
+    if hourly:
+        ts   = [h.get("T") for h in hourly if h.get("T") is not None]
+        ws   = [h.get("wind") or 0 for h in hourly]
+        gs   = [h.get("wind_gust") or 0 for h in hourly]
+        ps   = [h.get("precip") or 0 for h in hourly]
+        wmos = [int(h.get("wmo_code") or 0) for h in hourly]
+        t_max   = max(ts)   if ts else temp_c
+        t_min   = min(ts)   if ts else temp_c
+        w_max   = max(ws)   if ws else wind_spd
+        g_max   = max(gs)   if gs else gust
+        r_tot   = sum(ps)
+        wmo_dom = max(set(wmos), key=wmos.count) if wmos else wmo
+    else:
+        t_max = t_min = temp_c
+        w_max = wind_spd; g_max = gust
+        r_tot = precip; wmo_dom = wmo
+
+    nome_v = _nome_vento(wind_dir)
+    sky    = _wmo_sky(wmo_dom)
+
+    # ── Frase apertura con cielo e temperatura ────────────────────────────
+    if t_max is not None and t_min is not None:
+        delta = t_max - t_min
+        if t_max >= 38:
+            lines.append(
+                f"{giorno_label} porta un'ondata di calore eccezionale con temperature "
+                f"massime intorno a {t_max:.0f}°C e minime di {t_min:.0f}°C. "
+                f"Cielo {sky}."
+            )
+        elif t_max >= 32:
+            lines.append(
+                f"{giorno_label} si presenta molto caldo: massime attorno a {t_max:.0f}°C, "
+                f"minime di {t_min:.0f}°C. Cielo {sky}."
+            )
+        elif t_max >= 26:
+            lines.append(
+                f"Giornata estiva con massime di {t_max:.0f}°C e minime di {t_min:.0f}°C. "
+                f"Cielo {sky}."
+            )
+        elif t_max >= 20:
+            lines.append(
+                f"Temperature gradevoli con massima di {t_max:.0f}°C e minima di {t_min:.0f}°C. "
+                f"Cielo {sky}."
+            )
+        elif t_max >= 10:
+            lines.append(
+                f"Giornata fresca con massima di {t_max:.0f}°C e minima di {t_min:.0f}°C. "
+                f"Cielo {sky}."
+            )
+        elif t_max >= 2:
+            lines.append(
+                f"Giornata fredda con temperature massime di {t_max:.0f}°C. "
+                f"Possibile gelata notturna con minime di {t_min:.0f}°C. "
+                f"Cielo {sky}."
+            )
+        else:
+            lines.append(
+                f"Giornata rigida con temperature sotto zero: massima {t_max:.0f}°C, "
+                f"minima {t_min:.0f}°C. Cielo {sky}."
+            )
+    else:
+        lines.append(f"{giorno_label}: cielo {sky}.")
+
+    # ── Umidità e afa ─────────────────────────────────────────────────────
+    if rh >= 90 and t_max is not None and t_max >= 20:
+        lines.append(
+            "Umidità relativa molto elevata (oltre il 90%): condizioni di afa intensa, "
+            "disagio marcato soprattutto nelle ore centrali della giornata."
+        )
+    elif rh >= 80 and app_temp is not None and app_temp > (t_max or 0) + 3:
+        lines.append(
+            f"Elevata umidità (circa {rh:.0f}%) con temperatura percepita fino a "
+            f"{app_temp:.0f}°C: sensazione afosa nelle ore più calde."
+        )
+    elif rh >= 75 and t_max is not None and t_max >= 25:
+        lines.append(
+            f"Umidità moderata ({rh:.0f}%) associata al caldo crea un certo disagio durante "
+            "il pomeriggio, in particolare nelle zone costiere e in Valle del Magra."
+        )
+    elif rh <= 30:
+        lines.append(
+            f"Aria secca (umidità relativa intorno al {rh:.0f}%): scarsa nuvolosità, "
+            "buona visibilità e nessun disagio da afa."
+        )
+
+    # ── Precipitazioni ────────────────────────────────────────────────────
+    if wmo_dom == 99:
+        lines.append(
+            "ALLERTA TEMPORALE SEVERO: attesi temporali violenti con grandine di grandi "
+            "dimensioni. Rischio molto elevato di allagamenti rapidi, possibili danni a strutture. "
+            "Evitare spostamenti non necessari durante l'evento."
+        )
+    elif wmo_dom == 96:
+        lines.append(
+            "Previsti temporali con grandine: possibili danni a veicoli e strutture leggere "
+            "in caso di grandinate. Accumuli di pioggia orari potenzialmente significativi."
+        )
+    elif wmo_dom == 95:
+        if cape >= 1500:
+            lines.append(
+                f"Temporali probabili, localmente forti, con raffiche e rovesci abbondanti. "
+                f"Energia disponibile (SBCAPE {cape:.0f} J/kg) sufficiente per celle organizzate. "
+                "Massima attenzione tra il pomeriggio e la sera."
+            )
+        else:
+            lines.append(
+                "Temporali attesi, di intensità moderata. Possibili rovesci abbondanti con "
+                "accumuli localizzati soprattutto sui versanti appenninici."
+            )
+    elif wmo_dom == 82:
+        lines.append(
+            f"Rovesci intensi in arrivo con accumuli previsti di circa {r_tot:.0f} mm nell'arco "
+            "della giornata. Possibili disagi nelle zone a bassa quota e prossime ai corsi d'acqua."
+        )
+    elif wmo_dom in (80, 81):
+        lines.append(
+            f"Rovesci sparsi nel corso della giornata, più probabili nelle ore pomeridiane. "
+            f"Accumulo totale atteso: circa {r_tot:.0f} mm."
+        )
+    elif wmo_dom in (63, 65):
+        lines.append(
+            f"Pioggia moderata o intensa: accumulo previsto di circa {r_tot:.0f} mm. "
+            "Possibili criticità nei bacini idrografici dell'entroterra spezzino."
+        )
+    elif wmo_dom == 61:
+        lines.append(
+            f"Pioggia leggera prevista, con accumuli contenuti (circa {r_tot:.0f} mm). "
+            "Nessun rischio idrogeologico significativo."
+        )
+    elif wmo_dom in (51, 53, 55):
+        lines.append("Pioviggine diffusa, fenomeni deboli senza accumuli significativi.")
+    elif wmo_dom in (71, 73, 75):
+        quota = snow_lvl
+        lines.append(
+            f"Neve prevista con limite a circa {quota:.0f} m s.l.m. "
+            f"{'– possibile accumulo anche in zone costiere e collinari' if quota < 500 else '– fenomeno confinato alle zone appenniniche'}."
+        )
+    elif wmo_dom in (45, 48):
+        lines.append(
+            f"Nebbia {'densa ' if vis_m < 200 else ''}su vallate e zone costiere, "
+            f"visibilità localmente {'inferiore ai 200 m' if vis_m < 200 else 'ridotta'}."
+        )
+    elif r_tot > 0:
+        lines.append(
+            f"Precipitazioni deboli o intermittenti con accumulo di circa {r_tot:.0f} mm. "
+            "Nessuna criticità prevista."
+        )
+    else:
+        lines.append("Nessuna precipitazione significativa prevista.")
+
+    # ── Vento ─────────────────────────────────────────────────────────────
+    if g_max >= 90:
+        lines.append(
+            f"VENTO TEMPESTOSO: raffiche di {nome_v} fino a {g_max:.0f} km/h. "
+            "Possibili danni a strutture, alberi e reti di distribuzione. "
+            "Rischio per la navigazione costiera."
+        )
+    elif g_max >= 60:
+        lines.append(
+            f"Vento forte di {nome_v} con raffiche fino a {g_max:.0f} km/h: "
+            "disagio per i pedoni, attenzione alla navigazione nel Golfo."
+        )
+    elif g_max >= 40:
+        lines.append(
+            f"Vento moderato da {nome_v} con raffiche fino a {g_max:.0f} km/h, "
+            f"in particolare {'sul promontorio di Portovenere e all\'imboccatura del Golfo' if nome_v in ('Libeccio','Maestrale') else 'sulle zone esposte della costa'}."
+        )
+    elif w_max >= 15:
+        lines.append(
+            f"Vento da {nome_v} di debole intensità ({w_max:.0f} km/h medi), "
+            "nessun disagio significativo."
+        )
+    else:
+        lines.append("Vento debole o assente, condizioni di calma in mare e a terra.")
+
+    # ── Note orografiche ──────────────────────────────────────────────────
+    if oro >= 0.6 and (wmo_dom >= 61 or cape >= 800):
+        lines.append(
+            "Il forzante orografico dell'Appennino Ligure risulta molto attivo: "
+            "gli accumuli di precipitazione saranno sensibilmente maggiori "
+            "sulle fasce collinari e montane (Follo, Calice, Pignone, Brugnato), "
+            "con possibile rischio idrogeologico nelle aste torrentizie."
+        )
+    elif oro >= 0.35 and wmo_dom >= 61:
+        lines.append(
+            "Il forzante orografico aumenterà gli accumuli sulle zone interne "
+            "rispetto alla costa: monitorare in particolare i versanti esposti a Sud-Ovest."
+        )
+
+    return "\n".join(lines)
+
+
+def build_gemini_prompt_tecnico(
+    analisi_tecnica: str,
+    params: Dict,
+    maltempo_score_val: float,
+    giorno_label: str = "oggi",
+    is_tendency: bool = False,
+) -> str:
+    """
+    Prompt focalizzato per Gemini: genera SOLO la descrizione narrativa
+    dell'ANALISI TECNICA. Script-generated sections (intro, analisi semplice)
+    sono già completate; Gemini aggiunge il commento fisico/previsionale.
+    """
+    from logic import livello_attenzione
+    livello, _ = livello_attenzione(maltempo_score_val)
+
+    if is_tendency:
+        istr_dettaglio = (
+            "Scrivi una tendenza previsionale concisa (max 150 parole) per la giornata, "
+            "descrivendo i possibili scenari senza dettagli orari. "
+            "Usa termini come 'tendenzialmente', 'probabile', 'possibile'."
+        )
+    elif maltempo_score_val >= 4.0:
+        istr_dettaglio = (
+            "Scrivi un'analisi tecnica approfondita (min 300 parole). "
+            "Descrivi i meccanismi fisici, gli orari critici, le zone a maggior rischio "
+            "nel Levante Ligure, i consigli di autoprotezione e il monitoraggio consigliato "
+            "(radar, pluviometri OMIRL, Blitzortung)."
+        )
+    elif maltempo_score_val >= 2.5:
+        istr_dettaglio = (
+            "Scrivi un'analisi tecnica dettagliata (min 200 parole) con meccanismi fisici, "
+            "orari probabili dei fenomeni, incertezza e consigli."
+        )
+    elif maltempo_score_val >= 1.0:
+        istr_dettaglio = (
+            "Scrivi una breve analisi tecnica (min 100 parole) con i fenomeni previsti "
+            "e le probabilità associate."
+        )
+    else:
+        istr_dettaglio = (
+            "Scrivi un breve commento tecnico (max 60 parole) sulla situazione. "
+            "Se non ci sono rischi, dì semplicemente che la giornata è tranquilla."
+        )
+
+    scp = float(params.get("SCP", 0) or 0)
+    stp = float(params.get("STP", 0) or 0)
+    oro = float(params.get("orographic_factor", 0) or 0)
+
+    extra = []
+    if stp >= 1.0:
+        extra.append("ATTENZIONE: STP elevato – menzionare rischio trombe d'aria.")
+    if scp >= 4.0:
+        extra.append("ATTENZIONE: SCP molto elevato – ambiente favorevole a supercelle.")
+    if oro >= 0.6:
+        extra.append(
+            "ATTENZIONE OROGRAFICA: amplificazione significativa sulle zone collinari "
+            "(Val di Magra, Follo, Lerici, Cinque Terre)."
+        )
+
+    prompt = (
+        f"Sei un meteorologo esperto del territorio spezzino e del Levante Ligure.\n"
+        f"Giorno di riferimento: {giorno_label}\n"
+        f"Livello di attenzione: {livello} (score {maltempo_score_val}/5)\n\n"
+        f"DATI TECNICI DEL MOTORE METEOBOT:\n{analisi_tecnica}\n\n"
+        f"ISTRUZIONI:\n"
+        f"1. {istr_dettaglio}\n"
+        f"2. Basati ESCLUSIVAMENTE sui dati numerici forniti. NON inventare valori.\n"
+        f"3. Scrivi in italiano, tono professionale ma comprensibile.\n"
+        f"4. NON usare Markdown (no *, no #, no _). Solo testo piano.\n"
+        f"5. NON ripetere i dati già elencati sopra: scrivi solo la NARRATIVA.\n"
+    )
+    if extra:
+        prompt += "AVVERTENZE SPECIALI:\n" + "\n".join(f"⚠ {e}" for e in extra) + "\n"
+
+    return prompt
+
 
     # Nuvole basse
     if obs.get("cloud_low_pct", 0) >= 50:

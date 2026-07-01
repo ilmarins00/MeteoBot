@@ -309,8 +309,322 @@ def build_hourly_forecast_from_openmeteo(
     return result
 
 
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
+# Fetch multi-modello 3 giorni (AROME + ICON-EU)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SURF_VARS_MULTIDAY = [
+    "temperature_2m", "relative_humidity_2m", "dewpoint_2m",
+    "apparent_temperature", "precipitation", "weather_code",
+    "cloud_cover", "cloud_cover_low", "cloud_cover_high",
+    "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
+    "surface_pressure", "cape", "lifted_index", "convective_inhibition",
+    "freezing_level_height", "snowfall_height", "visibility",
+]
+
+_PLEVEL_VARS_MULTIDAY = [
+    "temperature_850hPa", "temperature_700hPa", "temperature_500hPa",
+    "dewpoint_850hPa",    "dewpoint_700hPa",    "dewpoint_500hPa",
+    "geopotential_height_500hPa", "geopotential_height_850hPa",
+]
+
+
+def _fetch_one_model(
+    model: str,
+    start_date: str,
+    end_date: str,
+    lat: float,
+    lon: float,
+    timeout: int = 35,
+) -> Optional[Dict[str, Any]]:
+    """Fetch da un singolo modello Open-Meteo. Ritorna None in caso di errore."""
+    all_vars = _SURF_VARS_MULTIDAY + _PLEVEL_VARS_MULTIDAY
+    params: Dict[str, Any] = {
+        "latitude":   lat,
+        "longitude":  lon,
+        "hourly":     ",".join(all_vars),
+        "models":     model,
+        "start_date": start_date,
+        "end_date":   end_date,
+        "timezone":   TIMEZONE,
+    }
+    try:
+        resp = requests.get(OPEN_METEO_BASE, params=params, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        n = len(data.get("hourly", {}).get("time", []))
+        if n < 12:
+            return None
+        return data
+    except Exception as e:
+        print(f"  [io] {model}: errore fetch: {e}")
+        return None
+
+
+def _merge_hourly(
+    primary: Optional[Dict[str, Any]],
+    secondary: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Unisce due dataset orari: usa il valore di `primary` quando non è None,
+    altrimenti quello di `secondary`. Allineamento per timestamp.
+    """
+    if primary is None:
+        return secondary
+
+    p_h = primary.get("hourly", {})
+    s_h = secondary.get("hourly", {})
+    p_times = p_h.get("time", [])
+    s_times = s_h.get("time", [])
+    s_idx   = {t: i for i, t in enumerate(s_times)}
+
+    all_keys = set(list(p_h.keys()) + list(s_h.keys())) - {"time"}
+    merged_h: Dict[str, Any] = {"time": p_times}
+
+    for key in all_keys:
+        p_vals = p_h.get(key, [])
+        s_vals = s_h.get(key, [])
+        row = []
+        for j, t in enumerate(p_times):
+            pv = p_vals[j] if j < len(p_vals) else None
+            sv = (s_vals[s_idx[t]] if t in s_idx and s_idx[t] < len(s_vals) else None)
+            row.append(pv if pv is not None else sv)
+        merged_h[key] = row
+
+    result = dict(secondary)
+    result["hourly"] = merged_h
+    return result
+
+
+def extract_day_hourly(
+    raw_data: Dict[str, Any],
+    day_offset: int = 0,
+    tz: str = TIMEZONE,
+) -> Dict[str, Any]:
+    """
+    Estrae i dati orari per un giorno specifico (0=oggi, 1=domani, 2=dopodomani).
+    """
+    from zoneinfo import ZoneInfo as _ZI
+    import datetime as _dt
+    today  = _dt.datetime.now(_ZI(tz)).date()
+    target = today + _dt.timedelta(days=day_offset)
+    target_str = target.strftime("%Y-%m-%d")
+
+    h      = raw_data.get("hourly", {})
+    times  = h.get("time", [])
+    idxs   = [i for i, t in enumerate(times) if str(t).startswith(target_str)]
+    if not idxs:
+        return {}
+
+    return {key: [vals[i] for i in idxs if i < len(vals)]
+            for key, vals in h.items() if isinstance(vals, list)}
+
+
+def build_day_obs(
+    day_hourly: Dict[str, Any],
+    model_name: str = "icon_eu",
+) -> Dict[str, Any]:
+    """
+    Costruisce il dizionario obs per engine.run_pipeline() dal profilo orario di un giorno.
+    Usa il picco 12-18 UTC come condizioni rappresentative.
+    """
+    if not day_hourly:
+        return {}
+
+    times = day_hourly.get("time", [])
+
+    def _agg(key: str, mode: str = "mean") -> Optional[float]:
+        vals = day_hourly.get(key, [])
+        peak = [
+            vals[i] for i, t in enumerate(times)
+            if i < len(vals) and vals[i] is not None
+            and any(str(t).endswith(f"{h:02d}:00") for h in range(11, 18))
+        ]
+        src = peak or [v for v in vals if v is not None]
+        if not src:
+            return None
+        if mode == "max":   return max(src)
+        if mode == "min":   return min(src)
+        if mode == "sum":   return sum(src)
+        if mode == "dom":   return max(set([int(v) for v in src]), key=[int(v) for v in src].count)
+        return sum(src) / len(src)
+
+    temp_max    = _agg("temperature_2m", "max")
+    temp_min    = _agg("temperature_2m", "min")
+    rh          = _agg("relative_humidity_2m")
+    app_temp    = _agg("apparent_temperature", "max")
+    gust        = _agg("wind_gusts_10m",  "max")
+    wind_spd    = _agg("wind_speed_10m",  "max")
+    wind_dir    = _agg("wind_direction_10m")
+    precip_sum  = _agg("precipitation", "sum") or 0.0
+    precip_max  = _agg("precipitation", "max") or 0.0
+    cape        = _agg("cape", "max") or 0.0
+    li          = _agg("lifted_index",  "min")
+    cin         = _agg("convective_inhibition", "min")
+    cloud       = _agg("cloud_cover")
+    cloud_low   = _agg("cloud_cover_low")
+    cloud_high  = _agg("cloud_cover_high")
+    p_hpa       = _agg("surface_pressure")
+    snow_lvl    = _agg("snowfall_height",  "min") or 2000.0
+    vis_m       = _agg("visibility",       "min") or 10000.0
+    wmo_vals    = [int(v) for v in (day_hourly.get("weather_code") or []) if v is not None]
+    wmo_dom     = max(set(wmo_vals), key=wmo_vals.count) if wmo_vals else 0
+
+    # Profilo verticale da livelli isobarici
+    LVLS = {"850hPa": (85000.0, 1460.0),
+             "700hPa": (70000.0, 3010.0),
+             "500hPa": (50000.0, 5570.0)}
+    s_p, s_T, s_Td, s_h = [], [], [], []
+    for sfx, (pa, zm) in LVLS.items():
+        T  = _agg(f"temperature_{sfx}")
+        Td = _agg(f"dewpoint_{sfx}")
+        if T is not None:
+            s_p.append(pa); s_T.append(T + 273.15)
+            s_Td.append((Td + 273.15) if Td is not None else T + 271.15)
+            s_h.append(zm)
+
+    t_rep = temp_max
+    if t_rep is not None:
+        p_pa = (p_hpa * 100) if p_hpa else 101300.0
+        s_p.insert(0, p_pa); s_T.insert(0, t_rep + 273.15)
+        s_Td.insert(0, t_rep + 268.15); s_h.insert(0, float(ELEVATION))
+
+    obs: Dict[str, Any] = {
+        "time_generated": datetime.datetime.now().isoformat() + "Z",
+        "location":    f"La Spezia ({LATITUDE}N, {LONGITUDE}E)",
+        "source":      model_name,
+        "wmo_code":    wmo_dom,
+        "cloud_cover_pct": cloud,
+        "cloud_low_pct":   cloud_low,
+        "cloud_high_pct":  cloud_high,
+        "precip_rate_mm_h": precip_max,
+        "rain_1h_mm":       precip_max,
+        "rain_24h_mm":      precip_sum,
+        "wind_gust_kmh":    gust,
+        "wind_speed_kmh":   wind_spd,
+        "wind_dir_deg":     wind_dir,
+        "wind_speed_ms":    (wind_spd / 3.6) if wind_spd else 0,
+        "temp_c":      t_rep,
+        "temp_max_c":  temp_max,
+        "temp_min_c":  temp_min,
+        "humidity_pct": rh,
+        "pressure_hpa": p_hpa,
+        "heat_index":   app_temp,
+        "apparent_temperature": app_temp,
+        "CAPE": cape, "SBCAPE": cape, "MUCAPE": cape, "MLCAPE": cape,
+        "LI": li, "CIN": cin, "SBCIN": cin,
+        "snow_level_m": snow_lvl,
+        "visibility_m": vis_m,
+        "hour_utc": 14,
+    }
+    if len(s_p) >= 3:
+        obs["sounding"] = {
+            "pressure_pa": s_p, "temperature_k": s_T,
+            "dewpoint_k": s_Td, "height_m": s_h,
+            "u_ms": [], "v_ms": [],
+        }
+    return obs
+
+
+def build_day_hourly_list(day_hourly: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Costruisce la lista hourly_forecast per engine.run_pipeline() da un giorno."""
+    times   = day_hourly.get("time", [])
+    temps   = day_hourly.get("temperature_2m", [])
+    rhs     = day_hourly.get("relative_humidity_2m", [])
+    winds   = day_hourly.get("wind_speed_10m", [])
+    dirs    = day_hourly.get("wind_direction_10m", [])
+    precips = day_hourly.get("precipitation", [])
+    capes   = day_hourly.get("cape", [])
+    cins    = day_hourly.get("convective_inhibition", [])
+    wmos    = day_hourly.get("weather_code", [])
+
+    from config import thresholds as thr
+    cum = 0.0
+    result = []
+    for i, t in enumerate(times):
+        p = float(precips[i] or 0) if i < len(precips) else 0.0
+        cum += p
+        alert = ("🔴" if p >= thr.ARPAL_RAIN_1H_ROSSO
+                 else "🟠" if p >= thr.ARPAL_RAIN_1H_ARANCIONE
+                 else "🟡" if p >= thr.ARPAL_RAIN_1H_GIALLO else "🟢")
+        result.append({
+            "time":      str(t)[-5:] if t else "??:??",
+            "T":         temps[i]  if i < len(temps) else None,
+            "RH":        rhs[i]    if i < len(rhs)   else None,
+            "wind":      winds[i]  if i < len(winds)  else None,
+            "wind_dir":  dirs[i]   if i < len(dirs)   else None,
+            "precip":    p,
+            "precip_cum": round(cum, 1),
+            "CAPE":      capes[i]  if i < len(capes) else 0,
+            "CIN":       cins[i]   if i < len(cins)  else 0,
+            "shear": 0, "SRH": 0, "PWAT": 0,
+            "wmo_code":  wmos[i]   if i < len(wmos)  else None,
+            "alert":     alert,
+        })
+    return result
+
+
+def fetch_forecast_3days(
+    lat: float = LATITUDE,
+    lon: float = LONGITUDE,
+    timeout: int = 35,
+) -> Dict[str, Any]:
+    """
+    Scarica previsioni 3 giorni da AROME + ICON-EU e le unisce.
+    Ritorna:
+      'day0', 'day1': hourly mergiati AROME+ICON-EU
+      'day2':         hourly solo ICON-EU
+      'model_primary', 'model_fallback'
+    """
+    import datetime as _dt
+    today   = _dt.date.today()
+    start_s = today.strftime("%Y-%m-%d")
+    end_d2  = (today + _dt.timedelta(days=3)).strftime("%Y-%m-%d")
+    end_d1  = (today + _dt.timedelta(days=2)).strftime("%Y-%m-%d")
+
+    print("  [io] Scarico ICON-EU (3 giorni)...")
+    icon_data = _fetch_one_model("icon_eu", start_s, end_d2, lat, lon, timeout)
+    if icon_data is None:
+        raise RuntimeError("ICON-EU non disponibile")
+    print(f"  [io] ICON-EU: {len(icon_data['hourly']['time'])} ore")
+
+    arome_data = None
+    for model in ["meteofrance_arome_france", "meteofrance_arome_france_hd"]:
+        print(f"  [io] Provo {model}...")
+        d = _fetch_one_model(model, start_s, end_d1, lat, lon, timeout)
+        if d is not None:
+            arome_data = d
+            print(f"  [io] {model}: {len(d['hourly']['time'])} ore")
+            break
+    if arome_data is None:
+        print("  [io] AROME non disponibile, solo ICON-EU")
+
+    merged = _merge_hourly(arome_data, icon_data)
+    return {
+        "day0": extract_day_hourly(merged,     0),
+        "day1": extract_day_hourly(merged,     1),
+        "day2": extract_day_hourly(icon_data,  2),
+        "model_primary":  "AROME+ICON-EU" if arome_data else "ICON-EU",
+        "model_fallback": "ICON-EU",
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Stub GRIB / NetCDF / Sounding / Radar (pronti per implementazione)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def read_model_grib(path: str) -> Dict[str, Any]:
+    raise NotImplementedError("pip install cfgrib eccodes")
+
+def read_sounding_uwyo(station: str = "16080", date=None, hour: int = 12) -> Dict[str, Any]:
+    raise NotImplementedError("Parser UWYO sounding da weather.uwyo.edu")
+
+def read_radar(radar_source: str) -> Dict[str, Any]:
+    raise NotImplementedError("pip install pyart wradlib")
+
+def ingest_station_obs(station_list: list) -> Dict[str, Any]:
+    raise NotImplementedError("Integrare stazioni ARPAL/OMIRL")
+
 # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 def read_model_grib(path: str) -> Dict[str, Any]:
