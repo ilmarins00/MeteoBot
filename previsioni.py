@@ -609,7 +609,7 @@ def generate_forecast(weather_data, model_used, date_range_info, api_key, ground
             "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 12288,
+                "maxOutputTokens": 16384,
                 "thinkingConfig": {"thinkingLevel": "low"},
             },
         }
