@@ -776,31 +776,30 @@ def build_gemini_prompt_tecnico(
 
     if is_tendency:
         istr_dettaglio = (
-            "Scrivi una tendenza previsionale concisa (max 150 parole) per la giornata, "
-            "descrivendo i possibili scenari senza dettagli orari. "
-            "Usa termini come 'tendenzialmente', 'probabile', 'possibile'."
+            "Scrivi una tendenza previsionale MOLTO concisa (max 80 parole) se c'è qualcosa "
+            "di rilevante da segnalare, altrimenti rispondi SOLO con 'Nessuna criticità prevista.'"
         )
     elif maltempo_score_val >= 4.0:
         istr_dettaglio = (
-            "Scrivi un'analisi tecnica approfondita (min 300 parole). "
-            "Descrivi i meccanismi fisici, gli orari critici, le zone a maggior rischio "
-            "nel Levante Ligure, i consigli di autoprotezione e il monitoraggio consigliato "
-            "(radar, pluviometri OMIRL, Blitzortung)."
+            "Scrivi un'analisi narrativa (max 200 parole). "
+            "Descrivi i meccanismi fisici chiave, gli orari critici e le zone a maggior "
+            "rischio nel Levante Ligure. Includi consigli di autoprotezione."
         )
     elif maltempo_score_val >= 2.5:
         istr_dettaglio = (
-            "Scrivi un'analisi tecnica dettagliata (min 200 parole) con meccanismi fisici, "
-            "orari probabili dei fenomeni, incertezza e consigli."
+            "Scrivi un'analisi narrativa concisa (max 150 parole) con i meccanismi fisici "
+            "principali, gli orari probabili dei fenomeni e il livello di incertezza."
         )
     elif maltempo_score_val >= 1.0:
         istr_dettaglio = (
-            "Scrivi una breve analisi tecnica (min 100 parole) con i fenomeni previsti "
-            "e le probabilità associate."
+            "Scrivi un commento tecnico breve (max 100 parole) sui fenomeni rilevanti. "
+            "Se non c'è nulla di importante, rispondi SOLO con 'Nessuna criticità rilevante.'"
         )
     else:
         istr_dettaglio = (
-            "Scrivi un breve commento tecnico (max 60 parole) sulla situazione. "
-            "Se non ci sono rischi, dì semplicemente che la giornata è tranquilla."
+            "Se non ci sono rischi o fenomeni degni di nota, rispondi SOLO con "
+            "'Giornata senza criticità meteorologiche.' senza aggiungere altro. "
+            "In caso contrario, max 60 parole."
         )
 
     scp = float(params.get("SCP", 0) or 0)
@@ -823,12 +822,15 @@ def build_gemini_prompt_tecnico(
         f"Giorno di riferimento: {giorno_label}\n"
         f"Livello di attenzione: {livello} (score {maltempo_score_val}/5)\n\n"
         f"DATI TECNICI DEL MOTORE METEOBOT:\n{analisi_tecnica}\n\n"
+        f"REGOLA FONDAMENTALE: la risposta NON deve superare 200 parole in nessun caso. "
+        f"Se la situazione è tranquilla, puoi rispondere con una sola frase.\n\n"
         f"ISTRUZIONI:\n"
         f"1. {istr_dettaglio}\n"
         f"2. Basati ESCLUSIVAMENTE sui dati numerici forniti. NON inventare valori.\n"
         f"3. Scrivi in italiano, tono professionale ma comprensibile.\n"
         f"4. NON usare Markdown (no *, no #, no _). Solo testo piano.\n"
         f"5. NON ripetere i dati già elencati sopra: scrivi solo la NARRATIVA.\n"
+        f"6. Sii conciso: ogni parola deve aggiungere informazione utile.\n"
     )
     if extra:
         prompt += "AVVERTENZE SPECIALI:\n" + "\n".join(f"⚠ {e}" for e in extra) + "\n"
