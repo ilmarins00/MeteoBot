@@ -25,28 +25,38 @@ from config import THRESHOLDS, ALERT_LEVELS, ALERT_EMOJI, thresholds
 def convective_score(params: Dict[str, float]) -> int:
     """
     Score multi-parametro convettivo (0–12+).
-    Combina CAPE (SB/MU/ML), shear, SRH, PWAT, CIN, TT, K-Index,
-    EHI, SCP, lapse rates e fattori orografici Spezzino.
-    Maggiore punteggio = maggiore rischio convettivo.
+
+    PRINCIPIO CHIAVE: i temporali forti e organizzati richiedono la cooperazione
+    di più parametri simultaneamente. CAPE da solo = celle disorganizzate deboli.
+    I punti "extra" vengono assegnati solo quando i pilastri fisici collaborano:
+
+      Pilastro 1 – Energia:     CAPE (SB/MU/ML)
+      Pilastro 2 – Organizzazione: Shear 0-6km, SRH 0-3km
+      Pilastro 3 – Umidità:    PWAT, LCL basso
+      Pilastro 4 – Dinamica:   TT, K-Index, EHI, SCP, lapse rate
+      Pilastro 5 – Locale:     orografico Appennino, brezza marina
+
+    Bonus sinergia: quando ≥2 pilastri sono elevati contemporaneamente.
+    Malus isolamento: CAPE alto senza dinamica = celle effimere.
     """
     score = 0
 
-    # \u2014 CAPE \u2013 usa il massimo tra SB, MU, ML
+    # — CAPE: energia convettiva disponibile
     cape_sb = params.get("SBCAPE", params.get("CAPE", 0))
     cape_mu = params.get("MUCAPE", cape_sb)
     cape_ml = params.get("MLCAPE", cape_sb)
     cape = max(cape_sb, cape_mu, cape_ml)
 
     if cape >= thresholds.SBCAPE_EXTREME:
-        score += 4
+        score += 3    # era 4: ridotto, il 4° punto viene dai bonus sinergia
     elif cape >= thresholds.SBCAPE_STRONG:
-        score += 3
-    elif cape >= thresholds.SBCAPE_MODERATE:
         score += 2
-    elif cape >= thresholds.SBCAPE_WEAK:
+    elif cape >= thresholds.SBCAPE_MODERATE:
         score += 1
+    elif cape >= thresholds.SBCAPE_WEAK:
+        score += 0   # CAPE debole: nessun punto base, ma conta per sinergia
 
-    # \u2014 Shear 0-6 km
+    # — Shear 0-6 km: organizzazione e longevità delle celle
     shear = params.get("shear_0_6", 0)
     if shear >= thresholds.SHEAR_06_EXTREME:
         score += 3
@@ -55,31 +65,31 @@ def convective_score(params: Dict[str, float]) -> int:
     elif shear >= thresholds.SHEAR_06_ORGANIZED:
         score += 1
 
-    # \u2014 SRH 0-3 km (più significativo del 0-1 per il sistema Liguria)
+    # — SRH 0-3 km: rotazione potenziale
     srh = max(
         params.get("srh_0_3", 0),
-        params.get("srh_0_1", 0) * 1.5,  # normalizza al 0-3
+        params.get("srh_0_1", 0) * 1.5,
     )
     if srh >= thresholds.SRH_03_HIGH:
         score += 2
     elif srh >= thresholds.SRH_03_MODERATE:
         score += 1
 
-    # \u2014 PWAT
+    # — PWAT: efficienza precipitativa e carburante umido
     pwat = params.get("PWAT", 0)
     if pwat >= thresholds.PWAT_EXTREME:
         score += 2
     elif pwat >= thresholds.PWAT_HUMID:
         score += 1
 
-    # \u2014 CIN (riduce lo score)
+    # — CIN: inibizione (riduce score se forte)
     cin = abs(params.get("CIN", params.get("SBCIN", 0)))
     if cin >= abs(thresholds.CIN_STRONG):
         score -= 2
     elif cin >= abs(thresholds.CIN_MODERATE):
         score -= 1
 
-    # \u2014 Totals-Totals
+    # — Totals-Totals e K-Index (instabilità termica a media quota)
     tt = params.get("TT", None)
     if tt is not None:
         if tt >= thresholds.TT_EXTREME:
@@ -87,7 +97,6 @@ def convective_score(params: Dict[str, float]) -> int:
         elif tt >= thresholds.TT_STRONG:
             score += 1
 
-    # \u2014 K-Index
     ki = params.get("KI", None)
     if ki is not None:
         if ki >= thresholds.KI_EXTREME:
@@ -95,7 +104,7 @@ def convective_score(params: Dict[str, float]) -> int:
         elif ki >= thresholds.KI_STRONG:
             score += 1
 
-    # \u2014 EHI (se disponibile)
+    # — EHI: già composito (CAPE × SRH)
     ehi = params.get("EHI", None)
     if ehi is not None:
         if ehi >= thresholds.EHI_EXTREME:
@@ -103,29 +112,58 @@ def convective_score(params: Dict[str, float]) -> int:
         elif ehi >= thresholds.EHI_HIGH:
             score += 1
 
-    # \u2014 SCP (Supercell Composite)
+    # — SCP: già composito (CAPE × shear × SRH × PWAT)
     scp = params.get("SCP", None)
     if scp is not None and scp >= thresholds.SCP_HIGH:
         score += 2
     elif scp is not None and scp >= thresholds.SCP_MODERATE:
         score += 1
 
-    # \u2014 Lapse rate 0-3 km > 8 K/km = molto instabile
+    # — Lapse rate 0-3 km > 8 K/km = strato superadiabatico
     lr = params.get("lr_0_3km", None)
     if lr is not None and lr >= 8.0:
         score += 1
 
-    # \u2014 Amplificazione orografica Appennino Ligure
+    # — Amplificazione orografica Appennino Ligure
     oro = params.get("orographic_factor", 0.0)
     if oro >= 0.7:
         score += 2
     elif oro >= 0.4:
         score += 1
 
-    # \u2014 Convergenza brezza marina (rischio innesco pomeridiano)
+    # — Convergenza brezza marina (rischio innesco pomeridiano)
     sea_conv = params.get("sea_breeze_convergence", 0.0)
     if sea_conv >= 0.6:
         score += 1
+
+    # ── BONUS SINERGIA: punti extra solo quando pilastri collaborano ──────
+    # Un temporale organizzato richiede CAPE *e* dinamica
+
+    # Sinergia livello 1: energia + organizzazione (MCS/multicella possibile)
+    if cape >= thresholds.SBCAPE_MODERATE and shear >= thresholds.SHEAR_06_ORGANIZED:
+        score += 1
+
+    # Sinergia livello 2: energia + shear forte + rotazione (supercella possibile)
+    if (cape >= thresholds.SBCAPE_STRONG
+            and shear >= thresholds.SHEAR_06_SUPERCELL
+            and srh >= thresholds.SRH_03_MODERATE):
+        score += 2
+
+    # Sinergia livello 3: tutti i pilastri = ambiente temporalesco severo
+    if (cape >= thresholds.SBCAPE_EXTREME
+            and shear >= thresholds.SHEAR_06_SUPERCELL
+            and srh >= thresholds.SRH_03_HIGH
+            and pwat >= thresholds.PWAT_HUMID):
+        score += 2
+
+    # ── MALUS ISOLAMENTO: CAPE alto senza dinamica = celle disorganizzate ──
+    # Alta energia ma nessun supporto = temporali brevi e poco organizzati
+    if (cape >= thresholds.SBCAPE_STRONG
+            and shear < thresholds.SHEAR_06_WEAK
+            and srh < 50
+            and (ehi is None or ehi < thresholds.EHI_MODERATE)
+            and (scp is None or scp < thresholds.SCP_MODERATE)):
+        score -= 2  # celle singole effimere: riduce il rischio sistemico
 
     return max(score, 0)
 
@@ -167,7 +205,14 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
     if oro >= 0.5:
         return "temporali orografici su Appennino Ligure – rischio accumuli rapidi"
     if cape >= thresholds.SBCAPE_STRONG:
-        return "temporali isolati forti – celle singole dominanti"
+        # Richiede almeno un parametro dinamico di supporto oltre alla sola CAPE
+        lr03_v = params.get("lr_0_3km", 0) or 0
+        li_v   = params.get("LI") or 0
+        if (li_v <= thresholds.LI_UNSTABLE
+                or lr03_v >= 7.0
+                or float(params.get("shear_0_6", 0) or 0) >= thresholds.SHEAR_06_WEAK):
+            return "temporali isolati forti – celle singole dominanti"
+        return "instabilità latente – temporali di calore possibili ma disorganizzati"
     return "temporali sparsi di calore – bassa organizzazione"
 
 
@@ -222,14 +267,19 @@ def severe_hazards(params: Dict[str, float]) -> List[str]:
 
     # Raffiche severe e downburst (DCAPE + shear)
     # V_max ≈ √(2·DCAPE): DCAPE 500 J/kg → 114 km/h
-    if dcape >= thresholds.DCAPE_HIGH:
+    # NOTA: DCAPE vale solo se c'è attività convettiva associata.
+    # Un DCAPE alto senza CAPE/WMO temporale = vento sinottico, NON downburst.
+    wmo_haz = int(params.get("wmo_code", 0) or 0)
+    storm_active = (cape >= thresholds.SBCAPE_WEAK or wmo_haz in (80,81,82,95,96,99))
+
+    if dcape >= thresholds.DCAPE_HIGH and storm_active:
         from thermo import dcape_gust_kmh as _dcape_gust
         v_est = _dcape_gust(dcape)
         hazards.append(
             f"DOWNBURST SEVERO – DCAPE {dcape:.0f} J/kg, "
             f"raffica stimata fino a {v_est:.0f} km/h"
         )
-    elif dcape >= thresholds.DCAPE_MODERATE:
+    elif dcape >= thresholds.DCAPE_MODERATE and storm_active:
         from thermo import dcape_gust_kmh as _dcape_gust
         v_est = _dcape_gust(dcape)
         hazards.append(
@@ -256,7 +306,12 @@ def severe_hazards(params: Dict[str, float]) -> List[str]:
         hazards.append("accumuli di pioggia critici nelle 24h – suolo saturo, rischio idrogeologico")
 
     # Attività elettrica intensa
-    if cape >= thresholds.SBCAPE_MODERATE and pwat >= thresholds.PWAT_NORMAL:
+    # Richiede CAPE + PWAT + trigger (LI negativo o WMO temporale in atto).
+    # CAPE e PWAT alti in un'atmosfera stabile non producono fulmini.
+    wmo_val = int(params.get("wmo_code", 0) or 0)
+    li_val  = float(params.get("LI", 0) or 0)
+    trigger_el = (li_val <= thresholds.LI_UNSTABLE or wmo_val in (80,81,82,95,96,99))
+    if cape >= thresholds.SBCAPE_MODERATE and pwat >= thresholds.PWAT_NORMAL and trigger_el:
         hazards.append("elevata attività elettrica (fulmini intensi e frequenti)")
 
     # Neve a quote basse (inverno / primavera)
@@ -493,22 +548,50 @@ def maltempo_score(
         score += 0.5
 
     # ── 2. Temporali / Convezione ─────────────────────────────────────────
+    # PRINCIPIO: il massimo punteggio si ottiene solo quando più parametri
+    # fisici collaborano (energia + organizzazione + umidità).
+    # CAPE da solo senza shear/SRH/LI → celle di calore effimere, non 1.5.
+
     cape = max(
         float(params.get("SBCAPE", params.get("CAPE", 0)) or 0),
         float(params.get("MUCAPE", 0) or 0),
     )
-    wmo = int(params.get("wmo_code", 0) or 0)
-    scp = float(params.get("SCP", 0) or 0)
-    li  = params.get("LI")
-    li_f = float(li) if li is not None else 0.0
+    wmo      = int(params.get("wmo_code", 0) or 0)
+    scp      = float(params.get("SCP", 0) or 0)
+    li       = params.get("LI")
+    li_f     = float(li) if li is not None else 0.0
+    shear_06 = float(params.get("shear_0_6", 0) or 0)
+    srh_03   = float(params.get("srh_0_3", 0) or 0)
+    dcape    = float(params.get("DCAPE", 0) or 0)
 
-    if cape >= thresholds.SBCAPE_EXTREME or scp >= thresholds.SCP_HIGH or wmo == 99:
+    # Conteggio parametri di supporto alla convezione (oltre alla sola CAPE)
+    supp_params = sum([
+        shear_06 >= thresholds.SHEAR_06_ORGANIZED,       # organizzazione dinamica
+        srh_03   >= thresholds.SRH_03_LOW,                # rotazione
+        li_f     <= thresholds.LI_UNSTABLE,               # instabilità termica
+        dcape    >= thresholds.DCAPE_LOW,                 # potenziale downburst
+        float(params.get("PWAT", 0) or 0) >= thresholds.PWAT_HUMID,  # umidità
+    ])
+
+    if (scp >= thresholds.SCP_HIGH                        # SCP già composito
+            or wmo == 99                                  # grandine forte osservata
+            or (cape >= thresholds.SBCAPE_EXTREME and supp_params >= 3)):
+        # Ambiente severamente organizzato: tutti i parametri collaborano
         score += 1.5
-    elif (cape >= thresholds.SBCAPE_STRONG or scp >= thresholds.SCP_MODERATE
-          or wmo in (95, 96) or li_f <= thresholds.LI_VERY_UNSTABLE):
+    elif (scp >= thresholds.SCP_MODERATE
+            or wmo in (95, 96)
+            or li_f <= thresholds.LI_VERY_UNSTABLE
+            or (cape >= thresholds.SBCAPE_STRONG and supp_params >= 2)
+            or (cape >= thresholds.SBCAPE_EXTREME and supp_params >= 1)):
+        # Temporali attivi, ambiente ben supportato, OPPURE energia estrema
+        # con almeno un parametro di innesco/supporto (LI, shear, PWAT)
         score += 1.0
-    elif (cape >= thresholds.SBCAPE_MODERATE or wmo in (80, 81, 82, 91, 92)
-          or li_f <= thresholds.LI_UNSTABLE):
+    elif (wmo in (80, 81, 82, 91, 92)
+            or li_f <= thresholds.LI_UNSTABLE
+            or (cape >= thresholds.SBCAPE_MODERATE and supp_params >= 1)
+            or cape >= thresholds.SBCAPE_EXTREME):
+        # CAPE elevato/estremo anche senza supporto dinamico = celle di calore
+        # possibili; o CAPE moderato con 1 parametro di innesco
         score += 0.5
 
     # ── 3. Vento (costa spezzina) ─────────────────────────────────────────

@@ -62,6 +62,30 @@ def _format_date(d: datetime.date) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def call_gemini(prompt: str, api_key: str) -> tuple[str, str]:
+    """
+    Chiama Gemini con retry su 3 modelli.
+    MAX_TOKENS → restituisce il testo parziale (non lo scarta).
+    Logga il motivo preciso di ogni fallimento.
+    """
+    # Sanity: se il prompt è enorme, tronca la tabella oraria per non superare i limiti
+    MAX_PROMPT_CHARS = 25_000
+    if len(prompt) > MAX_PROMPT_CHARS:
+        # Trova e tronca il blocco TABELLA ORARIA (la parte più lunga)
+        tag = "\nTABELLA ORARIA COMPLETA"
+        tag_end = "\nREGOLA CRITICA:"
+        idx_start = prompt.find(tag)
+        idx_end   = prompt.find(tag_end)
+        if 0 < idx_start < idx_end:
+            table_block = prompt[idx_start:idx_end]
+            lines = table_block.splitlines()
+            # Mantieni intestazione + ogni 3 ore
+            keep = [lines[0], lines[1]] if len(lines) > 2 else lines
+            keep += [l for i, l in enumerate(lines[2:]) if i % 3 == 0]
+            prompt = prompt[:idx_start] + "\n".join(keep) + prompt[idx_end:]
+        if len(prompt) > MAX_PROMPT_CHARS:
+            prompt = prompt[:MAX_PROMPT_CHARS] + "\n[prompt troncato per lunghezza]"
+        print(f"    [Gemini] Prompt ridotto a {len(prompt)} chars")
+
     payload = {
         "system_instruction": {"parts": [{"text": (
             "Sei un meteorologo esperto del Levante Ligure e della città di La Spezia. "
@@ -80,43 +104,88 @@ def call_gemini(prompt: str, api_key: str) -> tuple[str, str]:
                       "HARM_CATEGORY_SEXUALLY_EXPLICIT","HARM_CATEGORY_DANGEROUS_CONTENT"]
         ],
     }
+    last_error = "nessun tentativo completato"
     for model_id, model_label in GEMINI_MODELS:
         url = f"{GEMINI_API_BASE}/models/{model_id}:generateContent?key={api_key}"
-        print(f"    [Gemini] Provo {model_label}...")
+        print(f"    [Gemini] Provo {model_label} ({model_id})...")
         for attempt in range(1, 5):
             try:
                 resp = requests.post(url, json=payload, timeout=180)
+
                 if resp.status_code == 404:
+                    last_error = f"{model_label}: modello non trovato (404)"
+                    print(f"    [Gemini] {last_error}")
+                    break
+                if resp.status_code == 400:
+                    try:
+                        msg = resp.json().get("error", {}).get("message", resp.text[:200])
+                    except Exception:
+                        msg = resp.text[:200]
+                    last_error = f"{model_label}: richiesta non valida (400) – {msg}"
+                    print(f"    [Gemini] {last_error}")
                     break
                 if resp.status_code == 429:
                     if attempt < 4:
                         wait = 30 * (2 ** (attempt - 1))
-                        print(f"    [Gemini] Rate limit, attendo {wait}s...")
+                        print(f"    [Gemini] Rate limit, attendo {wait}s ({attempt}/3)...")
                         time.sleep(wait)
                         continue
+                    last_error = f"{model_label}: rate limit persistente"
                     break
+                if resp.status_code >= 500:
+                    last_error = f"{model_label}: errore server ({resp.status_code})"
+                    print(f"    [Gemini] {last_error}")
+                    if attempt < 4:
+                        time.sleep(10); continue
+                    break
+
                 resp.raise_for_status()
-                cands = resp.json().get("candidates", [])
+                data  = resp.json()
+                cands = data.get("candidates", [])
+
                 if not cands:
+                    reason = data.get("promptFeedback", {}).get("blockReason", "sconosciuto")
+                    last_error = f"{model_label}: risposta bloccata ({reason})"
+                    print(f"    [Gemini] {last_error}")
                     break
-                fin = cands[0].get("finishReason", "")
-                if fin in ("SAFETY", "MAX_TOKENS"):
-                    break
+
+                fin  = cands[0].get("finishReason", "")
                 text = (cands[0].get("content",{}).get("parts",[{}])[0].get("text","") or "").strip()
+
+                if fin == "SAFETY":
+                    last_error = f"{model_label}: bloccato da filtri sicurezza"
+                    print(f"    [Gemini] {last_error}")
+                    break
+                if fin == "MAX_TOKENS":
+                    # Testo troncato ma utilizzabile – non scartarlo
+                    if text:
+                        print(f"    [Gemini] OK {model_label} ({len(text)} chars, MAX_TOKENS – testo parziale)")
+                        return text + "\n[risposta troncata per lunghezza]", model_label
+                    last_error = f"{model_label}: MAX_TOKENS senza testo"
+                    break
                 if text:
                     print(f"    [Gemini] OK {model_label} ({len(text)} chars)")
                     return text, model_label
+
+                last_error = f"{model_label}: risposta vuota (finishReason={fin})"
+                print(f"    [Gemini] {last_error}")
+                break
+
             except requests.exceptions.Timeout:
+                last_error = f"{model_label}: timeout (tentativo {attempt}/4)"
+                print(f"    [Gemini] {last_error}")
                 if attempt < 4:
                     time.sleep(5); continue
                 break
             except Exception as e:
-                print(f"    [Gemini] errore: {e}")
+                last_error = f"{model_label}: eccezione {type(e).__name__}: {e}"
+                print(f"    [Gemini] {last_error}")
                 if attempt < 4:
                     time.sleep(3); continue
                 break
 
-    return "(narrativa AI non disponibile al momento)", "nessun_modello"
+    print(f"    [Gemini] Tutti i modelli falliti. Ultimo errore: {last_error}")
+    return f"(narrativa AI non disponibile – {last_error})", "nessun_modello"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
