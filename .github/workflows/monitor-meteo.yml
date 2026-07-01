@@ -43,12 +43,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run monitor meteo unificato
+      - name: Run monitor fulmini
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
         run: |
-          python send_monitors.py
+          python monitor_fulmini.py
 
       - name: Commit stato aggiornato
         if: always()
