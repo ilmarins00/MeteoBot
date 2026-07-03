@@ -633,3 +633,66 @@ def livello_attenzione(score: float) -> Tuple[str, str]:
     
     # CORREZIONE: aggiunto il return mancante per i valori bassi (< 1.0)
     return "BASSO", "🟢"
+
+def flash_flood_guidance(
+    rain_1h: float,
+    rain_3h: float,
+    soil_moisture: Optional[float] = None,
+    oro_factor: float = 0.0
+) -> Dict[str, Any]:
+    """
+    Calcola il rischio di alluvione lampo (Flash Flood) basato su intensità oraria,
+    saturazione del suolo e forzante orografico.
+    """
+    # Soglie ARPAL Liguria per zona A/B (Levante)
+    # 30mm/1h = Gialla, 50mm/1h = Arancione/Rossa
+    
+    base_risk = 0.0
+    if rain_1h >= 50: base_risk = 0.9
+    elif rain_1h >= 30: base_risk = 0.6
+    elif rain_1h >= 15: base_risk = 0.3
+    
+    # Aumento rischio per suolo saturo
+    if soil_moisture is not None and soil_moisture > 0.8:
+        base_risk += 0.2
+        
+    # Aumento rischio per orografia (effetto stazionarietà)
+    if oro_factor > 0.6:
+        base_risk += 0.2
+        
+    risk_val = min(base_risk, 1.0)
+    
+    level = "BASSO"
+    if risk_val >= 0.8: level = "ESTREMO"
+    elif risk_val >= 0.5: level = "ELEVATO"
+    elif risk_val >= 0.2: level = "MODERATO"
+    
+    return {
+        "risk_value": round(risk_val, 2),
+        "level": level,
+        "recommendation": "Monitorare i corsi d'acqua minori e i bacini a risposta rapida."
+    }
+
+def heatwave_analysis(
+    temp_max: float,
+    humidity: float,
+    temp_history: List[float] = None
+) -> Dict[str, Any]:
+    """
+    Analisi ondata di calore basata su Heat Index e persistenza.
+    """
+    # Calcolo semplificato Heat Index
+    hi = temp_max
+    if temp_max > 27:
+        hi = 0.5 * (temp_max + 61.0 + ((temp_max-68.0)*1.2) + (humidity*0.094))
+        
+    level = "NORMALE"
+    if hi >= 41: level = "PERICOLO ESTREMO"
+    elif hi >= 35: level = "PERICOLO"
+    elif hi >= 30: level = "CAUTELA"
+    
+    return {
+        "heat_index": round(hi, 1),
+        "level": level,
+        "is_heatwave": hi >= 35
+    }
