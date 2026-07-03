@@ -671,27 +671,38 @@ def flash_flood_guidance(
     return risk_val, desc
 
 def heatwave_analysis(
-    temp_history: List[float],
+    temp_history: List[Any],
     temp_max_today: float,
     temp_min_today: float,
     heat_index_today: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Analisi ondata di calore basata su Heat Index e persistenza delle temperature.
+    Gestisce temp_history sia come lista di float che come lista di dict.
     """
-    hi = float(heat_index_today or temp_max_today)
+    hi = float(heat_index_today or temp_max_today or 0)
     
     level = "NORMALE"
     if hi >= 41: level = "PERICOLO ESTREMO"
     elif hi >= 35: level = "PERICOLO"
     elif hi >= 30: level = "CAUTELA"
     
-    # Persistenza (se le ultime 3 notti sono state calde)
-    nights_warm = sum(1 for t in temp_history[-3:] if t > 20) if temp_history else 0
+    # Estrazione temperature minime dallo storico
+    min_temps = []
+    for entry in temp_history:
+        if isinstance(entry, dict):
+            min_temps.append(float(entry.get("T_min", entry.get("temp_min", 0))))
+        else:
+            min_temps.append(float(entry))
+            
+    # Persistenza (se le ultime 3 notti sono state calde, > 20°C)
+    nights_warm = sum(1 for t in min_temps[-3:] if t > 20) if min_temps else 0
     
     return {
         "heat_index": round(hi, 1),
         "level": level,
         "is_heatwave": hi >= 35 or nights_warm >= 3,
-        "nights_warm": nights_warm
+        "nights_warm": nights_warm,
+        "severity": level.lower() if hi >= 30 else "nessuna",
+        "desc": f"Disagio da calore {level} (HI {hi:.1f}°C)"
     }

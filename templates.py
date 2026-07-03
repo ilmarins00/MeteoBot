@@ -21,6 +21,7 @@ def _fmt(val: Any, fmt: str = ".1f", suffix: str = "") -> str:
 def render_analisi_semplice(
     obs: Dict,
     params: Dict,
+    hourly: Optional[List] = None,
     giorno_label: str = "oggi",
 ) -> str:
     return render_section1_simple(obs, params, 0, "", giorno_label)

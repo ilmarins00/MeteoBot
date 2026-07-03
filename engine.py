@@ -42,13 +42,13 @@ from templates import (
     build_gemini_prompt_tecnico, render_telegram_message
 )
 
-def build_gemini_prompt(section1, section2, score, params, alert_level):
+def build_gemini_prompt(section1, section2, score, params, alert_level=""):
+    """Alias legacy per compatibilità."""
     return build_gemini_prompt_tecnico(section2, params, score, "oggi", False, "")
 
-
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 # Costruzione parametri da obs
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _extract_sounding_levels(
     sounding: Dict[str, Any]
@@ -88,15 +88,14 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
         pres, temp, dewp, u_prof, v_prof, heights = _extract_sounding_levels(sounding)
 
         if pres and temp and dewp:
-            # \u2014 Termodinamica completa
+            # — Termodinamica completa
             thermo = compute_all_thermo(pres, temp, dewp)
             params.update(thermo)
 
-            # \u2014 PWAT nativo (integrazione discreta)
+            # — PWAT nativo (integrazione discreta)
             params["PWAT"] = pwat_from_profile(pres, temp, dewp)
 
-            # \u2014 Indici classici (approssimazione da profilo)
-            # T e Td interpolati a 500, 700, 850 hPa (in °C)
+            # — Indici classici (approssimazione da profilo)
             T500  = _interp_level(pres, temp,  50000)
             T700  = _interp_level(pres, temp,  70000)
             T850  = _interp_level(pres, temp,  85000)
@@ -111,27 +110,26 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
                 params["KI"] = round(k_index(Tc850, Tdc850, Tc700, Tdc700, Tc500), 1)
                 params["TT"] = round(totals_totals(Tc850, Tdc850, Tc500), 1)
 
-            # \u2014 Lapse rates
+            # — Lapse rates
             if heights:
                 lr = compute_lapse_rates(temp, heights)
                 params.update({k: round(v, 2) if v is not None else None
                                 for k, v in lr.items()})
 
         if u_prof and v_prof and heights:
-            # \u2014 Shear
+            # — Shear
             shear = compute_shear_profile(u_prof, v_prof, heights)
             params.update(shear)
 
-            # \u2014 SRH reale (Bunkers)
+            # — SRH reale (Bunkers)
             srh = compute_srh(u_prof, v_prof, heights)
             params.update(srh)
 
-        # \u2014 Indici compositi
+        # — Indici compositi
         cape = params.get("MUCAPE", params.get("SBCAPE", params.get("CAPE", 0)))
         srh1 = params.get("srh_0_1", 0)
         srh3 = params.get("srh_0_3", 0)
         shear06 = params.get("shear_0_6", 0)
-        shear01 = params.get("shear_0_1", 0)
         lcl = params.get("LCL", 1000)
         cin = params.get("CIN", params.get("SBCIN", 0))
 
@@ -143,22 +141,7 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
             ), 3
         )
 
-        # SWEAT (solo se il profilo vento è disponibile)
-        wind_850, wind_500 = None, None
-        if u_prof and v_prof and len(u_prof) == len(heights):
-            wind_850 = _interp_wind_level(u_prof, v_prof, heights, 1500)
-            wind_500 = _interp_wind_level(u_prof, v_prof, heights, 5500)
-        if wind_850 and wind_500 and params.get("TT"):
-            params["SWEAT"] = round(
-                sweat_index(
-                    Tdc850 if "Tdc850" in dir() else 10,
-                    params["TT"],
-                    wind_850[0], wind_500[0],
-                    wind_850[1], wind_500[1],
-                ), 1
-            )
-
-        # — DCAPE dal profilo (se non già calcolato in io_ingest)
+        # — DCAPE
         dcape_pre = obs.get("DCAPE")
         if dcape_pre is not None:
             params["DCAPE"] = dcape_pre
@@ -206,20 +189,9 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
         "wmo_code":          obs.get("wmo_code",         0),
         "soil_moisture":      obs.get("soil_moisture",    None),
         "DCAPE":              obs.get("DCAPE",             params.get("DCAPE", 0)),
-        "front_present":             obs.get("front_present",             False),
-        "low_level_convergence":     obs.get("low_level_convergence",     False),
-        "upper_level_tropospheric_vorticity": obs.get(
-            "upper_level_tropospheric_vorticity", False
-        ),
-        "temp_dewpoint_spread": (
-            (obs.get("temp_c", 20) or 20)
-            - ((obs.get("temp_c", 20) or 20) - 2)   # placeholder se non fornito
-            if obs.get("temp_dewpoint_spread") is None
-            else obs.get("temp_dewpoint_spread")
-        ),
     })
 
-    # \u2014 Fattore orografico e brezza marina
+    # — Fattore orografico e brezza marina
     wind_dir = obs.get("wind_dir_deg", 225)
     wind_ms  = obs.get("wind_speed_ms", obs.get("wind_gust_kmh", 0) / 3.6)
     cape_factor = min(params.get("MUCAPE", 0) / 2000.0, 1.0)
@@ -261,9 +233,9 @@ def _interp_wind_level(
     return speed_kt, dir_deg
 
 
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 # Pipeline principale
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 
 def run_pipeline(
     obs: Dict[str, Any],
@@ -271,9 +243,6 @@ def run_pipeline(
 ) -> Dict[str, Any]:
     """
     Esegue la pipeline meteorologica completa.
-    obs            : osservazioni correnti + sounding opzionale
-    hourly_forecast: lista previsioni orarie per Sezione 3
-    Ritorna dict con tutte le sezioni, parametri, allerte e metadati.
     """
     params = build_params_from_obs(obs)
 
@@ -284,17 +253,12 @@ def run_pipeline(
 
     # Allerta ARPAL composita
     rain_obs = {
-        "1h":  obs.get("rain_1h_mm",  obs.get("precip_rate_mm_h", 0)),
-        "3h":  obs.get("rain_3h_mm",  0),
-        "6h":  obs.get("rain_6h_mm",  0),
-        "12h": obs.get("rain_12h_mm", 0),
-        "24h": obs.get("rain_24h_mm", 0),
+        "1h":  float(obs.get("precip_rate_mm_h", 0) or 0),
+        "24h": float(obs.get("rain_24h_mm", 0) or 0),
     }
     alert_level, alert_emoji = full_alert(params, score, rain_obs)
     _, alert_detail = composite_arpal_alert(
-        rain_1h=rain_obs["1h"],  rain_3h=rain_obs["3h"],
-        rain_6h=rain_obs["6h"],  rain_12h=rain_obs["12h"],
-        rain_24h=rain_obs["24h"],
+        rain_1h=rain_obs["1h"], rain_24h=rain_obs["24h"],
         wind_kmh=params.get("wind_gust_kmh", 0),
         temp_c=params.get("temp_c"),
         wave_height_m=params.get("wave_height_m", 0),
@@ -306,9 +270,7 @@ def run_pipeline(
     section3 = render_section3_objective_table(hourly_forecast)
     gemini_prompt = build_gemini_prompt_tecnico(section2, params, score, "Oggi", False, section3)
 
-    # Chiamata a Gemini per l'analisi narrativa
-    # TODO: Invocare Gemini API qui e ottenere la descrizione narrativa
-    # Per ora, useremo un placeholder o una versione pre-generata
+    # Placeholder IA
     descrizione_ia = "Analisi narrativa generata da Gemini (placeholder)."
 
     # Generazione messaggio Telegram finale
@@ -326,14 +288,13 @@ def run_pipeline(
     return {
         "meta": {
             "generated_at": obs.get("time_generated", datetime.now(timezone.utc).isoformat()),
-            "location":     obs.get("location", f"La Spezia ({LATITUDE}N, {LONGITUDE}E)"),
+            "location":     obs.get("location", "La Spezia"),
             "score":        score,
             "alert_level":  alert_level,
             "alert_emoji":  alert_emoji,
             "alert_detail": alert_detail,
             "mode":         mode,
             "orographic_factor":    params.get("orographic_factor", 0),
-            "sea_breeze_convergence": params.get("sea_breeze_convergence", 0),
         },
         "section1":      section1,
         "section2":      section2,
@@ -346,94 +307,6 @@ def run_pipeline(
 
 
 def export_json(result: Dict[str, Any], path: str) -> None:
-    """Salva il risultato completo in JSON (UTF-8, indent 2)."""
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-
-    if sounding:
-        pressure = sounding.get("pressure_pa", [])
-        temperature = sounding.get("temperature_k", [])
-        dewpoint = sounding.get("dewpoint_k", [])
-        u_prof = sounding.get("u_ms", [])
-        v_prof = sounding.get("v_ms", [])
-        heights = sounding.get("height_m", [])
-
-        # CAPE/CIN (usa metpy se disponibile)
-        if pressure and temperature and dewpoint:
-            # parcel from surface
-            parcel_p = pressure[0]
-            parcel_T = temperature[0]
-            parcel_Td = dewpoint[0]
-            cape, cin = cape_cin_from_profile(pressure, temperature, dewpoint, parcel_p, parcel_T, parcel_Td)
-            params["CAPE"] = cape
-            params["CIN"] = cin
-        else:
-            params["CAPE"] = obs.get("CAPE", 0)
-            params["CIN"] = obs.get("CIN", 0)
-
-        # Shear profile
-        if u_prof and v_prof and heights:
-            shear = compute_shear_profile(u_prof, v_prof, heights)
-            params.update(shear)
-            srh = compute_srh(u_prof, v_prof, heights)
-            params.update(srh)
-        else:
-            params["shear_0_6"] = obs.get("shear_0_6", 0)
-            params["srh_0_1"] = obs.get("srh_0_1", 0)
-
-        # PWAT
-        params["PWAT"] = pwat_from_profile(pressure, temperature, dewpoint)
-        # LCL
-        params["LCL"] = lcl_height(temperature[0], dewpoint[0], pressure[0]) if temperature and dewpoint else obs.get("LCL", None)
-    else:
-        # fallback su osservazioni superficiali
-        params["CAPE"] = obs.get("CAPE", 0)
-        params["CIN"] = obs.get("CIN", 0)
-        params["shear_0_6"] = obs.get("shear_0_6", 0)
-        params["srh_0_1"] = obs.get("srh_0_1", 0)
-        params["PWAT"] = obs.get("PWAT", 0)
-        params["LCL"] = obs.get("LCL", None)
-
-    # Aggiungi altri parametri utili
-    params["LI"] = obs.get("LI", None)
-    params["precip_rate_mm_h"] = obs.get("precip_rate_mm_h", 0)
-    params["wind_gust_kmh"] = obs.get("wind_gust_kmh", 0)
-    params["heat_index"] = obs.get("heat_index", None)
-
-    return params
-
-def run_pipeline(obs: Dict[str, Any], hourly_forecast: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Esegue pipeline completa e ritorna JSON con sezioni e metadati.
-    hourly_forecast: lista oraria per Sezione 3.
-    """
-    params = build_params_from_obs(obs)
-    score = convective_score(params)
-    mode = classify_storm_mode(params)
-    hazards = severe_hazards(params)
-    section1 = render_section1_simple(obs, params, score)
-    section2 = render_section2_detailed(obs, params, mode, hazards)
-    section3 = render_section3_objective_table(hourly_forecast)
-    gemini_prompt = build_gemini_prompt(section1, section2, score, params)
-    alert_level = map_score_to_alert(score)
-
-    result = {
-        "meta": {
-            "generated_at": obs.get("time_generated", None),
-            "location": obs.get("location", "unspecified"),
-            "score": score,
-            "alert_level": alert_level,
-            "mode": mode,
-        },
-        "section1": section1,
-        "section2": section2,
-        "section3": section3,
-        "gemini_prompt": gemini_prompt,
-        "params": params,
-        "hazards": hazards,
-    }
-    return result
-
-def export_json(result: Dict[str, Any], path: str):
+    """Salva il risultato completo in JSON."""
     with open(path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
