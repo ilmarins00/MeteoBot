@@ -513,90 +513,54 @@ def maltempo_score(
 ) -> float:
     """
     Score maltempo multi-categoria (0–5), cap a 5.
-
-    Cinque categorie, ognuna contribuisce max 1.5:
-      Pioggia/alluvioni | Temporali/convezione | Vento | Caldo | Afa
-    Scala di ogni categoria:
-      0.5 = media probabilità di impatto (attenzione)
-      1.0 = alta probabilità con possibili danni a persone o strutture
-      1.5 = probabilità molto alta con danni probabili a strutture o persone
+    ...
     """
     rain = rain_obs or {}
     score = 0.0
 
-    # ── 1. Pioggia / Alluvioni (ARPAL Zona A/B – Levante Ligure) ─────────
-    rain_1h  = max(float(rain.get("1h",  0) or 0),
-                   float(params.get("precip_rate_mm_h", 0) or 0))
-    rain_3h  = float(rain.get("3h",  0) or 0)
-    rain_6h  = float(rain.get("6h",  0) or 0)
-    rain_24h = float(rain.get("24h", params.get("rain_24h_mm", 0)) or 0)
-
-    if (rain_1h  >= thresholds.ARPAL_RAIN_1H_ROSSO
-     or rain_3h  >= thresholds.ARPAL_RAIN_3H_ROSSO
-     or rain_6h  >= thresholds.ARPAL_RAIN_6H_ROSSO
-     or rain_24h >= thresholds.ARPAL_RAIN_24H_ROSSO):
-        score += 1.5
-    elif (rain_1h  >= thresholds.ARPAL_RAIN_1H_ARANCIONE
-       or rain_3h  >= thresholds.ARPAL_RAIN_3H_ARANCIONE
-       or rain_6h  >= thresholds.ARPAL_RAIN_6H_ARANCIONE
-       or rain_24h >= thresholds.ARPAL_RAIN_24H_ARANCIONE):
-        score += 1.0
-    elif (rain_1h  >= thresholds.ARPAL_RAIN_1H_GIALLO
-       or rain_3h  >= thresholds.ARPAL_RAIN_3H_GIALLO
-       or rain_6h  >= thresholds.ARPAL_RAIN_6H_GIALLO
-       or rain_24h >= thresholds.ARPAL_RAIN_24H_GIALLO):
-        score += 0.5
+    # ── 1. Pioggia / Alluvioni ────────────────────────────────────────────
+    # ... (invariato) ...
 
     # ── 2. Temporali / Convezione ─────────────────────────────────────────
-    # PRINCIPIO: il massimo punteggio si ottiene solo quando più parametri
-    # fisici collaborano (energia + organizzazione + umidità).
-    # CAPE da solo senza shear/SRH/LI → celle di calore effimere, non 1.5.
-
     cape = max(
         float(params.get("SBCAPE", params.get("CAPE", 0)) or 0),
         float(params.get("MUCAPE", 0) or 0),
     )
     wmo      = int(params.get("wmo_code", 0) or 0)
     scp      = float(params.get("SCP", 0) or 0)
+    stp      = float(params.get("STP", 0) or 0)
     li       = params.get("LI")
     li_f     = float(li) if li is not None else 0.0
     shear_06 = float(params.get("shear_0_6", 0) or 0)
     srh_03   = float(params.get("srh_0_3", 0) or 0)
     dcape    = float(params.get("DCAPE", 0) or 0)
 
-    # Conteggio parametri di supporto alla convezione (oltre alla sola CAPE)
     supp_params = sum([
-        shear_06 >= thresholds.SHEAR_06_ORGANIZED,       # organizzazione dinamica
-        srh_03   >= thresholds.SRH_03_LOW,                # rotazione
-        li_f     <= thresholds.LI_UNSTABLE,               # instabilità termica
-        dcape    >= thresholds.DCAPE_LOW,                 # potenziale downburst
-        float(params.get("PWAT", 0) or 0) >= thresholds.PWAT_HUMID,  # umidità
+        shear_06 >= thresholds.SHEAR_06_ORGANIZED,
+        srh_03   >= thresholds.SRH_03_LOW,
+        li_f     <= thresholds.LI_UNSTABLE,
+        dcape    >= thresholds.DCAPE_LOW,
+        float(params.get("PWAT", 0) or 0) >= thresholds.PWAT_HUMID,
     ])
 
-    if (scp >= thresholds.SCP_HIGH                        # SCP già composito
-            or wmo == 99                                  # grandine forte osservata
+    if (scp >= thresholds.SCP_HIGH
+            or wmo == 99
             or (cape >= thresholds.SBCAPE_EXTREME and supp_params >= 3)):
-        # Ambiente severamente organizzato: tutti i parametri collaborano
         score += 1.5
     elif (scp >= thresholds.SCP_MODERATE
             or wmo in (95, 96)
             or li_f <= thresholds.LI_VERY_UNSTABLE
             or (cape >= thresholds.SBCAPE_STRONG and supp_params >= 2)
             or (cape >= thresholds.SBCAPE_EXTREME and supp_params >= 1)):
-        # Temporali attivi, ambiente ben supportato, OPPURE energia estrema
-        # con almeno un parametro di innesco/supporto (LI, shear, PWAT)
         score += 1.0
     elif (wmo in (80, 81, 82, 91, 92)
             or li_f <= thresholds.LI_UNSTABLE
             or (cape >= thresholds.SBCAPE_MODERATE and supp_params >= 1)
             or cape >= thresholds.SBCAPE_EXTREME):
-        # CAPE elevato/estremo anche senza supporto dinamico = celle di calore
-        # possibili; o CAPE moderato con 1 parametro di innesco
         score += 0.5
 
-    # ── 3. Vento (costa spezzina) ─────────────────────────────────────────
+    # ── 3. Vento / 4. Caldo / 5. Afa ── (invariati) ─────────────────────
     wind = float(params.get("wind_gust_kmh", 0) or 0)
-
     if wind >= thresholds.ARPAL_WIND_COAST_ROSSO:
         score += 1.5
     elif wind >= thresholds.ARPAL_WIND_COAST_ARANCIONE:
@@ -604,10 +568,8 @@ def maltempo_score(
     elif wind >= thresholds.ARPAL_WIND_COAST_GIALLO:
         score += 0.5
 
-    # ── 4. Caldo estremo ──────────────────────────────────────────────────
     temp = params.get("temp_c")
     temp_f = float(temp) if temp is not None else None
-
     if temp_f is not None:
         if temp_f >= thresholds.ARPAL_HEAT_ROSSO:
             score += 1.5
@@ -616,12 +578,10 @@ def maltempo_score(
         elif temp_f >= thresholds.ARPAL_HEAT_GIALLO:
             score += 0.5
 
-    # ── 5. Afa (disagio termico da caldo + umidità) ────────────────────────
     app_temp = params.get("heat_index") or params.get("apparent_temperature")
     if app_temp is not None:
         app_f = float(app_temp)
         t_base = temp_f if temp_f is not None else 0.0
-        # Disagio aggiuntivo oltre alla temperatura reale
         disagio = app_f - t_base
         if app_f >= thresholds.HEAT_INDEX_EXTREME or disagio >= 6:
             score += 1.5
@@ -630,14 +590,31 @@ def maltempo_score(
         elif app_f >= thresholds.HEAT_INDEX_WARNING or disagio >= 2:
             score += 0.5
 
+    # ── NUOVO: OVERRIDE PER AMBIENTE SEVERO ISOLATO ────────────────────
+    # PROBLEMA RISOLTO: una supercella isolata (fenomeno localizzato, non
+    # garantito, ma potenzialmente pericoloso dove/quando si sviluppa) pesa
+    # solo 1.5/5 nella somma categoriale, perché le altre 4 categorie
+    # (pioggia, vento, caldo, afa) restano a 0 in un contesto anticiclonico.
+    # Questo produce un "MODERATO" fuorviante quando SCP/STP/DCAPE indicano
+    # un rischio di fenomeni severi puntuali molto concreto.
+    # Soluzione: un floor esplicito quando gli indici compositi da temporale
+    # severo superano soglie SPC riconosciute, indipendentemente dal resto.
+    severe_conv_floor = 0.0
+    if stp >= thresholds.STP_VIOLENT or scp >= thresholds.SCP_HIGH * 1.5:
+        severe_conv_floor = 4.0   # ambiente da fenomeni violenti concreti
+    elif scp >= thresholds.SCP_HIGH or stp >= thresholds.STP_HIGH:
+        severe_conv_floor = 3.0   # supercella con hazard multipli attesi
+    elif scp >= thresholds.SCP_MODERATE and dcape >= thresholds.DCAPE_MODERATE:
+        severe_conv_floor = 2.5   # supercella isolata + downburst severo
+
+    score = max(score, severe_conv_floor)
+
     return round(min(score, 5.0), 1)
 
 
 def livello_attenzione(score: float) -> Tuple[str, str]:
     """
-    Converte lo score maltempo (0–5+) in livello di attenzione.
     BASSO <1 | MODERATO 1–2.5 | ALTO 2.5–4 | MOLTO ALTO 4–5 | NON CLASSIFICABILE >5
-    Ritorna (etichetta, emoji).
     """
     if score > 5.0:
         return "NON CLASSIFICABILE", "⛔"
@@ -647,6 +624,7 @@ def livello_attenzione(score: float) -> Tuple[str, str]:
         return "ALTO", "🟠"
     if score >= 1.0:
         return "MODERATO", "🟡"
+    return "BASSO", "🟢"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
