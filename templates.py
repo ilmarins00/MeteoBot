@@ -599,8 +599,28 @@ def render_analisi_semplice(
             "buona visibilità e nessun disagio da afa."
         )
 
-    # ── Precipitazioni ────────────────────────────────────────────────────
-    if wmo_dom == 99:
+    # ── Precipitazioni e Rischio Convettivo Nascosto ──────────────────────
+    
+    # CORREZIONE: Integrazione dei parametri convettivi (SCP, STP, CAPE) 
+    # per evitare che l'analisi semplice descriva una giornata tranquilla 
+    # quando gli indici termodinamici sono esplosivi.
+    
+    scp = float(params.get("SCP", 0) or 0)
+    stp = float(params.get("STP", 0) or 0)
+    
+    if stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH:
+        lines.append(
+            "ALLERTA CONVETTIVA: Nonostante le condizioni apparentemente stabili, "
+            "l'atmosfera è estremamente instabile e favorevole allo sviluppo di supercelle "
+            "isolate ma violente. Possibili grandinate di grosse dimensioni e colpi di vento distruttivi."
+        )
+    elif scp >= thresholds.SCP_MODERATE or (cape >= thresholds.SBCAPE_EXTREME and wmo_dom < 80):
+        lines.append(
+            "ATTENZIONE: L'elevata energia termodinamica (CAPE estremo) in presenza di "
+            "shear del vento crea un ambiente esplosivo. Possibile sviluppo improvviso "
+            "di temporali intensi, anche se la nuvolosità generale risulta scarsa."
+        )
+    elif wmo_dom == 99:
         lines.append(
             "ALLERTA TEMPORALE SEVERO: attesi temporali violenti con grandine di grandi "
             "dimensioni. Rischio molto elevato di allagamenti rapidi, possibili danni a strutture. "
