@@ -18,9 +18,9 @@ Soglie calibrate su:
 from typing import Dict, List, Tuple, Optional, Any
 from config import THRESHOLDS, ALERT_LEVELS, ALERT_EMOJI, thresholds
 
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 # Score convettivo multi-parametro
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 
 def convective_score(params: Dict[str, float]) -> int:
     """
@@ -168,9 +168,9 @@ def convective_score(params: Dict[str, float]) -> int:
     return max(score, 0)
 
 
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 # Classificazione modalità convettiva
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 
 def classify_storm_mode(params: Dict[str, float]) -> str:
     """
@@ -216,9 +216,9 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
     return "temporali sparsi di calore – bassa organizzazione"
 
 
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 # Hazard mapping completo
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 
 def severe_hazards(params: Dict[str, float]) -> List[str]:
     """
@@ -246,32 +246,40 @@ def severe_hazards(params: Dict[str, float]) -> List[str]:
     p_sfc  = params.get("pressure_hpa", 1013)
     temp   = params.get("temp_c", None)
     dcape  = float(params.get("DCAPE", 0) or 0)
+    lcl    = params.get("LCL", 1500)
+    rh     = params.get("humidity_pct", 50)
+
+    # ── FILTRO ANTI-FALSI POSITIVI (Intelligenza di Sistema) ──
+    # Se l'atmosfera è "tappata" da forte inibizione o troppo secca,
+    # i rischi convettivi vengono declassati a "potenziali" o rimossi.
+    is_capped = cin <= thresholds.CIN_STRONG or lcl >= thresholds.LCL_HIGH or rh <= 35
+    wmo_haz = int(params.get("wmo_code", 0) or 0)
+    storm_active = (cape >= thresholds.SBCAPE_WEAK or wmo_haz in (80,81,82,95,96,99))
+    
+    # Se non c'è trigger e c'è forte tappo, molti rischi sono solo teorici
+    if is_capped and not storm_active:
+        hazards.append("⚠ RISCHIO TEORICO: Indici esplosivi ma atmosfera inibita (forte tappo/aria secca)")
 
     # ── Fenomeni ad alto impatto ──
 
     # Tornado / trombe d'aria
-    if stp >= thresholds.STP_VIOLENT:
-        hazards.append("RISCHIO TORNADO SIGNIFICATIVO – condizioni supercellulari intense")
-    elif stp >= thresholds.STP_HIGH:
-        hazards.append("trombe d'aria probabili – STP elevato")
-    elif (srh1 >= thresholds.SRH_01_HIGH
-          and shear1 >= thresholds.SHEAR_01_TORNADO
-          and cape >= thresholds.SBCAPE_MODERATE):
-        hazards.append("trombe d'aria possibili (SRH-01 e shear basso strato critici)")
+    if not is_capped:
+        if stp >= thresholds.STP_VIOLENT:
+            hazards.append("RISCHIO TORNADO SIGNIFICATIVO – condizioni supercellulari intense")
+        elif stp >= thresholds.STP_HIGH:
+            hazards.append("trombe d'aria probabili – STP elevato")
+        elif (srh1 >= thresholds.SRH_01_HIGH
+              and shear1 >= thresholds.SHEAR_01_TORNADO
+              and cape >= thresholds.SBCAPE_MODERATE):
+            hazards.append("trombe d'aria possibili (SRH-01 e shear basso strato critici)")
 
     # Grandine di grandi dimensioni (WMO: >2 cm)
     if cape >= 2500 and shear >= thresholds.SHEAR_06_SUPERCELL and lr03 >= 8.0:
         hazards.append("grandine di grandi dimensioni (>2 cm) – alta probabilità")
-    elif cape >= 1500 and shear >= thresholds.SHEAR_06_ORGANIZED:
+    elif cape >= 1500 and shear >= thresholds.SHEAR_06_ORGANIZED and not is_capped:
         hazards.append("grandine di dimensioni significative (1–2 cm)")
 
     # Raffiche severe e downburst (DCAPE + shear)
-    # V_max ≈ √(2·DCAPE): DCAPE 500 J/kg → 114 km/h
-    # NOTA: DCAPE vale solo se c'è attività convettiva associata.
-    # Un DCAPE alto senza CAPE/WMO temporale = vento sinottico, NON downburst.
-    wmo_haz = int(params.get("wmo_code", 0) or 0)
-    storm_active = (cape >= thresholds.SBCAPE_WEAK or wmo_haz in (80,81,82,95,96,99))
-
     if dcape >= thresholds.DCAPE_HIGH and storm_active:
         from thermo import dcape_gust_kmh as _dcape_gust
         v_est = _dcape_gust(dcape)
@@ -279,49 +287,40 @@ def severe_hazards(params: Dict[str, float]) -> List[str]:
             f"DOWNBURST SEVERO – DCAPE {dcape:.0f} J/kg, "
             f"raffica stimata fino a {v_est:.0f} km/h"
         )
-    elif dcape >= thresholds.DCAPE_MODERATE and storm_active:
+    elif dcape >= thresholds.DCAPE_MODERATE and (storm_active or cape > 1000):
         from thermo import dcape_gust_kmh as _dcape_gust
         v_est = _dcape_gust(dcape)
         hazards.append(
             f"raffiche discendenti intense (downburst) – DCAPE {dcape:.0f} J/kg, "
             f"stima {v_est:.0f} km/h"
         )
-    elif shear >= thresholds.SHEAR_06_SUPERCELL and cape >= thresholds.SBCAPE_MODERATE:
+    elif shear >= thresholds.SHEAR_06_SUPERCELL and cape >= thresholds.SBCAPE_MODERATE and not is_capped:
         hazards.append("raffiche severe (>90 km/h) e possibili microburst/downburst")
-    elif wind >= thresholds.ARPAL_WIND_ARANCIONE or shear >= thresholds.SHEAR_06_ORGANIZED:
-        hazards.append("raffiche di vento intense – possibili downburst")
 
     # Allagamenti rapidi / flash flood (rischio tipico del Levante Ligure)
-    if pwat >= thresholds.PWAT_HUMID and precip >= THRESHOLDS["PRECIP_INTENSE_MM_H"]:
-        if oro >= 0.5:
-            hazards.append("RISCHIO ALLAGAMENTI RAPIDI ELEVATO – forzante orografico + PWAT critico")
-        else:
-            hazards.append("rischio allagamenti rapidi e colate detritiche")
-    elif pwat >= thresholds.PWAT_NORMAL and precip >= thresholds.ARPAL_RAIN_1H_ARANCIONE:
+    # Combinazione PWAT + Oro + Intensità oraria
+    if pwat >= thresholds.PWAT_HUMID and (precip >= 15 or (precip >= 10 and oro >= 0.6)):
+        hazards.append("RISCHIO ALLAGAMENTI RAPIDI (FLASH FLOOD) – forzante orografico + PWAT critico")
+    elif pwat >= thresholds.PWAT_NORMAL and precip >= 10:
         hazards.append("piogge intense con rischio di allagamenti localizzati")
 
-    # Piogge persistenti su suolo saturo (tipico autunno spezzino)
-    rain_24 = params.get("rain_24h_mm", 0)
-    if rain_24 >= thresholds.ARPAL_RAIN_24H_ARANCIONE:
-        hazards.append("accumuli di pioggia critici nelle 24h – suolo saturo, rischio idrogeologico")
+    # Rigeneranti e V-Shaped (Pericolo estremo Levante Ligure)
+    if pwat >= 40 and srh3 >= 250 and shear >= 30 and oro >= 0.5 and storm_active:
+        hazards.append("PERICOLO SISTEMI RIGENERANTI (V-SHAPED) – stazionarietà su Appennino Ligure")
 
     # Attività elettrica intensa
-    # Richiede CAPE + PWAT + trigger (LI negativo o WMO temporale in atto).
-    # CAPE e PWAT alti in un'atmosfera stabile non producono fulmini.
-    wmo_val = int(params.get("wmo_code", 0) or 0)
     li_val  = float(params.get("LI", 0) or 0)
-    trigger_el = (li_val <= thresholds.LI_UNSTABLE or wmo_val in (80,81,82,95,96,99))
-    if cape >= thresholds.SBCAPE_MODERATE and pwat >= thresholds.PWAT_NORMAL and trigger_el:
+    trigger_el = (li_val <= thresholds.LI_UNSTABLE or wmo_haz in (80,81,82,95,96,99))
+    if cape >= thresholds.SBCAPE_MODERATE and pwat >= thresholds.PWAT_NORMAL and trigger_el and not is_capped:
         hazards.append("elevata attività elettrica (fulmini intensi e frequenti)")
 
-    # Neve a quote basse (inverno / primavera)
+    # Neve a quote basse
     snow_level = params.get("snow_level_m", 2000)
     if snow_level is not None and snow_level <= thresholds.SNOW_LEVEL_COASTAL_M:
         if temp is not None and temp <= 2:
             hazards.append("neve a quote collinari / costiere possibile")
 
     # Nebbia marina / bassa visibilità
-    rh = params.get("humidity_pct", 0)
     spread = params.get("temp_dewpoint_spread", 10)
     if rh >= thresholds.HUMIDITY_FOG and spread <= thresholds.TEMP_DEWPOINT_SPREAD_FOG:
         hazards.append("rischio nebbia densa – visibilità <200 m")
@@ -332,8 +331,6 @@ def severe_hazards(params: Dict[str, float]) -> List[str]:
         hazards.append("MAREGGIATA INTENSA – onde >4 m, rischio allagamento zone costiere")
     elif wave_h >= thresholds.WAVE_HEIGHT_ARANCIONE:
         hazards.append("mareggiata significativa – onde >2.5 m")
-    elif wave_h >= thresholds.WAVE_HEIGHT_GIALLO:
-        hazards.append("mare agitato – onde >1.5 m")
 
     # Ciclogenesi Ligure / Medicane
     if p_sfc is not None and p_sfc <= thresholds.MEDICANE_PRESSURE:
@@ -341,25 +338,18 @@ def severe_hazards(params: Dict[str, float]) -> List[str]:
     elif p_sfc is not None and p_sfc <= thresholds.CYCLOGENESIS_LIGURE:
         hazards.append("ciclogenesi sul Golfo Ligure – venti e precipitazioni in forte aumento")
 
-    # Libeccio/Scirocco forte (vento canalizzato in Valle del Magra)
+    # Libeccio/Scirocco forte (Valle del Magra canalizzazione)
     if wind >= thresholds.ARPAL_WIND_ROSSO:
         hazards.append("vento tempestoso (>90 km/h) – rischio danni strutturali")
     elif wind >= thresholds.ARPAL_WIND_ARANCIONE:
         hazards.append("vento forte (>60 km/h) – possibili danni a vegetazione e strutture")
 
-    # Calore estremo
-    heat_idx = params.get("heat_index", None)
-    if heat_idx is not None and heat_idx >= thresholds.HEAT_INDEX_EXTREME:
-        hazards.append("emergenza calore – stress termico estremo")
-    elif heat_idx is not None and heat_idx >= thresholds.HEAT_INDEX_DANGER:
-        hazards.append("caldo pericoloso – rischio colpo di calore")
-
     return hazards
 
 
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 # Sistema allerte ARPAL (Verde / Gialla / Arancione / Rossa)
-# \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ─────────────────────────────────────────────────────────────────────────────
 
 def arpal_alert_rain(
     rain_1h: float = 0,
@@ -447,65 +437,52 @@ def composite_arpal_alert(
         detail["temperatura"] = arpal_alert_temperature(temp_c)
     if snow_cm > 0:
         detail["neve"] = arpal_alert_snow(snow_cm)
-    if wave_height_m >= thresholds.WAVE_HEIGHT_GIALLO:
-        if wave_height_m >= thresholds.WAVE_HEIGHT_ROSSO:
-            detail["mare"] = "rossa"
-        elif wave_height_m >= thresholds.WAVE_HEIGHT_ARANCIONE:
-            detail["mare"] = "arancione"
-        else:
-            detail["mare"] = "gialla"
-
-    order = ["rossa", "arancione", "gialla", "verde"]
-    for lvl in order:
-        if any(v == lvl for v in detail.values()):
-            return lvl, detail
-    return "verde", detail
+    
+    # Livello allerta massimo
+    max_lvl = "verde"
+    order = ["verde", "gialla", "arancione", "rossa"]
+    for l in detail.values():
+        if order.index(l) > order.index(max_lvl):
+            max_lvl = l
+    
+    return max_lvl, detail
 
 
-def map_score_to_alert(score: int) -> str:
+def full_alert(params: Dict[str, float], score: float, rain_obs: Dict[str, float]) -> Tuple[str, str]:
     """
-    Mappa score convettivo → livello allerta ARPAL.
-    Calibrato su Liguria / Levante.
+    Determina il livello allerta finale basato sia sullo score convettivo
+    che sulle soglie ARPAL.
     """
-    mapping = THRESHOLDS["SCORE_TO_ALERT"]
-    keys = sorted(mapping.keys())
-    selected = "verde"
-    for k in keys:
-        if score >= k:
-            selected = mapping[k]
-    return selected
-
-
-def full_alert(
-    params: Dict[str, float],
-    score: int,
-    rain_obs: Optional[Dict[str, float]] = None,
-) -> Tuple[str, str]:
-    """
-    Allerta finale integrando score convettivo + allerte ARPAL per pioggia/vento.
-    Ritorna (livello_stringa, emoji).
-    """
-    convective_level = map_score_to_alert(score)
-    rain = rain_obs or {}
-    arpal_level, _ = composite_arpal_alert(
-        rain_1h=rain.get("1h", 0),
-        rain_3h=rain.get("3h", 0),
-        rain_6h=rain.get("6h", 0),
-        rain_12h=rain.get("12h", 0),
-        rain_24h=rain.get("24h", 0),
+    # 1. Mappa lo score numerico (0-5) in allerta
+    score_alert = map_score_to_alert(score)
+    
+    # 2. Calcola allerta ARPAL da soglie fisiche
+    arpal_lvl, _ = composite_arpal_alert(
+        rain_1h=rain_obs.get("1h", 0),
+        rain_3h=rain_obs.get("3h", 0),
+        rain_6h=rain_obs.get("6h", 0),
+        rain_24h=rain_obs.get("24h", 0),
         wind_kmh=params.get("wind_gust_kmh", 0),
         temp_c=params.get("temp_c"),
-        wave_height_m=params.get("wave_height_m", 0),
+        wave_height_m=params.get("wave_height_m", 0)
     )
-    order = {"verde": 0, "gialla": 1, "arancione": 2, "rossa": 3}
-    final = max(convective_level, arpal_level, key=lambda x: order.get(x, 0))
-    return final, ALERT_EMOJI.get(final, "⚪")
+    
+    # Prendi il massimo tra i due
+    order = ["verde", "gialla", "arancione", "rossa"]
+    final_lvl = arpal_lvl
+    if order.index(score_alert) > order.index(arpal_lvl):
+        final_lvl = score_alert
+        
+    return final_lvl, ALERT_EMOJI.get(final_lvl, "⚪")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Score maltempo e Livello di Attenzione
-# Riferimenti: ARPAL Liguria, WMO Severe Weather Guidance
-# ─────────────────────────────────────────────────────────────────────────────
+def map_score_to_alert(score: float) -> str:
+    """Mappa lo score 0-5 in livelli allerta."""
+    if score >= 4.0: return "rossa"
+    if score >= 2.5: return "arancione"
+    if score >= 1.0: return "gialla"
+    return "verde"
+
 
 def maltempo_score(
     params: Dict[str, float],
@@ -560,6 +537,9 @@ def maltempo_score(
     shear_06 = float(params.get("shear_0_6", 0) or 0)
     srh_03   = float(params.get("srh_0_3", 0) or 0)
     dcape    = float(params.get("DCAPE", 0) or 0)
+    cin      = float(params.get("CIN", 0) or 0)
+    lcl      = float(params.get("LCL", 1500) or 1500)
+    rh       = float(params.get("humidity_pct", 50) or 50)
 
     # Parametri di supporto
     supp_params = sum([
@@ -572,14 +552,15 @@ def maltempo_score(
 
     conv_score = 0.0
     
+    # FILTRO INTELLIGENTE: se c'è un forte tappo, riduciamo il contributo convettivo
+    is_capped = cin <= thresholds.CIN_STRONG or lcl >= thresholds.LCL_HIGH or rh <= 35
+    
     if stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH:
-        # Ambiente da supercella confermato = allerta altissima
         conv_score += 2.5
     elif (scp >= thresholds.SCP_MODERATE 
           or wmo == 99 
           or (cape >= thresholds.SBCAPE_EXTREME and supp_params >= 2)
           or (cape >= thresholds.SBCAPE_STRONG and supp_params >= 3)):
-        # Temporali severi molto probabili
         conv_score += 2.0
     elif (wmo in (95, 96)
           or li_f <= thresholds.LI_VERY_UNSTABLE
@@ -590,6 +571,10 @@ def maltempo_score(
           or li_f <= thresholds.LI_UNSTABLE
           or (cape >= thresholds.SBCAPE_MODERATE)):
         conv_score += 0.5
+    
+    # Se c'è tappo e non ci sono temporali in atto, dimezziamo il rischio convettivo
+    if is_capped and wmo < 80:
+        conv_score *= 0.5
         
     score += conv_score
 
@@ -648,203 +633,3 @@ def livello_attenzione(score: float) -> Tuple[str, str]:
     
     # CORREZIONE: aggiunto il return mancante per i valori bassi (< 1.0)
     return "BASSO", "🟢"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Flash Flood Guidance (FFG)
-# Riferimenti: WMO No.1072 Flash Flood Guidance Systems (2013)
-#              ARPAL Liguria – Valori soglia Zona A/B (Levante Ligure)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def flash_flood_guidance(
-    params: Dict[str, float],
-    rain_obs: Optional[Dict[str, float]] = None,
-    soil_moisture: Optional[float] = None,   # m³/m³ (Open-Meteo ERA5-Land 0-10cm)
-    precip_48h_mm: float = 0.0,
-) -> Tuple[float, str]:
-    """
-    Flash Flood Guidance (FFG) score (0.0–1.0) e descrizione del rischio.
-
-    Combina:
-    - Precipitazioni istantanee e cumulate (ARPAL soglie 1h, 3h, 6h)
-    - Umidità del suolo (Open-Meteo ERA5-Land, piena capacità di campo)
-    - Precipitazioni pregresse 48h (precondizionamento suolo)
-    - Forzante orografico (Appennino Ligure: fattore moltiplicativo 1.4x)
-    - PWAT (serbatoio idrico atmosferico disponibile)
-
-    WMO FFG logic: la soglia di alluvione lampo è raggiunta quando:
-      rate_precipitazione ≥ FFG_critico(soil_moisture, basin_time_of_concentration)
-    Per il Levante Ligure: tempo concentrazione bacini principali ≈ 1-3h (Vara, Magra).
-    """
-    rain = rain_obs or {}
-    thr = thresholds
-
-    rain_1h  = max(float(rain.get("1h",  0) or 0),
-                   float(params.get("precip_rate_mm_h", 0) or 0))
-    rain_3h  = float(rain.get("3h",  0) or 0)
-    rain_6h  = float(rain.get("6h",  0) or 0)
-    rain_24h = float(rain.get("24h", params.get("rain_24h_mm", 0)) or 0)
-    pwat     = float(params.get("PWAT", 0) or 0)
-    oro      = float(params.get("orographic_factor", 0) or 0)
-
-    score = 0.0
-
-    # — Precipitazioni (ARPAL Zona A/B) ──────────────────────────────────
-    if (rain_1h  >= thr.ARPAL_RAIN_1H_ROSSO or
-        rain_3h  >= thr.ARPAL_RAIN_3H_ROSSO or
-        rain_6h  >= thr.ARPAL_RAIN_6H_ROSSO):
-        score += 0.45
-    elif (rain_1h  >= thr.ARPAL_RAIN_1H_ARANCIONE or
-          rain_3h  >= thr.ARPAL_RAIN_3H_ARANCIONE or
-          rain_6h  >= thr.ARPAL_RAIN_6H_ARANCIONE):
-        score += 0.30
-    elif (rain_1h  >= thr.ARPAL_RAIN_1H_GIALLO or
-          rain_3h  >= thr.ARPAL_RAIN_3H_GIALLO):
-        score += 0.15
-
-    # — Precondizionamento suolo (precipitazioni 48h precedenti) ─────────
-    if precip_48h_mm >= thr.PRECIP_48H_SAT:
-        score += 0.20
-    elif precip_48h_mm >= thr.PRECIP_48H_PRESAT:
-        score += 0.10
-
-    # — Umidità del suolo (misura diretta) ────────────────────────────────
-    if soil_moisture is not None:
-        if soil_moisture >= thr.SOIL_MOISTURE_SATURATION:
-            score += 0.15
-        elif soil_moisture >= thr.SOIL_MOISTURE_FIELD_CAP:
-            score += 0.08
-
-    # — PWAT elevato (serbatoio idrico atmosferico) ────────────────────────
-    if pwat >= thr.PWAT_EXTREME:
-        score += 0.15
-    elif pwat >= thr.PWAT_HUMID:
-        score += 0.08
-
-    # — Forzante orografico (amplifica il rischio sulle aste torrentizie) ──
-    if oro >= 0.6 and score > 0.10:
-        score = min(score * 1.35, 1.0)
-    elif oro >= 0.3 and score > 0.10:
-        score = min(score * 1.15, 1.0)
-
-    score = round(min(score, 1.0), 2)
-
-    if score >= 0.70:
-        desc = "RISCHIO ALLUVIONI LAMPO ELEVATO – suolo saturo + piogge intense"
-    elif score >= 0.45:
-        desc = "rischio alluvioni lampo moderato – monitorare accumuli orari"
-    elif score >= 0.20:
-        desc = "rischio alluvioni lampo basso – attenzione in zone pianeggianti"
-    else:
-        desc = "nessun rischio alluvioni lampo significativo"
-
-    return score, desc
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Analisi ondate di calore – WMO + ARPAL Liguria
-# Riferimenti: WMO No.1142 (2014) – Heatwave definition and impacts
-#              ARPAL Liguria – Piano regionale emergenze caldo
-# ─────────────────────────────────────────────────────────────────────────────
-
-def heatwave_analysis(
-    temp_history: List[Dict[str, Any]],
-    temp_max_today: Optional[float] = None,
-    temp_min_today: Optional[float] = None,
-    heat_index_today: Optional[float] = None,
-) -> Dict[str, Any]:
-    """
-    Analisi ondata di calore multi-giorno.
-
-    WMO HeatWave definition:
-      Un'ondata di calore inizia quando la temperatura massima supera di 5°C
-      la media climatologica per almeno 5 giorni consecutivi.
-
-    Definizione operativa ARPAL Liguria (più conservativa per la salute):
-      Tmax ≥ 35°C per ≥ 3 giorni consecutivi  E
-      Tmin ≥ 20°C (notti tropicali, disagio termico notturno).
-
-    Excess Heat Factor (EHF, Nairn & Fawcett 2013):
-      EHI_sig = (T3d_mean - T90_period) / σ   (anomalia di calore significativa)
-      EHI_acc = (T3d_mean - T30d_mean)         (accumulazione del calore)
-      EHF = EHI_sig × max(1, EHI_acc)
-
-    Qui usiamo un'approssimazione pratica con i dati disponibili.
-    temp_history: lista [{'date':..., 'T_max':..., 'T_min':..., 'T_app':...}]
-                  ordinate dalla più vecchia alla più recente.
-    """
-    thr = thresholds
-    result: Dict[str, Any] = {
-        "is_heatwave":         False,
-        "consecutive_days":    0,
-        "tropical_nights":     0,
-        "ehf":                 None,
-        "severity":            "nessuna",
-        "desc":                "",
-    }
-
-    if not temp_history:
-        return result
-
-    # Aggiungi oggi se fornito
-    all_days = list(temp_history)
-    if temp_max_today is not None:
-        all_days.append({"date": "oggi", "T_max": temp_max_today,
-                         "T_min": temp_min_today, "T_app": heat_index_today})
-
-    # Conta giorni consecutivi con Tmax >= soglia (partendo da oggi)
-    consecutive = 0
-    for day in reversed(all_days):
-        t_max = day.get("T_max")
-        if t_max is not None and t_max >= thr.HEATWAVE_TMAX:
-            consecutive += 1
-        else:
-            break
-    result["consecutive_days"] = consecutive
-
-    # Notti tropicali (Tmin >= 20°C) negli ultimi 7 giorni
-    tropical = sum(
-        1 for d in all_days[-7:]
-        if (d.get("T_min") or 0) >= thr.HEATWAVE_TMIN
-    )
-    result["tropical_nights"] = tropical
-
-    # EHF approssimato
-    recent_7  = [d.get("T_max") for d in all_days[-7:]  if d.get("T_max") is not None]
-    recent_3  = [d.get("T_max") for d in all_days[-3:]  if d.get("T_max") is not None]
-    recent_30 = [d.get("T_max") for d in all_days[-30:] if d.get("T_max") is not None]
-
-    if len(recent_3) >= 3 and len(recent_7) >= 5:
-        t3_mean  = sum(recent_3)  / len(recent_3)
-        t30_mean = sum(recent_30) / len(recent_30) if recent_30 else t3_mean
-        # Usufruiamo di EHI_acc e una EHI_sig approssimata
-        ehf = (t3_mean - thr.HEATWAVE_TMAX) * max(1.0, t3_mean - t30_mean)
-        result["ehf"] = round(ehf, 1)
-    else:
-        result["ehf"] = None
-
-    # Determina se è una vera ondata di calore
-    if consecutive >= thr.HEATWAVE_DAYS_MIN:
-        result["is_heatwave"] = True
-        ehf_v = result["ehf"] or 0.0
-        if ehf_v >= thr.HEATWAVE_EHF_HIGH or consecutive >= 7:
-            result["severity"] = "SEVERA"
-            result["desc"] = (
-                f"ONDATA DI CALORE SEVERA: {consecutive} giorni consecutivi con "
-                f"Tmax≥{thr.HEATWAVE_TMAX:.0f}°C, {tropical} notti tropicali. "
-                "Rischio salute pubblica elevato. EHF={:.1f}.".format(ehf_v)
-            )
-        elif consecutive >= thr.HEATWAVE_DAYS_MIN:
-            result["severity"] = "moderata"
-            result["desc"] = (
-                f"Ondata di calore: {consecutive} giorni consecutivi Tmax≥{thr.HEATWAVE_TMAX:.0f}°C"
-                + (f", {tropical} notti tropicali" if tropical >= 2 else "") + "."
-            )
-    elif (temp_max_today or 0) >= thr.HEATWAVE_TMAX:
-        result["severity"] = "inizio_possibile"
-        result["desc"] = (
-            f"Caldo intenso (Tmax {temp_max_today:.0f}°C): "
-            "monitorare nei prossimi giorni per possibile ondata di calore."
-        )
-
-    return result

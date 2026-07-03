@@ -37,8 +37,9 @@ from logic import (
     map_score_to_alert, full_alert, composite_arpal_alert,
 )
 from templates import (
-    render_section1_simple, render_section2_detailed,
-    render_section3_objective_table, build_gemini_prompt,
+    render_analisi_semplice, render_section2_detailed,
+    render_section3_objective_table, build_gemini_prompt_tecnico,
+    render_telegram_message
 )
 
 # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -296,10 +297,27 @@ def run_pipeline(
     )
 
     # Generazione sezioni bollettino
-    section1 = render_section1_simple(obs, params, score, alert_level)
+    section1 = render_analisi_semplice(obs, params, "Oggi")
     section2 = render_section2_detailed(obs, params, mode, hazards, alert_detail)
     section3 = render_section3_objective_table(hourly_forecast)
-    gemini_prompt = build_gemini_prompt(section1, section2, score, params, alert_level)
+    gemini_prompt = build_gemini_prompt_tecnico(section2, params, score, "Oggi", False, section3)
+
+    # Chiamata a Gemini per l'analisi narrativa
+    # TODO: Invocare Gemini API qui e ottenere la descrizione narrativa
+    # Per ora, useremo un placeholder o una versione pre-generata
+    descrizione_ia = "Analisi narrativa generata da Gemini (placeholder)."
+
+    # Generazione messaggio Telegram finale
+    telegram_message = render_telegram_message(
+        giorno="Oggi",
+        alert_emoji=alert_emoji,
+        alert_level=alert_level,
+        score=score,
+        descrizione_ia=descrizione_ia,
+        analisi_semplice=section1,
+        analisi_tecnica=section2,
+        tabella_oraria=section3
+    )
 
     return {
         "meta": {
@@ -319,6 +337,7 @@ def run_pipeline(
         "gemini_prompt": gemini_prompt,
         "params":        params,
         "hazards":       hazards,
+        "telegram_message": telegram_message,
     }
 
 
