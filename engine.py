@@ -37,10 +37,14 @@ from logic import (
     map_score_to_alert, full_alert, composite_arpal_alert,
 )
 from templates import (
-    render_analisi_semplice, render_section2_detailed,
-    render_section3_objective_table, build_gemini_prompt_tecnico,
-    render_telegram_message
+    render_analisi_semplice, render_section1_simple,
+    render_section2_detailed, render_section3_objective_table,
+    build_gemini_prompt_tecnico, render_telegram_message
 )
+
+def build_gemini_prompt(section1, section2, score, params, alert_level):
+    return build_gemini_prompt_tecnico(section2, params, score, "oggi", False, "")
+
 
 # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 # Costruzione parametri da obs

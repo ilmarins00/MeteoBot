@@ -635,17 +635,17 @@ def livello_attenzione(score: float) -> Tuple[str, str]:
     return "BASSO", "🟢"
 
 def flash_flood_guidance(
-    rain_1h: float,
-    rain_3h: float,
-    soil_moisture: Optional[float] = None,
-    oro_factor: float = 0.0
-) -> Dict[str, Any]:
+    params: Dict[str, Any],
+    rain_obs: Dict[str, float],
+    soil_moisture: Optional[float] = None
+) -> Tuple[float, str]:
     """
     Calcola il rischio di alluvione lampo (Flash Flood) basato su intensità oraria,
     saturazione del suolo e forzante orografico.
+    Ritorna (score, descrizione).
     """
-    # Soglie ARPAL Liguria per zona A/B (Levante)
-    # 30mm/1h = Gialla, 50mm/1h = Arancione/Rossa
+    rain_1h = float(rain_obs.get("1h", 0) or 0)
+    oro_factor = float(params.get("orographic_factor", 0) or 0)
     
     base_risk = 0.0
     if rain_1h >= 50: base_risk = 0.9
@@ -653,7 +653,7 @@ def flash_flood_guidance(
     elif rain_1h >= 15: base_risk = 0.3
     
     # Aumento rischio per suolo saturo
-    if soil_moisture is not None and soil_moisture > 0.8:
+    if soil_moisture is not None and float(soil_moisture or 0) > 0.8:
         base_risk += 0.2
         
     # Aumento rischio per orografia (effetto stazionarietà)
@@ -667,32 +667,31 @@ def flash_flood_guidance(
     elif risk_val >= 0.5: level = "ELEVATO"
     elif risk_val >= 0.2: level = "MODERATO"
     
-    return {
-        "risk_value": round(risk_val, 2),
-        "level": level,
-        "recommendation": "Monitorare i corsi d'acqua minori e i bacini a risposta rapida."
-    }
+    desc = f"Rischio alluvione lampo {level} (score {risk_val:.2f})"
+    return risk_val, desc
 
 def heatwave_analysis(
-    temp_max: float,
-    humidity: float,
-    temp_history: List[float] = None
+    temp_history: List[float],
+    temp_max_today: float,
+    temp_min_today: float,
+    heat_index_today: Optional[float] = None
 ) -> Dict[str, Any]:
     """
-    Analisi ondata di calore basata su Heat Index e persistenza.
+    Analisi ondata di calore basata su Heat Index e persistenza delle temperature.
     """
-    # Calcolo semplificato Heat Index
-    hi = temp_max
-    if temp_max > 27:
-        hi = 0.5 * (temp_max + 61.0 + ((temp_max-68.0)*1.2) + (humidity*0.094))
-        
+    hi = float(heat_index_today or temp_max_today)
+    
     level = "NORMALE"
     if hi >= 41: level = "PERICOLO ESTREMO"
     elif hi >= 35: level = "PERICOLO"
     elif hi >= 30: level = "CAUTELA"
     
+    # Persistenza (se le ultime 3 notti sono state calde)
+    nights_warm = sum(1 for t in temp_history[-3:] if t > 20) if temp_history else 0
+    
     return {
         "heat_index": round(hi, 1),
         "level": level,
-        "is_heatwave": hi >= 35
+        "is_heatwave": hi >= 35 or nights_warm >= 3,
+        "nights_warm": nights_warm
     }

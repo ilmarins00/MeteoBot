@@ -23,6 +23,15 @@ def render_analisi_semplice(
     params: Dict,
     giorno_label: str = "oggi",
 ) -> str:
+    return render_section1_simple(obs, params, 0, "", giorno_label)
+
+def render_section1_simple(
+    obs: Dict,
+    params: Dict,
+    score: float = 0,
+    alert_level: str = "",
+    giorno_label: str = "oggi",
+) -> str:
     """
     Genera un'analisi narrativa semplificata basata sui dati.
     """
