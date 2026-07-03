@@ -460,48 +460,48 @@ def render_analisi_semplice(
     hourly: Optional[List[Dict]] = None,
     giorno_label: str = "Oggi",
 ) -> str:
+    """
+    Analisi meteorologica semplice con testo dinamico – MOLTE varianti.
+    Copre: temperatura (min/max), cielo, precipitazioni, vento,
+    umidità/afa, fenomeni severi, note orografiche locali.
+    """
     lines: List[str] = []
 
-    # ... (tutta la parte iniziale invariata: temp, umidità, ecc.) ...
+    temp_c   = obs.get("temp_c")
+    rh       = float(obs.get("humidity_pct", 0) or 0)
+    gust     = float(obs.get("wind_gust_kmh", 0) or 0)
+    wind_spd = float(obs.get("wind_speed_kmh", 0) or 0)
+    wind_dir = float(obs.get("wind_dir_deg", 0) or 0)
+    precip   = float(obs.get("precip_rate_mm_h", 0) or 0)
+    cloud    = float(obs.get("cloud_cover_pct", 0) or 0)
+    wmo      = int(obs.get("wmo_code", 0) or 0)
+    app_temp = obs.get("heat_index") or obs.get("apparent_temperature")
+    vis_m    = float(obs.get("visibility_m", 10000) or 10000)
+    snow_lvl = float(obs.get("snow_level_m", 3000) or 3000)
+    cape     = float(params.get("SBCAPE", params.get("CAPE", 0)) or 0)
+    oro      = float(params.get("orographic_factor", 0) or 0)
 
-    # ── Precipitazioni ────────────────────────────────────────────────────
-    # ... (blocco wmo_dom invariato) ...
+    # Estremi giornalieri dal profilo orario
+    if hourly:
+        ts   = [h.get("T") for h in hourly if h.get("T") is not None]
+        ws   = [h.get("wind") or 0 for h in hourly]
+        gs   = [h.get("wind_gust") or 0 for h in hourly]
+        ps   = [h.get("precip") or 0 for h in hourly]
+        wmos = [int(h.get("wmo_code") or 0) for h in hourly]
+        t_max   = max(ts)   if ts else temp_c
+        t_min   = min(ts)   if ts else temp_c
+        w_max   = max(ws)   if ws else wind_spd
+        g_max   = max(gs)   if gs else gust
+        r_tot   = sum(ps)
+        wmo_dom = max(set(wmos), key=wmos.count) if wmos else wmo
+    else:
+        t_max = t_min = temp_c
+        w_max = wind_spd; g_max = gust
+        r_tot = precip; wmo_dom = wmo
 
-    # ── NUOVO: AVVISO CONVETTIVO ISOLATO (indipendente da wmo_code) ────────
-    # PROBLEMA RISOLTO: il wmo_code del modello riflette la previsione
-    # dominante/media, che può restare "sereno" anche con CAPE estremo se
-    # il fenomeno è una cella isolata e localizzata che il modello non
-    # risolve esplicitamente. Senza questo blocco, un CAPE/SCP da supercella
-    # spariva del tutto dal testo pubblico, contraddicendo l'analisi tecnica.
-    scp_v  = float(params.get("SCP", 0) or 0)
-    stp_v  = float(params.get("STP", 0) or 0)
-    dcape_v = float(params.get("DCAPE", 0) or 0)
+    nome_v = _nome_vento(wind_dir)
+    sky    = _wmo_sky(wmo_dom)
 
-    convective_already_mentioned = wmo_dom in (80, 81, 82, 91, 92, 95, 96, 99)
-
-    if not convective_already_mentioned and (
-        scp_v >= thresholds.SCP_MODERATE or cape >= thresholds.SBCAPE_STRONG
-    ):
-        if scp_v >= thresholds.SCP_HIGH or stp_v >= thresholds.STP_HIGH:
-            lines.append(
-                "Nonostante il quadro generale stabile, l'atmosfera accumula energia "
-                "sufficiente per lo sviluppo isolato di una cella temporalesca anche "
-                "intensa nelle ore più calde: se si forma, può portare grandine di "
-                "medie-grandi dimensioni, raffiche forti e fulminazioni intense in un'area "
-                "localizzata. Probabilità di innesco incerta, ma impatto potenziale elevato "
-                "dove il fenomeno si sviluppa."
-            )
-        elif scp_v >= thresholds.SCP_MODERATE or dcape_v >= thresholds.DCAPE_MODERATE:
-            lines.append(
-                "Il contesto rimane prevalentemente stabile, ma non si esclude lo sviluppo "
-                "isolato di qualche cella temporalesca pomeridiana con possibili rovesci "
-                "localizzati e raffiche di vento."
-            )
-
-    # ── Vento ─────────────────────────────────────────────────────────────
-    # ... (resto invariato) ...
-
-    return "\n".join(lines)
     # Descrizione nuvolosità: evolutiva se i dati orari lo permettono
     def _cloud_evo_str(hl):
         if not hl:
