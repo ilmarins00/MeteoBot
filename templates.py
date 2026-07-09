@@ -341,3 +341,86 @@ def render_telegram_message(
 ━━━━━━━━━━━━━━━━━━━━━━
 <i>Generato da MeteoBot Engine v2.0 | La Spezia</i>
 """.strip()
+
+def analizza_evoluzione_oraria(hourly: List[Dict]) -> str:
+    """Valuta il trend orario dividendolo per fasce e crea una struttura descrittiva."""
+    if not hourly:
+        return "Nessun dato orario per analizzare l'evoluzione."
+        
+    fasce = {"Mattina (06-12)": [], "Pomeriggio (12-18)": [], "Sera (18-24)": [], "Notte (00-06)": []}
+    
+    for h in hourly[:24]: # Controlla le prossime 24h
+        ora_str = h.get("time", "00:00")
+        try:
+            ora = int(ora_str.split(":")[0])
+        except ValueError:
+            continue
+            
+        p = float(h.get("precip", 0) or 0)
+        c = float(h.get("CAPE", 0) or 0)
+        
+        if 6 <= ora < 12: fasce["Mattina (06-12)"].append((p, c))
+        elif 12 <= ora < 18: fasce["Pomeriggio (12-18)"].append((p, c))
+        elif 18 <= ora <= 23: fasce["Sera (18-24)"].append((p, c))
+        else: fasce["Notte (00-06)"].append((p, c))
+        
+    trend = []
+    for nome, dati in fasce.items():
+        if not dati: continue
+        pioggia_max = max((d[0] for d in dati), default=0)
+        cape_max = max((d[1] for d in dati), default=0)
+        
+        desc_pioggia = ""
+        if pioggia_max > 10: desc_pioggia = "Rovesci intensi"
+        elif pioggia_max > 2: desc_pioggia = "Piogge moderate"
+        elif pioggia_max > 0.1: desc_pioggia = "Deboli piovaschi"
+        
+        desc_cape = "Elevata instabilità" if cape_max > 1000 else ("Instabilità latente" if cape_max > 400 else "")
+        
+        if desc_pioggia or desc_cape:
+            elementi = [e for e in [desc_pioggia, desc_cape] if e]
+            trend.append(f"• {nome}: {', '.join(elementi)}")
+            
+    if not trend:
+        return "Condizioni stabili sull'intero arco della giornata."
+    return "\n".join(trend)
+
+def costuisci_bollettino_compatto(obs: Dict, params: Dict, hourly: List[Dict], mode: str, hazards_dict: Dict[str, List[str]], score: float, alert_level: str, alert_emoji: str) -> str:
+    """Costruisce un messaggio modulare, compatto, analitico e senza sprechi di spazio."""
+    
+    t_max = _fmt(obs.get("temp_max_c", obs.get("temp_c", 0)), ".0f")
+    t_min = _fmt(obs.get("temp_min_c", obs.get("temp_c", 0)), ".0f")
+    cape = _fmt(params.get("SBCAPE", 0), ".0f")
+    cin = _fmt(params.get("CIN", 0), ".0f")
+    pwat = _fmt(params.get("PWAT", 0), ".1f")
+    shear = _fmt(params.get("shear_0_6", 0), ".0f")
+    lr = _fmt(params.get("lr_700_500", 0), ".1f")
+    wind = _fmt(obs.get("wind_gust_kmh", 0), ".0f")
+    
+    evoluzione_testo = analizza_evoluzione_oraria(hourly)
+    
+    reali = hazards_dict.get("reali", [])
+    potenziali = hazards_dict.get("potenziali", [])
+    
+    rischi_str = ""
+    if reali:
+        rischi_str += "\n⚠️ RISCHI IN ATTO/CERTI:\n" + "\n".join([f"  - {h}" for h in reali])
+    if potenziali:
+        rischi_str += "\n⏳ RISCHI LATENTI (Richiedono innesco):\n" + "\n".join([f"  - {h}" for h in potenziali])
+    if not reali and not potenziali:
+        rischi_str += "\n🟢 Nessun fenomeno severo atteso."
+
+    # Assemblaggio ultra-compatto
+    msg = f"""{alert_emoji} PREVISIONI LA SPEZIA | Livello: {alert_level.upper()} ({score}/5)
+🌡 T. Min: {t_min}°C | T. Max: {t_max}°C | 🌬 Raffiche: {wind} km/h
+
+📊 TERMODINAMICA E DINAMICA:
+SBCAPE: {cape} J/kg | CIN: {cin} J/kg | PWAT: {pwat} mm
+Shear 0-6km: {shear} kt | Gradiente 700-500hPa: {lr} K/km
+Modalità convettiva: {mode.capitalize()}
+
+⏱ EVOLUZIONE PREVISTA:
+{evoluzione_testo}
+{rischi_str}"""
+
+    return msg.strip()
