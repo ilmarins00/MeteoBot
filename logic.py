@@ -653,3 +653,40 @@ def heatwave_analysis(
         "severity": level.lower() if hi >= 30 else "nessuna",
         "desc": f"Disagio da calore {level} (HI {hi:.1f}°C)"
     }
+
+
+def rileva_fenomeni_costieri(params: Dict[str, float]) -> List[str]:
+    """
+    [ADVANCED] Logica da previsore per la costa Ligure: 
+    1. Temporali V-Shape (Autorigeneranti)
+    2. Trombe Marine (Waterspout)
+    """
+    avvisi_avanzati = []
+    
+    # Estrazione parametri essenziali
+    pwat = params.get("PWAT", 0)
+    mlcape = params.get("MLCAPE", params.get("SBCAPE", 0))
+    shear_0_6 = params.get("shear_0_6", 0)
+    lr_0_3km = params.get("lr_0_3km", 0) # Gradiente termico nei primi 3km
+    shear_0_1 = params.get("shear_0_1", 0)
+
+    # ---------------------------------------------------------
+    # 1. RILEVATORE TEMPORALI V-SHAPE (Autorigeneranti)
+    # ---------------------------------------------------------
+    # Un V-Shape necessita di carburante altissimo (PWAT) e uno shear 
+    # moderato (15-35 kt) che tiene la cella in vita ma non la spazza via veloce.
+    if pwat >= 35.0 and mlcape >= 1000 and (15 <= shear_0_6 <= 35):
+        avvisi_avanzati.append("🔴 ALLERTA ESTREMA: Setup termodinamico da V-Shape (Temporale Autorigenerante). Rischio elevatissimo di ALLUVIONE LAMPO per stazionarietà dei fenomeni.")
+    elif pwat >= 30.0 and mlcape >= 600 and (10 <= shear_0_6 <= 40):
+        avvisi_avanzati.append("🟠 ATTENZIONE: Condizioni favorevoli per celle temporalesche stazionarie. Rischio di nubifragi concentrati.")
+
+    # ---------------------------------------------------------
+    # 2. RILEVATORE TROMBE MARINE (Waterspout Index)
+    # ---------------------------------------------------------
+    # Le trombe marine amano alto gradiente termico sui mari caldi e CAPE concentrato.
+    if params.get("SBCAPE", 0) > 400 and lr_0_3km > 7.5 and shear_0_1 < 15:
+        avvisi_avanzati.append("🌪️ RISCHIO TROMBE MARINE: Instabilità nei bassi strati ideale per 'fair weather waterspout' (trombe marine) al largo del Golfo.")
+    elif params.get("SBCAPE", 0) > 800 and lr_0_3km > 8.0 and shear_0_1 >= 15:
+        avvisi_avanzati.append("🌪️⚠️ RISCHIO TROMBE MARINE TORNADICHE: Condizioni dinamiche severe. Possibile sviluppo di trombe marine in grado di compiere landfall sulla costa (Raffiche distruttive).")
+
+    return avvisi_avanzati
