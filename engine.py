@@ -269,6 +269,11 @@ def run_pipeline(
     from templates import costuisci_bollettino_compatto
     messaggio_compatto = costuisci_bollettino_compatto(obs, params, hourly_forecast, mode, hazards_dict, score, alert_level, alert_emoji)
 
+# [ADVANCED METEO] - Iniezione logiche per V-Shape e Trombe marine
+    from logic import rileva_fenomeni_costieri
+    nuovi_rischi = rileva_fenomeni_costieri(params)
+    all_hazards_flat.extend(nuovi_rischi)
+  
     return {
         "meta": {
             "generated_at": obs.get("time_generated", datetime.now(timezone.utc).isoformat()),
