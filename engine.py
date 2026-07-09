@@ -245,64 +245,47 @@ def run_pipeline(
     Esegue la pipeline meteorologica completa.
     """
     params = build_params_from_obs(obs)
+    score = convective_score(params)
+    mode = classify_storm_mode(params)
+    
+    # Ora hazards è un dizionario {"reali": [...], "potenziali": [...]}
+    hazards_dict = severe_hazards(params)
+    
+    # Passiamo una lista piatta al calcolo allerta per retrocompatibilità, se serve
+    all_hazards_flat = hazards_dict["reali"] + hazards_dict["potenziali"]
 
-    # Score e classificazione
-    score   = convective_score(params)
-    mode    = classify_storm_mode(params)
-    hazards = severe_hazards(params)
-
-    # Allerta ARPAL composita
     rain_obs = {
-        "1h":  float(obs.get("precip_rate_mm_h", 0) or 0),
+        "1h": float(obs.get("precip_rate_mm_h", 0) or 0),
         "24h": float(obs.get("rain_24h_mm", 0) or 0),
     }
     alert_level, alert_emoji = full_alert(params, score, rain_obs)
     _, alert_detail = composite_arpal_alert(
         rain_1h=rain_obs["1h"], rain_24h=rain_obs["24h"],
-        wind_kmh=params.get("wind_gust_kmh", 0),
-        temp_c=params.get("temp_c"),
-        wave_height_m=params.get("wave_height_m", 0),
+        wind_kmh=params.get("wind_gust_kmh", 0), temp_c=params.get("temp_c"), wave_height_m=params.get("wave_height_m", 0),
     )
 
-    # Generazione sezioni bollettino
-    section1 = render_analisi_semplice(obs, params, "Oggi")
-    section2 = render_section2_detailed(obs, params, mode, hazards, alert_detail)
-    section3 = render_section3_objective_table(hourly_forecast)
-    gemini_prompt = build_gemini_prompt_tecnico(section2, params, score, "Oggi", False, section3)
-
-    # Placeholder IA
-    descrizione_ia = "Analisi narrativa generata da Gemini (placeholder)."
-
-    # Generazione messaggio Telegram finale
-    telegram_message = render_telegram_message(
-        giorno="Oggi",
-        alert_emoji=alert_emoji,
-        alert_level=alert_level,
-        score=score,
-        descrizione_ia=descrizione_ia,
-        analisi_semplice=section1,
-        analisi_tecnica=section2,
-        tabella_oraria=section3
-    )
+    # In templates.py useremo nuove funzioni per le frasi componibili
+    # Passiamo hourly_forecast per l'analisi dell'evoluzione temporale
+    from templates import costuisci_bollettino_compatto
+    messaggio_compatto = costuisci_bollettino_compatto(obs, params, hourly_forecast, mode, hazards_dict, score, alert_level, alert_emoji)
 
     return {
         "meta": {
             "generated_at": obs.get("time_generated", datetime.now(timezone.utc).isoformat()),
-            "location":     obs.get("location", "La Spezia"),
-            "score":        score,
-            "alert_level":  alert_level,
-            "alert_emoji":  alert_emoji,
+            "location": obs.get("location", "La Spezia"),
+            "score": score,
+            "alert_level": alert_level,
+            "alert_emoji": alert_emoji,
             "alert_detail": alert_detail,
-            "mode":         mode,
-            "orographic_factor":    params.get("orographic_factor", 0),
+            "mode": mode,
+            "orographic_factor": params.get("orographic_factor", 0),
         },
-        "section1":      section1,
-        "section2":      section2,
-        "section3":      section3,
-        "gemini_prompt": gemini_prompt,
-        "params":        params,
-        "hazards":       hazards,
-        "telegram_message": telegram_message,
+        "hazards_dict": hazards_dict,
+        "hazards": all_hazards_flat, # Legacy
+        "telegram_message": messaggio_compatto,
+        "params": params,
+        # Mantengo le chiavi per compatibilità esterna, ma non le useremo
+        "section1": "", "section2": "", "section3": "", "gemini_prompt": ""
     }
 
 
