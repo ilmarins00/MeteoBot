@@ -220,131 +220,78 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
 # Hazard mapping completo
 # ─────────────────────────────────────────────────────────────────────────────
 
-def severe_hazards(params: Dict[str, float]) -> List[str]:
+def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
     """
-    Determina tutti i fenomeni severi possibili in base alle combinazioni
-    di parametri. Lista ordinata per pericolosità decrescente.
+    Determina i fenomeni severi separando i RISCHI REALI (innescati) dai RISCHI POTENZIALI (latenti).
+    Analizza umidità, gradienti verticali, inibizione e forzanti dinamiche.
     """
-    hazards: List[str] = []
-
-    cape   = max(params.get("SBCAPE", params.get("CAPE", 0)),
-                 params.get("MUCAPE", 0))
-    shear  = params.get("shear_0_6", 0)
-    shear1 = params.get("shear_0_1", 0)
-    srh1   = params.get("srh_0_1", 0)
-    srh3   = params.get("srh_0_3", 0)
-    pwat   = params.get("PWAT", 0)
-    li     = params.get("LI", 0) or 0
-    cin    = params.get("CIN", params.get("SBCIN", 0)) or 0
-    precip = params.get("precip_rate_mm_h", 0)
-    wind   = params.get("wind_gust_kmh", 0)
-    stp    = params.get("STP",  0) or 0
-    scp    = params.get("SCP",  0) or 0
-    ehi    = params.get("EHI",  0) or 0
-    oro    = params.get("orographic_factor", 0.0) or 0.0
-    lr03   = params.get("lr_0_3km", 0) or 0
-    p_sfc  = params.get("pressure_hpa", 1013)
-    temp   = params.get("temp_c", None)
-    dcape  = float(params.get("DCAPE", 0) or 0)
-    lcl    = params.get("LCL", 1500)
-    rh     = params.get("humidity_pct", 50)
-
-    # ── FILTRO ANTI-FALSI POSITIVI (Intelligenza di Sistema) ──
-    # Se l'atmosfera è "tappata" da forte inibizione o troppo secca,
-    # i rischi convettivi vengono declassati a "potenziali" o rimossi.
-    is_capped = cin <= thresholds.CIN_STRONG or lcl >= thresholds.LCL_HIGH or rh <= 35
-    wmo_haz = int(params.get("wmo_code", 0) or 0)
-    storm_active = (cape >= thresholds.SBCAPE_WEAK or wmo_haz in (80,81,82,95,96,99))
+    reali: List[str] = []
+    potenziali: List[str] = []
     
-    # Se non c'è trigger e c'è forte tappo, molti rischi sono solo teorici
-    if is_capped and not storm_active:
-        hazards.append("⚠ RISCHIO TEORICO: Indici esplosivi ma atmosfera inibita (forte tappo/aria secca)")
+    cape = max(params.get("SBCAPE", params.get("CAPE", 0)), params.get("MUCAPE", 0))
+    shear = params.get("shear_0_6", 0)
+    srh1 = params.get("srh_0_1", 0)
+    srh3 = params.get("srh_0_3", 0)
+    pwat = params.get("PWAT", 0)
+    cin = abs(params.get("CIN", params.get("SBCIN", 0)) or 0)
+    lcl = params.get("LCL", 1500)
+    rh = params.get("humidity_pct", 50)
+    precip = params.get("precip_rate_mm_h", 0)
+    wind = params.get("wind_gust_kmh", 0)
+    dcape = float(params.get("DCAPE", 0) or 0)
+    lr03 = params.get("lr_0_3km", 0) or 0
+    lr75 = params.get("lr_700_500", 0) or 0
+    oro = params.get("orographic_factor", 0.0) or 0.0
+    wmo_haz = int(params.get("wmo_code", 0) or 0)
+    
+    # 1. VALUTAZIONE DEL "TAPPO" (CAP) E DELL'INNESCO (TRIGGER)
+    # L'atmosfera è "tappata" o sfavorevole se l'inibizione è alta, l'aria è secca, 
+    # o i gradienti in quota (700-500hPa) sono stabili (< 5.5 K/km).
+    is_capped = cin >= abs(thresholds.CIN_STRONG) or lcl >= thresholds.LCL_HIGH or rh <= 40 or lr75 < 5.5
+    
+    # C'è un innesco se piove in modo convettivo (WMO > 80) o c'è forte orografia attiva
+    has_trigger = wmo_haz in (80, 81, 82, 95, 96, 99) or (precip > 2 and oro > 0.5)
 
-    # ── Fenomeni ad alto impatto ──
+    def add_hazard(testo: str, is_real: bool):
+        if is_real:
+            reali.append(testo)
+        else:
+            potenziali.append(testo)
 
-    # Tornado / trombe d'aria
-    if not is_capped:
-        if stp >= thresholds.STP_VIOLENT:
-            hazards.append("RISCHIO TORNADO SIGNIFICATIVO – condizioni supercellulari intense")
-        elif stp >= thresholds.STP_HIGH:
-            hazards.append("trombe d'aria probabili – STP elevato")
-        elif (srh1 >= thresholds.SRH_01_HIGH
-              and shear1 >= thresholds.SHEAR_01_TORNADO
-              and cape >= thresholds.SBCAPE_MODERATE):
-            hazards.append("trombe d'aria possibili (SRH-01 e shear basso strato critici)")
+    # -- TORNADO / TROMBE MARINE --
+    tornado_risk = params.get("STP", 0) >= thresholds.STP_MODERATE or (srh1 >= thresholds.SRH_01_HIGH and shear >= thresholds.SHEAR_01_TORNADO)
+    if tornado_risk:
+        add_hazard("Trombe d'aria/marine (STP/SRH elevati)", has_trigger and not is_capped)
 
-    # Grandine di grandi dimensioni (WMO: >2 cm)
-    if cape >= 2500 and shear >= thresholds.SHEAR_06_SUPERCELL and lr03 >= 8.0:
-        hazards.append("grandine di grandi dimensioni (>2 cm) – alta probabilità")
-    elif cape >= 1500 and shear >= thresholds.SHEAR_06_ORGANIZED and not is_capped:
-        hazards.append("grandine di dimensioni significative (1–2 cm)")
+    # -- GRANDINE --
+    if cape >= 1500 and shear >= thresholds.SHEAR_06_ORGANIZED:
+        dim = ">2 cm" if lr03 >= 8.0 and cape >= 2500 else "1-2 cm"
+        add_hazard(f"Grandine di dimensioni significative ({dim})", has_trigger and not is_capped)
 
-    # Raffiche severe e downburst (DCAPE + shear)
-    if dcape >= thresholds.DCAPE_HIGH and storm_active:
+    # -- DOWNBURST E RAFFICHE --
+    if dcape >= thresholds.DCAPE_MODERATE:
         from thermo import dcape_gust_kmh as _dcape_gust
         v_est = _dcape_gust(dcape)
-        hazards.append(
-            f"DOWNBURST SEVERO – DCAPE {dcape:.0f} J/kg, "
-            f"raffica stimata fino a {v_est:.0f} km/h"
-        )
-    elif dcape >= thresholds.DCAPE_MODERATE and (storm_active or cape > 1000):
-        from thermo import dcape_gust_kmh as _dcape_gust
-        v_est = _dcape_gust(dcape)
-        hazards.append(
-            f"raffiche discendenti intense (downburst) – DCAPE {dcape:.0f} J/kg, "
-            f"stima {v_est:.0f} km/h"
-        )
-    elif shear >= thresholds.SHEAR_06_SUPERCELL and cape >= thresholds.SBCAPE_MODERATE and not is_capped:
-        hazards.append("raffiche severe (>90 km/h) e possibili microburst/downburst")
+        add_hazard(f"Raffiche discendenti (Downburst stima {v_est:.0f} km/h, DCAPE {dcape:.0f} J/kg)", has_trigger or wmo_haz > 80)
 
-    # Allagamenti rapidi / flash flood (rischio tipico del Levante Ligure)
-    # Combinazione PWAT + Oro + Intensità oraria
-    if pwat >= thresholds.PWAT_HUMID and (precip >= 15 or (precip >= 10 and oro >= 0.6)):
-        hazards.append("RISCHIO ALLAGAMENTI RAPIDI (FLASH FLOOD) – forzante orografico + PWAT critico")
-    elif pwat >= thresholds.PWAT_NORMAL and precip >= 10:
-        hazards.append("piogge intense con rischio di allagamenti localizzati")
+    # -- ALLUVIONI LAMPO E RIGENERANTI (Tipico Ligure) --
+    if pwat >= thresholds.PWAT_HUMID and oro >= 0.6 and srh3 >= 200:
+        add_hazard("Sistemi stazionari rigeneranti (V-Shaped) su Appennino", has_trigger)
+    elif pwat >= thresholds.PWAT_NORMAL and precip >= 15:
+        add_hazard("Allagamenti rapidi (Flash Flood) per accumuli orari", True)
 
-    # Rigeneranti e V-Shaped (Pericolo estremo Levante Ligure)
-    if pwat >= 40 and srh3 >= 250 and shear >= 30 and oro >= 0.5 and storm_active:
-        hazards.append("PERICOLO SISTEMI RIGENERANTI (V-SHAPED) – stazionarietà su Appennino Ligure")
-
-    # Attività elettrica intensa
-    li_val  = float(params.get("LI", 0) or 0)
-    trigger_el = (li_val <= thresholds.LI_UNSTABLE or wmo_haz in (80,81,82,95,96,99))
-    if cape >= thresholds.SBCAPE_MODERATE and pwat >= thresholds.PWAT_NORMAL and trigger_el and not is_capped:
-        hazards.append("elevata attività elettrica (fulmini intensi e frequenti)")
-
-    # Neve a quote basse
+    # -- RISCHI SINOTTICI (Sempre reali se presenti) --
     snow_level = params.get("snow_level_m", 2000)
-    if snow_level is not None and snow_level <= thresholds.SNOW_LEVEL_COASTAL_M:
-        if temp is not None and temp <= 2:
-            hazards.append("neve a quote collinari / costiere possibile")
+    if snow_level <= thresholds.SNOW_LEVEL_COASTAL_M and params.get("temp_c", 10) <= 3:
+        reali.append("Neve a quote collinari/costiere")
+        
+    if wind >= thresholds.ARPAL_WIND_ARANCIONE:
+        reali.append(f"Vento burrascoso (> {thresholds.ARPAL_WIND_ARANCIONE} km/h)")
+        
+    if params.get("wave_height_m", 0) >= thresholds.WAVE_HEIGHT_ARANCIONE:
+        reali.append("Mareggiata significativa")
 
-    # Nebbia marina / bassa visibilità
-    spread = params.get("temp_dewpoint_spread", 10)
-    if rh >= thresholds.HUMIDITY_FOG and spread <= thresholds.TEMP_DEWPOINT_SPREAD_FOG:
-        hazards.append("rischio nebbia densa – visibilità <200 m")
-
-    # Mareggiata (Golfo della Spezia)
-    wave_h = params.get("wave_height_m", 0)
-    if wave_h >= thresholds.WAVE_HEIGHT_ROSSO:
-        hazards.append("MAREGGIATA INTENSA – onde >4 m, rischio allagamento zone costiere")
-    elif wave_h >= thresholds.WAVE_HEIGHT_ARANCIONE:
-        hazards.append("mareggiata significativa – onde >2.5 m")
-
-    # Ciclogenesi Ligure / Medicane
-    if p_sfc is not None and p_sfc <= thresholds.MEDICANE_PRESSURE:
-        hazards.append("CICLONE SUBTROPICALE (MEDICANE) – condizioni estreme")
-    elif p_sfc is not None and p_sfc <= thresholds.CYCLOGENESIS_LIGURE:
-        hazards.append("ciclogenesi sul Golfo Ligure – venti e precipitazioni in forte aumento")
-
-    # Libeccio/Scirocco forte (Valle del Magra canalizzazione)
-    if wind >= thresholds.ARPAL_WIND_ROSSO:
-        hazards.append("vento tempestoso (>90 km/h) – rischio danni strutturali")
-    elif wind >= thresholds.ARPAL_WIND_ARANCIONE:
-        hazards.append("vento forte (>60 km/h) – possibili danni a vegetazione e strutture")
-
-    return hazards
+    return {"reali": reali, "potenziali": potenziali}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
