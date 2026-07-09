@@ -355,18 +355,14 @@ def build_day_message(
         )
 
     # ── Intestazione ──────────────────────────────────────────────────────
-    sep = "═" * 50
-    sounding_tag = f" [OBS:{obs.get('sounding_source','')}]" if obs.get("sounding_source") else ""
-    lines = [
-        "",
-        sep,
-        f"  {day_label.upper()}",
-        f"  {_format_date(day_date)}",
-        sep,
-        f"Livello di ATTENZIONE: {emoji_liv} {livello}  (score {m_score:.1f}/5)",
-        f"Modello: {model_label}{sounding_tag}",
-        "",
-    ]
+    # === BYPASS AI: Usiamo il bollettino generato deterministicamente ===
+    msg_deterministico = result.get("telegram_message", "(Errore generazione messaggio)")
+    
+    # Intestazione Data (Aggiunta rapida in cima al blocco modulare compatto)
+    giorno_intestazione = f"📅 {_format_date(day_date).upper()}"
+    messaggio_finale = f"{giorno_intestazione}\n{msg_deterministico}\n\n[Modello: {model_label}]"
+    
+    return messaggio_finale
 
     # ── ANALISI SEMPLICE ──────────────────────────────────────────────────
     lines.append("◆ ANALISI SEMPLICE")
