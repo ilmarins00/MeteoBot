@@ -513,7 +513,7 @@ def build_day_message(
             wind_summary       = wind_summary_str,
         )
       
-      gemini_params = {}
+        gemini_params = {}
     for k, v in params.items():
         if v is None:
             continue
