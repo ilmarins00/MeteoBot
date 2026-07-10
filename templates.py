@@ -302,6 +302,7 @@ def build_gemini_prompt_tecnico(
     uwyo_summary: Optional[str] = None,
     evolution_result: Optional[Dict] = None,
     multi_evolution: Optional[Dict] = None,
+    wind_summary: Optional[str] = None,
 ) -> str:
     from logic import livello_attenzione
     livello, emoji = livello_attenzione(maltempo_score_val)
@@ -315,6 +316,9 @@ LIVELLO ATTENZIONE: {emoji} {livello} (Score: {maltempo_score_val}/5)
 
 DATI TECNICI:
 {analisi_tecnica}
+
+VENTO (dato certo, usa ESATTAMENTE questo, non inventare direzioni o intensità diverse):
+{wind_summary if wind_summary else "dato non disponibile"}
 
 EVOLUZIONE ORARIA:
 {hourly_table if hourly_table else "Non fornita"}
