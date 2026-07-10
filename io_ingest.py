@@ -385,13 +385,15 @@ def _fetch_one_model(
 def _merge_hourly(
     primary: Optional[Dict[str, Any]],
     secondary: Dict[str, Any],
-) -> Dict[str, Any]:
+) -> Tuple[Dict[str, Any], Dict[str, int]]:
     """
     Unisce due dataset orari: usa il valore di `primary` quando non è None,
     altrimenti quello di `secondary`. Allineamento per timestamp.
+    Ritorna anche un dict {variabile: n_ore_colmate_da_secondary}.
     """
+    fallback_stats: Dict[str, int] = {}
     if primary is None:
-        return secondary
+        return secondary, fallback_stats
 
     p_h = primary.get("hourly", {})
     s_h = secondary.get("hourly", {})
@@ -406,16 +408,20 @@ def _merge_hourly(
         p_vals = p_h.get(key, [])
         s_vals = s_h.get(key, [])
         row = []
+        filled = 0
         for j, t in enumerate(p_times):
             pv = p_vals[j] if j < len(p_vals) else None
             sv = (s_vals[s_idx[t]] if t in s_idx and s_idx[t] < len(s_vals) else None)
+            if pv is None and sv is not None:
+                filled += 1
             row.append(pv if pv is not None else sv)
         merged_h[key] = row
+        if filled > 0:
+            fallback_stats[key] = filled
 
     result = dict(secondary)
     result["hourly"] = merged_h
-    return result
-
+    return result, fallback_stats
 
 def extract_day_hourly(
     raw_data: Dict[str, Any],
@@ -629,6 +635,7 @@ def build_day_hourly_list(
     capes   = day_hourly.get("cape", [])
     cins    = day_hourly.get("convective_inhibition", [])
     wmos    = day_hourly.get("weather_code", [])
+    lifted = day_hourly.get("lifted_index", [])
 
     # CAPE dal modello secondario (per spread)
     times2 = (day_hourly_secondary or {}).get("time", [])
@@ -669,6 +676,8 @@ def build_day_hourly_list(
             "shear": 0, "SRH": 0, "PWAT": 0,
             "wmo_code":   wmos[i]   if i < len(wmos)  else None,
             "alert":      alert,
+            "CIN":        cins[i]   if i < len(cins)  else 0,
+            "LI":         lifted[i] if i < len(lifted) and lifted[i] is not None else None,
             # Valori modello secondario per spread
             f"CAPE_{secondary_label}":  cape2_v,
             f"gust_{secondary_label}":  gust2_v,
@@ -712,7 +721,9 @@ def fetch_forecast_3days(
     if arome_data is None:
         print("  [io] AROME non disponibile, solo ICON-EU")
 
-    merged = _merge_hourly(arome_data, icon_data)
+    merged, fallback_stats = _merge_hourly(arome_data, icon_data)
+    if fallback_stats:
+        print(f"  [io] Variabili colmate da ICON-EU: {fallback_stats}")
     return {
         "day0":         extract_day_hourly(merged,     0),
         "day1":         extract_day_hourly(merged,     1),
