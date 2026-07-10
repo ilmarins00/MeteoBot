@@ -453,13 +453,24 @@ def build_day_message(
         tech_lines.append(f"Calore: {hw_result.get('desc', '')}")
 
     # Spread modelli
+    # Spread modelli — mostrato come nota di incertezza, non come dato alternativo.
+    # Il valore "ufficiale" resta sempre quello AROME (già in uso sopra).
     if spread:
+        note_incertezza = []
         for lbl, info in spread.items():
-            pfx = "⚠" if info.get("high") else "Δ"
-            tech_lines.append(
-                f"{pfx} Spread {lbl}: AROME={info['AROME']}{info['unit']} "
-                f"ICON={info['ICON']}{info['unit']}"
-            )
+            etichetta = {
+                "CAPE_peak": "energia convettiva (CAPE)",
+                "precip_sum": "cumulata di pioggia",
+                "gust_max": "raffiche di vento",
+            }.get(lbl, lbl)
+            if info.get("high"):
+                note_incertezza.append(f"{etichetta} (forte incertezza tra modelli)")
+            else:
+                note_incertezza.append(etichetta)
+        tech_lines.append(
+            "Incertezza modelli su: " + ", ".join(note_incertezza) +
+            " — valori del bollettino basati su AROME (modello ad alta risoluzione)."
+        )
 
     tech_lines.append(f"Modalità: {mode}")
     if hazards:
