@@ -358,44 +358,39 @@ def build_day_message(
         )
 
     # ── Intestazione ──────────────────────────────────────────────────────
-    sep = "═" * 50
-    sounding_tag = f" [OBS:{obs.get('sounding_source','')}]" if obs.get("sounding_source") else ""
+    sounding_tag = f" · {obs.get('sounding_source','')}" if obs.get("sounding_source") else ""
+
+    icona_giorno = "☀️" if livello == "BASSO" else ("⛈️" if livello in ("ALTO", "MOLTO ALTO") else "🌤️")
+
     lines = [
         "",
-        sep,
-        f"  {day_label.upper()}",
-        f"  {_format_date(day_date)}",
-        sep,
-        f"Livello di ATTENZIONE: {emoji_liv} {livello}  (score {m_score:.1f}/5)",
-        f"Modello: {model_label}{sounding_tag}",
+        f"{icona_giorno} <b>LA SPEZIA — {day_label.upper()}</b>",
+        f"{_format_date(day_date)}",
+        "",
+        f"{emoji_liv} <b>{livello}</b> · Score {m_score:.1f}/5",
+        f"📡 Modello: {model_label}{sounding_tag}",
         "",
     ]
 
-    # ── ANALISI SEMPLICE ──────────────────────────────────────────────────
-    lines.append("◆ ANALISI SEMPLICE")
-    lines.append("─" * 40)
+    # ── SINTESI (analisi semplice) ──────────────────────────────────────
+    lines.append("📋 <b>SINTESI</b>")
     semplice = render_analisi_semplice(obs, params, hourly, giorno_label=day_label)
     lines.append(semplice)
 
     evo = instability_evolution(hourly)
-  
-    # FFG / heatwave nella sezione semplice se rilevante
+
     if ffg_result and ffg_score >= 0.45:
-        lines.append(f"⚠ FFG: {ffg_desc}")
+        lines.append(f"⚠️ {ffg_desc}")
     if hw_result and hw_result.get("is_heatwave"):
-        lines.append(f"🌡 {hw_result.get('desc', '')}")
+        lines.append(f"🌡️ {hw_result.get('desc', '')}")
     lines.append("")
 
-    # ── ANALISI TECNICA ──────────────────────────────────────────────────
-    lines.append("◆ ANALISI TECNICA")
-    lines.append("─" * 40)
-
+    # ── DATI TECNICI (in colonna, blocco monospazio) ──────────────────────
     sbcape  = float(params.get("SBCAPE", params.get("CAPE", 0)) or 0)
     mucape  = float(params.get("MUCAPE", sbcape) or sbcape)
     pwat    = params.get("PWAT")
     shear06 = params.get("shear_0_6")
     srh03   = params.get("srh_0_3")
-    shear01 = params.get("shear_0_1")
     scp     = params.get("SCP")
     stp     = params.get("STP")
     li_v    = params.get("LI")
@@ -405,56 +400,49 @@ def build_day_message(
     def fv(v, fmt=".1f", u=""):
         return f"{v:{fmt}}{u}" if v is not None else "n.d."
 
-    tech_lines = [
-        f"SBCAPE: {fv(sbcape,'.0f',' J/kg')}  |  MUCAPE: {fv(mucape,'.0f',' J/kg')}",
-        f"CIN: {fv(cin_v,'.0f',' J/kg')}  |  LI: {fv(li_v,'.1f')}",
-        f"Shear 0-1 km: {fv(shear01,'.1f',' kt')}  |  Shear 0-6 km: {fv(shear06,'.1f',' kt')}",
-        f"SRH 0-3 km: {fv(srh03,'.0f',' m²/s²')}",
-        f"PWAT: {fv(pwat,'.1f',' mm')}  |  SCP: {fv(scp,'.2f')}  |  STP: {fv(stp,'.2f')}",
-    ]
-    if evo.get("windows"):
-        tech_lines.append("Evoluzione instabilità: " + format_evolution_text(evo))
+    riga1 = f"SBCAPE {fv(sbcape,'.0f',' J/kg')}".ljust(20) + f"CIN {fv(cin_v,'.0f',' J/kg')}"
+    riga2 = f"MUCAPE {fv(mucape,'.0f',' J/kg')}".ljust(20) + f"LI  {fv(li_v,'.1f')}"
+    riga3 = f"Shear06 {fv(shear06,'.1f',' kt')}".ljust(20) + f"SRH03 {fv(srh03,'.0f',' m²/s²')}"
+    riga4 = f"PWAT {fv(pwat,'.1f',' mm')}".ljust(20) + f"SCP {fv(scp,'.2f')}"
+
+    tabella = [riga1, riga2, riga3, riga4]
     if dcape_v > 50:
         try:
             from thermo import dcape_gust_kmh as _dg
             v_est = _dg(dcape_v)
-            tech_lines.append(
-                f"DCAPE: {dcape_v:.0f} J/kg  (downburst stim. {v_est:.0f} km/h)"
-            )
+            tabella.append(f"DCAPE {dcape_v:.0f} J/kg (raffica stim. {v_est:.0f} km/h)")
         except Exception:
-            tech_lines.append(f"DCAPE: {dcape_v:.0f} J/kg")
+            tabella.append(f"DCAPE {dcape_v:.0f} J/kg")
 
-    # CAPE evolution
+    lines.append("📊 <b>DATI TECNICI</b>")
+    lines.append("<code>" + "\n".join(tabella) + "</code>")
+
+    # ── Note extra sotto la tabella (solo se rilevanti) ────────────────────
     cape_hrs    = [(h.get("time", ""), float(h.get("CAPE") or 0)) for h in hourly]
     cape_active = [(t, c) for t, c in cape_hrs if c >= 200]
     if cape_active:
         cpeak = max(cape_active, key=lambda x: x[1])
-        tech_lines.append(
-            f"CAPE>200: {len(cape_active)}h (picco {cpeak[1]:.0f} J/kg alle {cpeak[0]})"
-        )
+        lines.append(f"🔺 CAPE>200 per {len(cape_active)}h (picco {cpeak[1]:.0f} J/kg alle {cpeak[0]})")
 
-    # Range precipitazioni
     rain_hrs = [(h.get("time", ""), float(h.get("precip") or 0))
                 for h in hourly if (h.get("precip") or 0) > 0.1]
     if rain_hrs:
         rpeak = max(rain_hrs, key=lambda x: x[1])
         rtot  = sum(r[1] for r in rain_hrs)
-        tech_lines.append(
-            f"Pioggia: {rain_hrs[0][0]}–{rain_hrs[-1][0]}, "
+        lines.append(
+            f"🌧️ Pioggia {rain_hrs[0][0]}–{rain_hrs[-1][0]}: "
             f"{rtot:.1f} mm tot, picco {rpeak[1]:.1f} mm/h alle {rpeak[0]}"
         )
 
-    # FFG nella sezione tecnica
+    if evo.get("windows"):
+        lines.append("📈 " + format_evolution_text(evo))
+
     if ffg_result:
-        tech_lines.append(f"FFG: {ffg_score:.2f}/1.0 – {ffg_desc}")
+        lines.append(f"🌊 FFG {ffg_score:.2f}/1.0 – {ffg_desc}")
 
-    # Heatwave nella sezione tecnica
     if hw_result and hw_result.get("severity") not in ("nessuna", None, ""):
-        tech_lines.append(f"Calore: {hw_result.get('desc', '')}")
+        lines.append(f"🌡️ Calore: {hw_result.get('desc', '')}")
 
-    # Spread modelli
-    # Spread modelli — mostrato come nota di incertezza, non come dato alternativo.
-    # Il valore "ufficiale" resta sempre quello AROME (già in uso sopra).
     if spread:
         note_incertezza = []
         for lbl, info in spread.items():
@@ -464,23 +452,20 @@ def build_day_message(
                 "gust_max": "raffiche di vento",
             }.get(lbl, lbl)
             if info.get("high"):
-                note_incertezza.append(f"{etichetta} (forte incertezza tra modelli)")
+                note_incertezza.append(f"{etichetta} (forte incertezza)")
             else:
                 note_incertezza.append(etichetta)
-        tech_lines.append(
-            "Incertezza modelli su: " + ", ".join(note_incertezza) +
-            " — valori del bollettino basati su AROME (modello ad alta risoluzione)."
-        )
+        lines.append("⚠️ Incertezza modelli: " + ", ".join(note_incertezza) + " — bollettino su AROME")
 
-    tech_lines.append(f"Modalità: {mode}")
+    lines.append(f"🌪️ Modalità: {mode}")
     if hazards:
-        tech_lines.append("Fenomeni: " + " | ".join(hazards[:5]))
-    lines.extend(tech_lines)
+        lines.append("⚠️ Fenomeni: " + " | ".join(hazards[:5]))
     lines.append("")
 
-    # Narrativa Gemini
+    # ── Narrativa Gemini ────────────────────────────────────────────────
+    tech_lines_for_prompt = tabella  # riusato solo per il prompt AI, non stampato di nuovo
     if api_key and GEMINI_API_KEY:
-        analisi_tecnica_str = "\n".join(tech_lines)
+        analisi_tecnica_str = "\n".join(tech_lines_for_prompt)
         hourly_table = result.get("section3", "")
         prompt_gemini = build_gemini_prompt_tecnico(
             analisi_tecnica    = analisi_tecnica_str,
@@ -496,13 +481,13 @@ def build_day_message(
             evolution_result   = evo,
         )
         narrativa, gem_model = call_gemini(prompt_gemini, api_key)
+        lines.append("🤖 <b>ANALISI AI</b>")
         lines.append(narrativa)
-        lines.append(f"\n[AI: {gem_model}]")
+        lines.append(f"<i>[{gem_model}]</i>")
     else:
-        lines.append("(analisi AI non disponibile – GEMINI_API_KEY mancante)")
+        lines.append("<i>(analisi AI non disponibile)</i>")
 
     return "\n".join(lines)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
