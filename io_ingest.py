@@ -182,17 +182,32 @@ def build_obs_from_openmeteo(
         T_k  = get(f"temperature_{sfx}")
         Td_k = get(f"dewpoint_{sfx}")
         if T_k is not None:
-            sounding_p.append(pa)
-            sounding_T.append(T_k + 273.15)
-            sounding_Td.append((Td_k + 273.15) if Td_k is not None else T_k + 273.15 - 5)
-            sounding_h.append(zm)
+                sounding_p.append(pa)
+                sounding_T.append(T_k + 273.15)
+                if Td_k is not None:
+                    sounding_Td.append(Td_k + 273.15)
+                    sounding_h.append(zm)
+
+  if len(sounding_Td) < len(sounding_p):
+                # Ricostruisci solo i livelli con entrambi T e Td
+                aligned_p, aligned_T, aligned_Td, aligned_h = [], [], [], []
+                # Ripeti il ciclo ma salta livelli senza Td
+                for sfx, (pa, zm) in LEVEL_MAP.items():
+                    T_k = get(f"temperature_{sfx}")
+                    Td_k = get(f"dewpoint_{sfx}")
+                    if T_k is not None and Td_k is not None:
+                        aligned_p.append(pa)
+                        aligned_T.append(T_k + 273.15)
+                        aligned_Td.append(Td_k + 273.15)
+                        aligned_h.append(zm)
+                sounding_p, sounding_T, sounding_Td, sounding_h = aligned_p, aligned_T, aligned_Td, aligned_h
 
     # Aggiungi livello superficiale se non presente
-    if temp_c is not None and sounding_p and sounding_p[0] < 100000:
-        sounding_p.insert(0, p_hpa * 100)
-        sounding_T.insert(0, temp_c + 273.15)
-        sounding_Td.insert(0, (Td_c + 273.15) if Td_c is not None else temp_c + 271.15)
-        sounding_h.insert(0, float(ELEVATION))
+    if temp_c is not None and Td_c is not None and sounding_p and sounding_p[0] < 100000:
+            sounding_p.insert(0, p_hpa * 100)
+            sounding_T.insert(0, temp_c + 273.15)
+            sounding_Td.insert(0, Td_c + 273.15)
+            sounding_h.insert(0, float(ELEVATION))
 
     now_str = datetime.datetime.now().isoformat() + "Z"
 
@@ -238,14 +253,15 @@ def build_obs_from_openmeteo(
 
     # Aggiungi profilo verticale se disponibile
     if len(sounding_p) >= 3:
-        obs["sounding"] = {
-            "pressure_pa":   sounding_p,
-            "temperature_k": sounding_T,
-            "dewpoint_k":    sounding_Td,
-            "height_m":      sounding_h,
-            "u_ms":          [],   # non disponibili da Open-Meteo
-            "v_ms":          [],
-        }
+            obs["sounding"] = {
+                "pressure_pa": sounding_p,
+                "temperature_k": sounding_T,
+                "dewpoint_k": sounding_Td,
+                "height_m": sounding_h,
+                "u_ms": [],  # non disponibili da Open-Meteo (nessun vento sui livelli isobarici)
+                "v_ms": [],
+            }
+            obs["sounding_low_res"] = True
 
     return obs
 
