@@ -17,7 +17,7 @@ Uso principale:
 
 import datetime
 import requests
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 from config import LATITUDE, LONGITUDE, ELEVATION, OPEN_METEO_BASE, TIMEZONE
 
