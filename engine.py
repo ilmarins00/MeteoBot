@@ -189,16 +189,19 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
                 params["SCP"] = None
                 params["STP"] = None
 
-        # — DCAPE
-        dcape_pre = obs.get("DCAPE")
-        if dcape_pre is not None:
-            params["DCAPE"] = dcape_pre
-        else:
-            try:
-                from thermo import dcape_from_profile as _dcape_fn
-                params["DCAPE"] = _dcape_fn(pres, temp, dewp)
-            except Exception:
-                params["DCAPE"] = 0.0
+        # — DCAPE: solo se sounding ad alta risoluzione, altrimenti N/D
+                dcape_pre = obs.get("DCAPE")
+                if dcape_pre is not None:
+                    params["DCAPE"] = dcape_pre
+                elif len(pres) >= 20:
+                    try:
+                        from thermo import dcape_from_profile as _dcape_fn
+                        params["DCAPE"] = _dcape_fn(pres, temp, dewp)
+                    except Exception:
+                        params["DCAPE"] = None
+                else:
+                    # Sounding low-res: DCALE inattendibile
+                    params["DCAPE"] = None
 
     else:
         # — Fallback: osservazioni superficiali
