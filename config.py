@@ -213,7 +213,7 @@ class Thresholds:
     CIN_STRONG:   float = -200.0   # forte inibizione (blocca convezione)
 
     # Shear bulk 0-6 km (kt)
-    SHEAR_06_WEAK:      float = 10.0
+    SHEAR_06_WEAK:      float = 15.0
     SHEAR_06_ORGANIZED: float = 20.0
     SHEAR_06_SUPERCELL: float = 35.0  # SPC: soglia supercella
     SHEAR_06_EXTREME:   float = 50.0
