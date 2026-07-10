@@ -226,6 +226,9 @@ def render_section2_detailed(
 
     lines.append(f"\n▌ MODALITÀ CONVETTIVA:\n   {mode}")
 
+    lr03 = params.get("lr_0_3km")
+    lr_mid = params.get("lr_700_500")
+
     if lr03 is not None or lr_mid is not None:
         lines.append("\n▌ GRADIENTI TERMICI:")
         if lr03 is not None:
