@@ -382,10 +382,6 @@ def _fetch_one_model(
         return None
 
 
-def _merge_hourly(
-    # Campi per cui AROME ha sempre priorità se disponibile (mai sovrascritti da ICON-EU),
-# perché AROME (2.5km/regionale) è più affidabile di ICON-EU (globale, ~7km) nelle prime 48h
-# per fenomeni convettivi locali: CAPE, precipitazione, raffiche, vento.
 _AROME_PRIORITY_FIELDS = {
     "cape", "convective_inhibition", "lifted_index",
     "precipitation", "rain", "showers",
@@ -399,11 +395,11 @@ def _merge_hourly(
     secondary: Dict[str, Any],
 ) -> Tuple[Dict[str, Any], Dict[str, int]]:
     """
-    Unisce due dataset orari: usa il valore di `primary` (AROME) quando non è None,
+    Unisce due dataset orari: usa il valore di `primary` (AROME) quando non e' None,
     altrimenti quello di `secondary` (ICON-EU). Allineamento per timestamp.
 
     Per i campi in _AROME_PRIORITY_FIELDS, se AROME ha un valore (anche 0 o basso)
-    NON viene mai sostituito da ICON-EU, perché AROME è il modello di riferimento
+    NON viene mai sostituito da ICON-EU, perche' AROME e' il modello di riferimento
     per fenomeni convettivi/locali nelle prime 48-72h. ICON-EU riempie solo i buchi
     reali (valore None) di questi campi, e tutti i buchi degli altri campi.
 
@@ -417,7 +413,7 @@ def _merge_hourly(
     s_h = secondary.get("hourly", {})
     p_times = p_h.get("time", [])
     s_times = s_h.get("time", [])
-    s_idx   = {t: i for i, t in enumerate(s_times)}
+    s_idx = {t: i for i, t in enumerate(s_times)}
 
     all_keys = set(list(p_h.keys()) + list(s_h.keys())) - {"time"}
     merged_h: Dict[str, Any] = {"time": p_times}
@@ -429,12 +425,7 @@ def _merge_hourly(
         filled = 0
         for j, t in enumerate(p_times):
             pv = p_vals[j] if j < len(p_vals) else None
-            sv = (s_vals[s_idx[t]] if t in s_idx and s_idx[t] < len(s_vals) else None)
-            # pv è sempre preferito se non None: questo vale automaticamente
-            # come "priorità AROME" per tutti i campi, inclusi quelli in
-            # _AROME_PRIORITY_FIELDS (non serve logica speciale aggiuntiva:
-            # il punto debole non era qui ma nel fatto che lo spread confrontava
-            # valori di finestre temporali diverse — vedi run_previsioni_new.py)
+            sv = s_vals[s_idx[t]] if (t in s_idx and s_idx[t] < len(s_vals)) else None
             if pv is None and sv is not None:
                 filled += 1
             row.append(pv if pv is not None else sv)
