@@ -123,6 +123,8 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
                 params["SBCIN"] = model_cin
                 if model_li is not None:
                     params["LI"] = model_li
+                elif "LI" not in params or params.get("LI") is None:
+                    params["LI"] = thermo.get("LI")
 
             # — PWAT nativo (integrazione discreta)
             params["PWAT"] = pwat_from_profile(pres, temp, dewp)
