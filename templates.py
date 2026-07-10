@@ -289,11 +289,26 @@ def build_gemini_prompt_tecnico(
     ffg_result: Optional[Dict] = None,
     heatwave_result: Optional[Dict] = None,
     uwyo_summary: Optional[str] = None,
+    evolution_result: Optional[Dict] = None,
 ) -> str:
     from logic import livello_attenzione
     livello, emoji = livello_attenzione(maltempo_score_val)
 
-# ── Evoluzione e persistenza instabilità (dati esatti, non stimati da Gemini) ──
+    prompt = f"""
+Sei MeteoBot, un sistema di Intelligenza Artificiale meteorologica avanzata per il Levante Ligure.
+Il tuo compito è scrivere un'analisi narrativa professionale ed ELEGANTE basata sui dati forniti.
+
+GIORNO: {giorno_label}
+LIVELLO ATTENZIONE: {emoji} {livello} (Score: {maltempo_score_val}/5)
+
+DATI TECNICI:
+{analisi_tecnica}
+
+EVOLUZIONE ORARIA:
+{hourly_table if hourly_table else "Non fornita"}
+"""
+
+    # ── Evoluzione e persistenza instabilità (dati esatti, non stimati da Gemini) ──
     if evolution_result and evolution_result.get("windows"):
         ev_lines = []
         for w in evolution_result["windows"]:
@@ -310,20 +325,33 @@ def build_gemini_prompt_tecnico(
             "ISTRUZIONE: cita SEMPRE durata e orari quando descrivi l'instabilità, "
             "es. 'instabilità elevata per 6 ore, dalle 14 alle 20, in rafforzamento'.\n"
         )
-    
-    prompt = f"""
-Sei MeteoBot, un sistema di Intelligenza Artificiale meteorologica avanzata per il Levante Ligure.
-Il tuo compito è scrivere un'analisi narrativa professionale ed ELEGANTE basata sui dati forniti.
 
-GIORNO: {giorno_label}
-LIVELLO ATTENZIONE: {emoji} {livello} (Score: {maltempo_score_val}/5)
+    # ── Spread modelli (AROME vs ICON-EU) ──
+    if spread_data:
+        sp_lines = []
+        for lbl, info in spread_data.items():
+            sp_lines.append(
+                f"  - {lbl}: AROME={info['AROME']}{info['unit']} vs ICON-EU={info['ICON']}{info['unit']} "
+                f"(differenza {info['diff']}{info['unit']}{', SIGNIFICATIVA' if info.get('high') else ''})"
+            )
+        prompt += (
+            "\nDISACCORDO TRA MODELLI (menziona l'incertezza quando è rilevante):\n"
+            + "\n".join(sp_lines) + "\n"
+        )
 
-DATI TECNICI:
-{analisi_tecnica}
+    # ── Flash Flood Guidance ──
+    if ffg_result:
+        prompt += f"\nRISCHIO ALLUVIONE LAMPO: {ffg_result.get('desc', '')}\n"
 
-EVOLUZIONE ORARIA:
-{hourly_table if hourly_table else "Non fornita"}
+    # ── Ondata di calore ──
+    if heatwave_result and heatwave_result.get("is_heatwave"):
+        prompt += f"\nONDATA DI CALORE IN CORSO: {heatwave_result.get('desc', '')}\n"
 
+    # ── Sounding osservato (UWYO) ──
+    if uwyo_summary:
+        prompt += f"\nRADIOSONDAGGIO OSSERVATO (dato reale, non da modello): {uwyo_summary}\n"
+
+    prompt += """
 ISTRUZIONI PER L'ANALISI:
 1. ANALISI EVOLUTIVA: Analizza la tabella oraria. Specifica QUANDO avverranno i fenomeni più importanti (es. "picco convettivo tra le 16 e le 18").
 2. INTELLIGENZA FISICA: Se gli indici (CAPE, SCP) sono alti ma c'è un "tappo" (CIN forte o aria secca), spiega che il rischio è latente ma potrebbe non innescarsi.
