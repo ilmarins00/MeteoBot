@@ -378,9 +378,6 @@ def build_day_message(
     lines.append(semplice)
 
     evo = instability_evolution(hourly)
-
-    from logic import instability_evolution, format_evolution_text
-    evo = instability_evolution(hourly)
   
     # FFG / heatwave nella sezione semplice se rilevante
     if ffg_result and ffg_score >= 0.45:
