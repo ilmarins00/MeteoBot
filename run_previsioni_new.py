@@ -400,12 +400,25 @@ def build_day_message(
     def fv(v, fmt=".1f", u=""):
         return f"{v:{fmt}}{u}" if v is not None else "n.d."
 
-    riga1 = f"SBCAPE {fv(sbcape,'.0f',' J/kg')}".ljust(20) + f"CIN {fv(cin_v,'.0f',' J/kg')}"
-    riga2 = f"MUCAPE {fv(mucape,'.0f',' J/kg')}".ljust(20) + f"LI  {fv(li_v,'.1f')}"
-    riga3 = f"Shear06 {fv(shear06,'.1f',' kt')}".ljust(20) + f"SRH03 {fv(srh03,'.0f',' m²/s²')}"
-    riga4 = f"PWAT {fv(pwat,'.1f',' mm')}".ljust(20) + f"SCP {fv(scp,'.2f')}"
+    def fv(v, fmt=".1f", u=""):
+        return f"{v:{fmt}}{u}" if v is not None else "n.d."
 
-    tabella = [riga1, riga2, riga3, riga4]
+    # Coppie (etichetta sinistra, valore sinistra, etichetta destra, valore destra)
+    dati_tabella = [
+        ("SBCAPE",  fv(sbcape, '.0f', ' J/kg'),  "CIN",   fv(cin_v, '.0f', ' J/kg')),
+        ("MUCAPE",  fv(mucape, '.0f', ' J/kg'),  "LI",    fv(li_v, '.1f')),
+        ("Shear06", fv(shear06, '.1f', ' kt'),   "SRH03", fv(srh03, '.0f', ' m²/s²')),
+        ("PWAT",    fv(pwat, '.1f', ' mm'),      "SCP",   fv(scp, '.2f')),
+    ]
+
+    # Calcola la larghezza massima della colonna sinistra (etichetta+valore)
+    col_sx_width = max(len(f"{lbl} {val}") for lbl, val, _, _ in dati_tabella) + 2
+
+    tabella = []
+    for lbl_sx, val_sx, lbl_dx, val_dx in dati_tabella:
+        sx = f"{lbl_sx} {val_sx}"
+        tabella.append(sx.ljust(col_sx_width) + f"{lbl_dx} {val_dx}")
+
     if dcape_v > 50:
         try:
             from thermo import dcape_gust_kmh as _dg
