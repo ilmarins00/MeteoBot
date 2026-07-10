@@ -94,8 +94,8 @@ def call_gemini(prompt: str, api_key: str) -> tuple[str, str]:
         )}]},
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 0.25,
-            "maxOutputTokens": 4096,
+            "temperature": 0.2,
+            "maxOutputTokens": 100,
             "topP": 0.85,
         },
         "safetySettings": [
