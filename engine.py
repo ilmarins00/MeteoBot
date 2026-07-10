@@ -88,9 +88,41 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
         pres, temp, dewp, u_prof, v_prof, heights = _extract_sounding_levels(sounding)
 
         if pres and temp and dewp:
-            # — Termodinamica completa
-            thermo = compute_all_thermo(pres, temp, dewp)
-            params.update(thermo)
+            # — Termodinamica: usa CAPE del modello, non ricalcolato da pochi livelli
+            # compute_all_thermo su 5-6 livelli isobarici produce CAPE inattendibile
+            # (es. 4112 J/kg invece del 350 reale del modello).
+            # Lo usiamo solo per LCL e θe, MA SOVRASCRIVIAMO CAPE/CIN/LI con i valori
+            # nativi del modello (già presenti in obs).
+            n_levels = len(pres)
+            model_cape = obs.get("CAPE", obs.get("SBCAPE", 0)) or 0
+            model_mucape = obs.get("MUCAPE", model_cape) or 0
+            model_mlcape = obs.get("MLCAPE", model_cape) or 0
+            model_cin = obs.get("CIN", obs.get("SBCIN", 0)) or 0
+            model_li = obs.get("LI", None)
+
+            # Solo con un sounding ad alta risoluzione (≥20 livelli, es. UWYO)
+            # usiamo il CAPE calcolato da thermo.py
+            if n_levels >= 20:
+                thermo = compute_all_thermo(pres, temp, dewp)
+                params.update(thermo)
+            else:
+                # Sounding a bassa risoluzione: usa solo LCL/θe dal thermo,
+                # ma mantieni CAPE/CIN/LI del modello
+                thermo = compute_all_thermo(pres, temp, dewp)
+                # Estrai solo LCL e parametri non-CAPE dal thermo
+                for k, v in thermo.items():
+                    if k not in ("SBCAPE", "SBCIN", "MUCAPE", "MUCIN",
+                                 "MLCAPE", "MLCIN", "CAPE", "CIN", "LI"):
+                        params[k] = v
+                # Forza i valori del modello
+                params["CAPE"] = model_cape
+                params["SBCAPE"] = model_cape
+                params["MUCAPE"] = model_mucape
+                params["MLCAPE"] = model_mlcape
+                params["CIN"] = model_cin
+                params["SBCIN"] = model_cin
+                if model_li is not None:
+                    params["LI"] = model_li
 
             # — PWAT nativo (integrazione discreta)
             params["PWAT"] = pwat_from_profile(pres, temp, dewp)
@@ -120,30 +152,42 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
                 params.update({k: round(v, 2) if v is not None else None
                                 for k, v in lr.items()})
 
-        if u_prof and v_prof and heights:
-            # — Shear
-            shear = compute_shear_profile(u_prof, v_prof, heights)
-            params.update(shear)
+         # — Indici dinamici e compositi: SOLO se il profilo vento è disponibile
+            if u_prof and v_prof and heights and len(u_prof) >= 3:
+                # — Shear
+                shear = compute_shear_profile(u_prof, v_prof, heights)
+                params.update(shear)
 
-            # — SRH reale (Bunkers)
-            srh = compute_srh(u_prof, v_prof, heights)
-            params.update(srh)
+                # — SRH reale (Bunkers)
+                srh = compute_srh(u_prof, v_prof, heights)
+                params.update(srh)
 
-        # — Indici compositi
-        cape = params.get("MUCAPE", params.get("SBCAPE", params.get("CAPE", 0)))
-        srh1 = params.get("srh_0_1", 0)
-        srh3 = params.get("srh_0_3", 0)
-        shear06 = params.get("shear_0_6", 0)
-        lcl = params.get("LCL", 1000)
-        cin = params.get("CIN", params.get("SBCIN", 0))
+                # — Indici compositi (calcolati con dati coerenti)
+                cape = params.get("MUCAPE", params.get("SBCAPE", params.get("CAPE", 0)))
+                srh1 = params.get("srh_0_1", 0)
+                srh3 = params.get("srh_0_3", 0)
+                shear06 = params.get("shear_0_6", 0)
+                lcl = params.get("LCL", 1000)
+                cin = params.get("CIN", params.get("SBCIN", 0))
 
-        params["EHI"] = round(ehi(cape, max(srh1, srh3)), 3)
-        params["SCP"] = round(supercell_composite(cape, srh3, shear06), 3)
-        params["STP"] = round(
-            significant_tornado_parameter(
-                params.get("SBCAPE", cape), srh1, shear06, lcl or 1000, cin or 0
-            ), 3
-        )
+                params["EHI"] = round(ehi(cape, max(srh1, srh3)), 3)
+                params["SCP"] = round(supercell_composite(cape, srh3, shear06), 3)
+                params["STP"] = round(
+                    significant_tornado_parameter(
+                        params.get("SBCAPE", cape), srh1, shear06, lcl or 1000, cin or 0
+                    ), 3
+                )
+            else:
+                # Profilo vento non disponibile (Open-Meteo non fornisce u/v sui livelli)
+                # NON inventare shear=0 e NON calcolare indici compositi nonsensici
+                params["shear_0_6"] = None
+                params["shear_0_3"] = None
+                params["shear_0_1"] = None
+                params["srh_0_3"] = None
+                params["srh_0_1"] = None
+                params["EHI"] = None
+                params["SCP"] = None
+                params["STP"] = None
 
         # — DCAPE
         dcape_pre = obs.get("DCAPE")
