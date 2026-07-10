@@ -96,7 +96,7 @@ def call_gemini(prompt: str, api_key: str) -> tuple[str, str]:
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.25,
-            "maxOutputTokens": 180,
+            "maxOutputTokens": 350,
             "topP": 0.85,
         },
         "safetySettings": [
@@ -194,10 +194,11 @@ def call_gemini(prompt: str, api_key: str) -> tuple[str, str]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def send_telegram(text: str, max_len: int = 4000):
-    """Invia a tutti i chat_id, spezzando se >max_len chars."""
+    """Invia a tutti i chat_id, spezzando se >max_len chars, con pause anti rate-limit."""
     if not TELEGRAM_TOKEN or not LISTA_CHAT:
-        print("  [TG] Telegram non configurato, skip")
+        print(" [TG] Telegram non configurato, skip")
         return
+
     chunks, cur = [], ""
     for line in text.splitlines(keepends=True):
         if len(cur) + len(line) > max_len:
@@ -214,14 +215,28 @@ def send_telegram(text: str, max_len: int = 4000):
         for i, chunk in enumerate(chunks):
             if i > 0:
                 chunk = f"(segue {i+1}/{len(chunks)})\n" + chunk
-            try:
-                r = requests.post(url, data={"chat_id": chat_id, "text": chunk}, timeout=15)
-                r.raise_for_status()
-                ok = r.json().get("ok", False)
-                print(f"  [TG] {'✓' if ok else '✗'} chat {chat_id} chunk {i+1}/{len(chunks)}")
-            except Exception as e:
-                print(f"  [TG] Errore {chat_id}: {e}")
 
+            for attempt in range(3):
+                try:
+                    r = requests.post(url, data={"chat_id": chat_id, "text": chunk}, timeout=15)
+                    if r.status_code == 429:
+                        retry_after = 3
+                        try:
+                            retry_after = r.json().get("parameters", {}).get("retry_after", 3)
+                        except Exception:
+                            pass
+                        print(f" [TG] 429, attendo {retry_after}s (tentativo {attempt+1}/3)...")
+                        time.sleep(retry_after + 1)
+                        continue
+                    r.raise_for_status()
+                    ok = r.json().get("ok", False)
+                    print(f" [TG] {'✓' if ok else '✗'} chat {chat_id} chunk {i+1}/{len(chunks)}")
+                    break
+                except Exception as e:
+                    print(f" [TG] Errore {chat_id}: {e}")
+                    break
+
+            time.sleep(1.2)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Build del messaggio per un singolo giorno
