@@ -919,3 +919,36 @@ def rileva_fenomeni_costieri(params: Dict[str, float]) -> List[str]:
         avvisi_avanzati.append("Possibili trombe marine anche intense, con rischio di landfall in caso di rovesci organizzati.")
 
     return avvisi_avanzati
+
+def convection_probability(params):
+    cape = max(
+        params.get("SBCAPE", 0),
+        params.get("MUCAPE", 0),
+        params.get("MLCAPE", 0)
+    )
+
+    shear = params.get("Shear06", 0)
+    cin = abs(params.get("CIN", 0))
+    pwat = params.get("PWAT", 0)
+
+    prob = 0.0
+
+    if cape >= 300:
+        prob += 0.25
+
+    if cape >= 1000:
+        prob += 0.20
+
+    if shear >= 15:
+        prob += 0.20
+
+    if shear >= 25:
+        prob += 0.20
+
+    if cin <= 25:
+        prob += 0.10
+
+    if pwat >= 30:
+        prob += 0.05
+
+    return round(min(prob, 1.0), 2)
