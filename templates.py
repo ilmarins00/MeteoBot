@@ -293,6 +293,24 @@ def build_gemini_prompt_tecnico(
     from logic import livello_attenzione
     livello, emoji = livello_attenzione(maltempo_score_val)
 
+# ── Evoluzione e persistenza instabilità (dati esatti, non stimati da Gemini) ──
+    if evolution_result and evolution_result.get("windows"):
+        ev_lines = []
+        for w in evolution_result["windows"]:
+            ev_lines.append(
+                f"  - {w['start']}-{w['end']} ({w['duration_h']}h): "
+                f"CAPE medio {w['cape_avg']:.0f} J/kg, {w['trend']}"
+            )
+        prompt += (
+            "\nEVOLUZIONE INSTABILITÀ (dati calcolati, usa questi orari esatti "
+            "senza approssimare o arrotondare diversamente):\n"
+            + "\n".join(ev_lines)
+            + f"\nPicco assoluto: {evolution_result.get('peak_cape', 0):.0f} J/kg "
+              f"alle {evolution_result.get('peak_time', 'n.d.')}\n"
+            "ISTRUZIONE: cita SEMPRE durata e orari quando descrivi l'instabilità, "
+            "es. 'instabilità elevata per 6 ore, dalle 14 alle 20, in rafforzamento'.\n"
+        )
+    
     prompt = f"""
 Sei MeteoBot, un sistema di Intelligenza Artificiale meteorologica avanzata per il Levante Ligure.
 Il tuo compito è scrivere un'analisi narrativa professionale ed ELEGANTE basata sui dati forniti.
@@ -311,7 +329,7 @@ ISTRUZIONI PER L'ANALISI:
 2. INTELLIGENZA FISICA: Se gli indici (CAPE, SCP) sono alti ma c'è un "tappo" (CIN forte o aria secca), spiega che il rischio è latente ma potrebbe non innescarsi.
 3. STILE ELEGANTE: Scrivi in italiano fluente, evita elenchi puntati se possibile, preferisci 2-3 paragrafi ben scritti. Usa un tono da meteorologo professionista.
 4. DETTAGLIO FENOMENI: Non dire solo "temporali", specifica se c'è rischio grandine, raffiche o alluvioni lampo basandoti sui dati.
-5. LUNGHEZZA: Max 180 parole.
+5. LUNGHEZZA: Max 200 parole.
 
 RISPONDI SOLO CON L'ANALISI NARRATIVA.
 """
