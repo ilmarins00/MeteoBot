@@ -301,6 +301,7 @@ def build_gemini_prompt_tecnico(
     heatwave_result: Optional[Dict] = None,
     uwyo_summary: Optional[str] = None,
     evolution_result: Optional[Dict] = None,
+    multi_evolution: Optional[Dict] = None,
 ) -> str:
     from logic import livello_attenzione
     livello, emoji = livello_attenzione(maltempo_score_val)
@@ -337,6 +338,23 @@ EVOLUZIONE ORARIA:
             "es. 'instabilità elevata per 6 ore, dalle 14 alle 20, in rafforzamento'.\n"
         )
 
+    # ── Evoluzione multi-parametro (CAPE, shear, SRH, PWAT nel tempo) ──
+    if multi_evolution:
+        prompt += "\nEVOLUZIONE ORARIA COMPLETA (usa questi dati per capire SE e QUANDO l'energia si organizza):\n"
+        for key in ("cape", "shear", "srh", "pwat"):
+            txt = multi_evolution.get(key)
+            if txt:
+                prompt += f"  - {txt}\n"
+        if multi_evolution.get("synergy_warning"):
+            prompt += (
+                f"\nATTENZIONE PATTERN RILEVATO: {multi_evolution['synergy_warning']}\n"
+                "ISTRUZIONE OBBLIGATORIA: se questo pattern è presente, NON scrivere che l'innesco "
+                "è 'totalmente assente'. Scrivi invece che l'energia è presente e priva di freni "
+                "(CIN basso) ma manca l'organizzazione dinamica, quindi il rischio principale è la "
+                "cella isolata da riscaldamento diurno (specialmente su rilievi/entroterra), non il "
+                "sistema organizzato o il nubifragio esteso.\n"
+            )
+
     # ── Spread modelli (AROME vs ICON-EU) ──
     if spread_data:
         sp_lines = []
@@ -365,13 +383,17 @@ EVOLUZIONE ORARIA:
     prompt += """
 ISTRUZIONI PER L'ANALISI — SEGUI RIGOROSAMENTE:
 
-1. REALISMO PRIMA DI TUTTO: descrivi COSA SUCCEDERÀ REALMENTE secondo i dati, non il
-   potenziale teorico. Se la tabella oraria e i dati indicano che NON è prevista pioggia
-   o temporali, DEVI scrivere chiaramente che la giornata sarà stabile/soleggiata, anche
-   se CAPE o altri indici sono alti. Un'energia convettiva elevata SENZA innesco (pioggia
-   prevista, shear organizzato, forzante) NON è un temporale: è solo un potenziale che
-   quasi certamente non si scarica. Non descrivere mai downburst, grandine, trombe marine
-   o nubifragi come se accadessero, se i dati orari non mostrano pioggia.
+1. REALISMO PRIMA DI TUTTO, MA SENZA FALSE CERTEZZE: descrivi COSA SUCCEDERÀ REALMENTE
+   secondo i dati. Se CAPE è alto ma CIN è forte/moderato (inibizione presente), puoi
+   scrivere con sicurezza che la giornata sarà stabile. MA se CAPE è alto E CIN è quasi
+   nullo (vicino a zero) E non c'è shear organizzato, NON scrivere che l'innesco è
+   "totalmente assente" o che il cielo sarà "sereno per l'intero arco della giornata":
+   questa è una combinazione in cui una cella isolata da riscaldamento diurno resta
+   possibile, anche se improbabile un sistema organizzato o un nubifragio esteso.
+   In questo caso specifico scrivi che il rischio è basso ma non nullo, concentrato
+   nelle ore centrali/pomeridiane e più probabile su rilievi/entroterra.
+   Non descrivere mai downburst, grandine, trombe marine o nubifragi diffusi come se
+   accadessero certamente, se i dati orari non mostrano già pioggia prevista.
 2. NIENTE CONTRADDIZIONI: non scrivere mai nella stessa risposta sia "cielo sereno tutto
    il giorno" sia "rischio di downburst/nubifragi/trombe marine" per lo stesso giorno.
    Se l'innesco manca, di' semplicemente che il rischio resta teorico e improbabile,
