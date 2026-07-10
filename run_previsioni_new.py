@@ -32,7 +32,7 @@ from io_ingest import (
     extract_day_hourly,
 )
 from engine import run_pipeline, export_json
-from logic import maltempo_score, livello_attenzione, flash_flood_guidance, heatwave_analysis
+from logic import maltempo_score, livello_attenzione, flash_flood_guidance, heatwave_analysis, instability_evolution, format_evolution_text
 from templates import (
     render_analisi_semplice,
     render_section2_detailed,
@@ -358,20 +358,26 @@ def build_day_message(
         )
 
     # ── Intestazione ──────────────────────────────────────────────────────
-    # === BYPASS AI: Usiamo il bollettino generato deterministicamente ===
-    msg_deterministico = result.get("telegram_message", "(Errore generazione messaggio)")
-    
-    # Intestazione Data (Aggiunta rapida in cima al blocco modulare compatto)
-    giorno_intestazione = f"📅 {_format_date(day_date).upper()}"
-    messaggio_finale = f"{giorno_intestazione}\n{msg_deterministico}\n\n[Modello: {model_label}]"
-    
-    return messaggio_finale
+    sep = "═" * 50
+    sounding_tag = f" [OBS:{obs.get('sounding_source','')}]" if obs.get("sounding_source") else ""
+    lines = [
+        "",
+        sep,
+        f"  {day_label.upper()}",
+        f"  {_format_date(day_date)}",
+        sep,
+        f"Livello di ATTENZIONE: {emoji_liv} {livello}  (score {m_score:.1f}/5)",
+        f"Modello: {model_label}{sounding_tag}",
+        "",
+    ]
 
     # ── ANALISI SEMPLICE ──────────────────────────────────────────────────
     lines.append("◆ ANALISI SEMPLICE")
     lines.append("─" * 40)
     semplice = render_analisi_semplice(obs, params, hourly, giorno_label=day_label)
     lines.append(semplice)
+
+    evo = instability_evolution(hourly)
 
     from logic import instability_evolution, format_evolution_text
     evo = instability_evolution(hourly)
