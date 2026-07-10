@@ -546,10 +546,13 @@ def maltempo_score(
         conv_score += 1.0
     elif (wmo in (80, 81, 82, 91, 92)
           or li_f <= thresholds.LI_UNSTABLE
-          or (cape >= thresholds.SBCAPE_MODERATE)
-          or (cape >= thresholds.SBCAPE_EXTREME and not organized)):
-        # CAPE estremo ma isolato (no shear) resta qui, non sale oltre
+          or (cape >= thresholds.SBCAPE_MODERATE and organized)):
         conv_score += 0.5
+    elif cape >= thresholds.SBCAPE_EXTREME and not organized:
+        # CAPE estremo ma isolato (shear debole): energia enorme ma nessuna
+        # struttura per organizzarla. Contributo minimo, non trascurabile,
+        # perché il rischio di downburst puntiforme resta reale.
+        conv_score += 0.3
 
     conv_score += lr_bonus
 
