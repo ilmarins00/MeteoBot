@@ -820,6 +820,49 @@ def instability_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
     result["total_unstable_hours"] = sum(w["duration_h"] for w in result["windows"])
     return result
 
+def multi_param_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Estende instability_evolution() con la curva oraria di shear, SRH e PWAT,
+    campionata ogni 3 ore. Serve a rilevare pattern come "CAPE in forte aumento
+    ma shear stazionario e basso" — che indicano energia scoperta ma non organizzata,
+    distinguendo dal caso in cui shear e CAPE crescono insieme (rischio più concreto).
+    """
+    from indices import hourly_trend_series, describe_trend_series
+
+    if not hourly:
+        return {"cape": "", "shear": "", "srh": "", "pwat": "", "synergy_warning": None}
+
+    cape_series  = hourly_trend_series(hourly, "CAPE")
+    shear_series = hourly_trend_series(hourly, "shear")
+    srh_series   = hourly_trend_series(hourly, "SRH")
+    pwat_series  = hourly_trend_series(hourly, "PWAT")
+
+    cape_txt  = describe_trend_series(cape_series,  "J/kg",   "CAPE")
+    shear_txt = describe_trend_series(shear_series, "kt",     "Shear 0-6km")
+    srh_txt   = describe_trend_series(srh_series,   "m²/s²",  "SRH 0-3km")
+    pwat_txt  = describe_trend_series(pwat_series,  "mm",     "PWAT")
+
+    # Rileva il pattern "energia su, organizzazione ferma"
+    synergy_warning = None
+    if cape_series and shear_series:
+        cape_delta = cape_series[-1][1] - cape_series[0][1]
+        shear_vals = [v for _, v in shear_series]
+        shear_flat = (max(shear_vals) - min(shear_vals)) < 5.0 if shear_vals else True
+        if cape_delta > 1000 and shear_flat and max(shear_vals, default=0) < thresholds.SHEAR_06_ORGANIZED:
+            synergy_warning = (
+                "Il CAPE cresce sensibilmente nel corso della giornata mentre lo shear "
+                "resta stazionario e sotto la soglia di organizzazione: l'energia si accumula "
+                "ma la capacità di strutturarla in temporali organizzati non migliora — "
+                "il rischio principale resta la cella isolata da riscaldamento diurno, non il sistema organizzato."
+            )
+
+    return {
+        "cape": cape_txt,
+        "shear": shear_txt,
+        "srh": srh_txt,
+        "pwat": pwat_txt,
+        "synergy_warning": synergy_warning,
+    }
 
 def format_evolution_text(evo: Dict[str, Any]) -> str:
     """Rende in testo breve (per uso diretto, non-Gemini) l'evoluzione instabilità."""
