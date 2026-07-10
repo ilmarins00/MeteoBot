@@ -207,6 +207,15 @@ class Thresholds:
     MUCAPE_STRONG:   float = 1500.0
     MLCAPE_MODERATE: float = 600.0
 
+    # ── Lapse rate 0-3 km (K/km) – instabilità bassi strati ───────────────
+    LAPSE_03_UNSTABLE:      float = 7.0
+    LAPSE_03_VERY_UNSTABLE: float = 8.0
+    LAPSE_03_EXTREME:       float = 9.0
+
+    # ── Lapse rate 700-500 hPa (K/km) – instabilità media quota ────────────
+    LAPSE_75_UNSTABLE:      float = 6.0
+    LAPSE_75_VERY_UNSTABLE: float = 7.0
+
     # CIN (J/kg – valori negativi)
     CIN_WEAK:     float = -50.0    # leggera inibizione
     CIN_MODERATE: float = -100.0   # inibizione moderata
