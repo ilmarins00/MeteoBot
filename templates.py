@@ -37,10 +37,10 @@ def render_section1_simple(
     Genera un'analisi narrativa semplificata basata sui dati.
     """
     lines: List[str] = []
-    
+
     t_max = obs.get("temp_max_c", obs.get("temp_c", 0))
     t_min = obs.get("temp_min_c", obs.get("temp_c", 0))
-    rh    = obs.get("humidity_pct", 50)
+    rh = obs.get("humidity_pct", 50)
     wmo_dom = int(obs.get("wmo_code", 0) or 0)
     cape = float(params.get("SBCAPE", params.get("CAPE", 0)) or 0)
     r_tot = float(obs.get("rain_24h_mm", 0) or 0)
@@ -49,8 +49,7 @@ def render_section1_simple(
     g_max = float(obs.get("wind_gust_kmh", 0) or 0)
     w_max = float(obs.get("wind_speed_kmh", 0) or 0)
     oro = float(params.get("orographic_factor", 0) or 0)
-    
-    # Nome del vento dominante
+
     wd = obs.get("wind_dir_deg", 0)
     if wd is None: wd = 0
     directions = ["Nord", "Nord-Est", "Est", "Sud-Est", "Sud", "Sud-Ovest", "Ovest", "Nord-Ovest"]
@@ -62,136 +61,125 @@ def render_section1_simple(
     elif t_max >= 30:
         lines.append(f"{giorno_label} si presenta molto caldo: massime attorno a {t_max:.0f}°C, minime di {t_min:.0f}°C.")
     else:
-        (f"{giorno_label} temperature gradevoli: massime sui {t_max:.0f}°C, minime di {t_min:.0f}°C.")
+        lines.append(f"{giorno_label} temperature gradevoli: massime sui {t_max:.0f}°C, minime di {t_min:.0f}°C.")
 
     if rh >= 70 and t_max >= 28:
-        ("L'alto tasso di umidità accentuerà il disagio fisico (afa intensa).")
+        lines.append("L'alto tasso di umidità accentuerà il disagio fisico (afa intensa).")
     elif rh <= 35:
-        (f"Aria secca (umidità relativa intorno al {rh:.0f}%): scarsa nuvolosità, buona visibilità e nessun disagio da afa.")
+        lines.append(f"Aria secca (umidità relativa intorno al {rh:.0f}%): scarsa nuvolosità, buona visibilità e nessun disagio da afa.")
 
     # ── Precipitazioni e Rischio Convettivo Nascosto ──────────────────────
-    
-    # CORREZIONE: Integrazione dei parametri convettivi (SCP, STP, CAPE) 
-    # per evitare che l'analisi semplice descriva una giornata tranquilla 
-    # quando gli indici termodinamici sono esplosivi.
-    
     scp = float(params.get("SCP", 0) or 0)
     stp = float(params.get("STP", 0) or 0)
     cin = float(params.get("CIN", 0) or 0)
     lcl = float(params.get("LCL", 1500) or 1500)
-    
-    # Filtro intelligente anti-falsi positivi per la descrizione semplice
+
     is_capped = cin <= thresholds.CIN_STRONG or lcl >= thresholds.LCL_HIGH or rh <= 35
-    
     shear_06 = float(params.get("shear_0_6", 0) or 0)
     shear_organizzato = shear_06 >= thresholds.SHEAR_06_ORGANIZED
 
     if (stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH) and not is_capped and shear_organizzato:
-        (
+        lines.append(
             "ALLERTA CONVETTIVA: l'atmosfera è molto instabile e lo shear del vento è "
             "sufficiente a organizzare temporali forti, con possibili grandinate di grosse "
             "dimensioni e raffiche violente."
         )
     elif (scp >= thresholds.SCP_MODERATE and shear_organizzato and wmo_dom >= 80) and not is_capped:
-        (
+        lines.append(
             "ATTENZIONE: energia disponibile e organizzazione del vento favoriscono lo "
             "sviluppo di temporali anche intensi nelle ore centrali/pomeridiane."
         )
     elif cape >= thresholds.SBCAPE_STRONG and not shear_organizzato and wmo_dom < 80:
-        (
+        lines.append(
             "L'aria è molto instabile (energia convettiva elevata), ma la scarsa "
             "ventilazione in quota rende improbabile che si organizzino temporali: "
             "giornata attesa prevalentemente stabile, salvo isolati episodi di calore."
         )
     elif is_capped and (scp >= thresholds.SCP_MODERATE or cape >= thresholds.SBCAPE_STRONG):
-        (
+        lines.append(
             "Nonostante l'energia disponibile sia elevata, l'aria secca in quota o "
             "l'inibizione atmosferica dovrebbero impedire lo sviluppo di temporali."
         )
     elif wmo_dom == 99:
-        (
+        lines.append(
             "ALLERTA TEMPORALE SEVERO: attesi temporali violenti con grandine di grandi "
             "dimensioni. Rischio molto elevato di allagamenti rapidi, possibili danni a strutture. "
             "Evitare spostamenti non necessari durante l'evento."
         )
     elif wmo_dom == 96:
-        (
+        lines.append(
             "Previsti temporali con grandine: possibili danni a veicoli e strutture leggere "
             "in caso di grandinate. Accumuli di pioggia orari potenzialmente significativi."
         )
     elif wmo_dom == 95:
         if cape >= 1500:
-            (
+            lines.append(
                 f"Temporali probabili, localmente forti, con raffiche e rovesci abbondanti. "
                 f"Energia disponibile (SBCAPE {cape:.0f} J/kg) sufficiente per celle organizzate. "
                 "Massima attenzione tra il pomeriggio e la sera."
             )
         else:
-            (
+            lines.append(
                 "Temporali attesi, di intensità moderata. Possibili rovesci abbondanti con "
                 "accumuli localizzati soprattutto sui versanti appenninici."
             )
     elif wmo_dom == 82:
-        (
+        lines.append(
             f"Rovesci intensi in arrivo con accumuli previsti di circa {r_tot:.0f} mm nell'arco "
             "della giornata. Possibili disagi nelle zone a bassa quota e prossime ai corsi d'acqua."
         )
     elif wmo_dom in (80, 81):
-        (
+        lines.append(
             f"Rovesci sparsi nel corso della giornata, più probabili nelle ore pomeridiane. "
             f"Accumulo totale atteso: circa {r_tot:.0f} mm."
         )
     elif wmo_dom in (63, 65):
-        (
+        lines.append(
             f"Pioggia moderata o intensa: accumulo previsto di circa {r_tot:.0f} mm. "
             "Possibili criticità nei bacini idrografici dell'entroterra spezzino."
         )
     elif wmo_dom == 61:
-        (
+        lines.append(
             f"Pioggia leggera prevista, con accumuli contenuti (circa {r_tot:.0f} mm). "
             "Nessun rischio idrogeologico significativo."
         )
     elif wmo_dom in (51, 53, 55):
-        ("Pioviggine diffusa, fenomeni deboli senza accumuli significativi.")
+        lines.append("Pioviggine diffusa, fenomeni deboli senza accumuli significativi.")
     elif wmo_dom in (71, 73, 75):
         quota = snow_lvl
-        (
+        lines.append(
             f"Neve prevista con limite a circa {quota:.0f} m s.l.m. "
             f"{'– possibile accumulo anche in zone costiere e collinari' if quota < 500 else '– fenomeno confinato alle zone appenniniche'}."
         )
     elif wmo_dom in (45, 48):
-        (
+        lines.append(
             f"Nebbia {'densa ' if vis_m < 200 else ''}su vallate e zone costiere, "
             f"visibilità localmente {'inferiore ai 200 m' if vis_m < 200 else 'ridotta'}."
         )
     elif r_tot > 0:
-        (
+        lines.append(
             f"Precipitazioni deboli o intermittenti con accumulo di circa {r_tot:.0f} mm. "
             "Nessuna criticità prevista."
         )
     else:
-        ("Nessuna precipitazione significativa prevista.")
+        lines.append("Nessuna precipitazione significativa prevista.")
 
     # ── Vento ─────────────────────────────────────────────────────────────
     if g_max >= 90:
-        (
+        lines.append(
             f"VENTO TEMPESTOSO: raffiche di {nome_v} fino a {g_max:.0f} km/h. "
             "Possibili danni a strutture, alberi e reti di distribuzione."
         )
     elif g_max >= 60:
-        (
-            f"Vento forte di {nome_v} con raffiche fino a {g_max:.0f} km/h."
-        )
+        lines.append(f"Vento forte di {nome_v} con raffiche fino a {g_max:.0f} km/h.")
     elif g_max >= 40:
-        (
-            f"Vento moderato da {nome_v} con raffiche fino a {g_max:.0f} km/h."
-        )
+        lines.append(f"Vento moderato da {nome_v} con raffiche fino a {g_max:.0f} km/h.")
     else:
-        ("Vento debole o assente, condizioni di calma in mare e a terra.")
+        lines.append("Vento debole o assente, condizioni di calma in mare e a terra.")
 
     # ── Note orografiche ──────────────────────────────────────────────────
     if oro >= 0.6 and (wmo_dom >= 61 or cape >= 800):
-        (
+        lines.append(
             "Il forzante orografico dell'Appennino Ligure risulta molto attivo: "
             "gli accumuli saranno sensibilmente maggiori sulle zone interne."
         )
@@ -210,7 +198,7 @@ def render_section2_detailed(
     alert_detail: Optional[Dict[str, str]] = None,
 ) -> str:
     lines: List[str] = []
-    ("═══ ANALISI TECNICA METEOROLOGICA ═══")
+    lines.append("═══ ANALISI TECNICA METEOROLOGICA ═══")
 
     if alert_detail:
         ("\n▌ LIVELLI ALLERTA ARPAL:")
