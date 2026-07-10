@@ -477,8 +477,6 @@ def build_day_message(
         lines.append("📈 " + format_evolution_text(evo))
     if multi_evo.get("cape"):
         lines.append("📈 " + multi_evo["cape"])
-    if multi_evo.get("shear"):
-        lines.append("📈 " + multi_evo["shear"])
 
     if ffg_result:
         lines.append(f"🌊 FFG {ffg_score:.2f}/1.0 – {ffg_desc}")
