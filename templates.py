@@ -62,12 +62,12 @@ def render_section1_simple(
     elif t_max >= 30:
         lines.append(f"{giorno_label} si presenta molto caldo: massime attorno a {t_max:.0f}°C, minime di {t_min:.0f}°C.")
     else:
-        lines.append(f"{giorno_label} temperature gradevoli: massime sui {t_max:.0f}°C, minime di {t_min:.0f}°C.")
+        (f"{giorno_label} temperature gradevoli: massime sui {t_max:.0f}°C, minime di {t_min:.0f}°C.")
 
     if rh >= 70 and t_max >= 28:
-        lines.append("L'alto tasso di umidità accentuerà il disagio fisico (afa intensa).")
+        ("L'alto tasso di umidità accentuerà il disagio fisico (afa intensa).")
     elif rh <= 35:
-        lines.append(f"Aria secca (umidità relativa intorno al {rh:.0f}%): scarsa nuvolosità, buona visibilità e nessun disagio da afa.")
+        (f"Aria secca (umidità relativa intorno al {rh:.0f}%): scarsa nuvolosità, buona visibilità e nessun disagio da afa.")
 
     # ── Precipitazioni e Rischio Convettivo Nascosto ──────────────────────
     
@@ -87,111 +87,111 @@ def render_section1_simple(
     shear_organizzato = shear_06 >= thresholds.SHEAR_06_ORGANIZED
 
     if (stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH) and not is_capped and shear_organizzato:
-        lines.append(
+        (
             "ALLERTA CONVETTIVA: l'atmosfera è molto instabile e lo shear del vento è "
             "sufficiente a organizzare temporali forti, con possibili grandinate di grosse "
             "dimensioni e raffiche violente."
         )
     elif (scp >= thresholds.SCP_MODERATE and shear_organizzato and wmo_dom >= 80) and not is_capped:
-        lines.append(
+        (
             "ATTENZIONE: energia disponibile e organizzazione del vento favoriscono lo "
             "sviluppo di temporali anche intensi nelle ore centrali/pomeridiane."
         )
     elif cape >= thresholds.SBCAPE_STRONG and not shear_organizzato and wmo_dom < 80:
-        lines.append(
+        (
             "L'aria è molto instabile (energia convettiva elevata), ma la scarsa "
             "ventilazione in quota rende improbabile che si organizzino temporali: "
             "giornata attesa prevalentemente stabile, salvo isolati episodi di calore."
         )
     elif is_capped and (scp >= thresholds.SCP_MODERATE or cape >= thresholds.SBCAPE_STRONG):
-        lines.append(
+        (
             "Nonostante l'energia disponibile sia elevata, l'aria secca in quota o "
             "l'inibizione atmosferica dovrebbero impedire lo sviluppo di temporali."
         )
     elif wmo_dom == 99:
-        lines.append(
+        (
             "ALLERTA TEMPORALE SEVERO: attesi temporali violenti con grandine di grandi "
             "dimensioni. Rischio molto elevato di allagamenti rapidi, possibili danni a strutture. "
             "Evitare spostamenti non necessari durante l'evento."
         )
     elif wmo_dom == 96:
-        lines.append(
+        (
             "Previsti temporali con grandine: possibili danni a veicoli e strutture leggere "
             "in caso di grandinate. Accumuli di pioggia orari potenzialmente significativi."
         )
     elif wmo_dom == 95:
         if cape >= 1500:
-            lines.append(
+            (
                 f"Temporali probabili, localmente forti, con raffiche e rovesci abbondanti. "
                 f"Energia disponibile (SBCAPE {cape:.0f} J/kg) sufficiente per celle organizzate. "
                 "Massima attenzione tra il pomeriggio e la sera."
             )
         else:
-            lines.append(
+            (
                 "Temporali attesi, di intensità moderata. Possibili rovesci abbondanti con "
                 "accumuli localizzati soprattutto sui versanti appenninici."
             )
     elif wmo_dom == 82:
-        lines.append(
+        (
             f"Rovesci intensi in arrivo con accumuli previsti di circa {r_tot:.0f} mm nell'arco "
             "della giornata. Possibili disagi nelle zone a bassa quota e prossime ai corsi d'acqua."
         )
     elif wmo_dom in (80, 81):
-        lines.append(
+        (
             f"Rovesci sparsi nel corso della giornata, più probabili nelle ore pomeridiane. "
             f"Accumulo totale atteso: circa {r_tot:.0f} mm."
         )
     elif wmo_dom in (63, 65):
-        lines.append(
+        (
             f"Pioggia moderata o intensa: accumulo previsto di circa {r_tot:.0f} mm. "
             "Possibili criticità nei bacini idrografici dell'entroterra spezzino."
         )
     elif wmo_dom == 61:
-        lines.append(
+        (
             f"Pioggia leggera prevista, con accumuli contenuti (circa {r_tot:.0f} mm). "
             "Nessun rischio idrogeologico significativo."
         )
     elif wmo_dom in (51, 53, 55):
-        lines.append("Pioviggine diffusa, fenomeni deboli senza accumuli significativi.")
+        ("Pioviggine diffusa, fenomeni deboli senza accumuli significativi.")
     elif wmo_dom in (71, 73, 75):
         quota = snow_lvl
-        lines.append(
+        (
             f"Neve prevista con limite a circa {quota:.0f} m s.l.m. "
             f"{'– possibile accumulo anche in zone costiere e collinari' if quota < 500 else '– fenomeno confinato alle zone appenniniche'}."
         )
     elif wmo_dom in (45, 48):
-        lines.append(
+        (
             f"Nebbia {'densa ' if vis_m < 200 else ''}su vallate e zone costiere, "
             f"visibilità localmente {'inferiore ai 200 m' if vis_m < 200 else 'ridotta'}."
         )
     elif r_tot > 0:
-        lines.append(
+        (
             f"Precipitazioni deboli o intermittenti con accumulo di circa {r_tot:.0f} mm. "
             "Nessuna criticità prevista."
         )
     else:
-        lines.append("Nessuna precipitazione significativa prevista.")
+        ("Nessuna precipitazione significativa prevista.")
 
     # ── Vento ─────────────────────────────────────────────────────────────
     if g_max >= 90:
-        lines.append(
+        (
             f"VENTO TEMPESTOSO: raffiche di {nome_v} fino a {g_max:.0f} km/h. "
             "Possibili danni a strutture, alberi e reti di distribuzione."
         )
     elif g_max >= 60:
-        lines.append(
+        (
             f"Vento forte di {nome_v} con raffiche fino a {g_max:.0f} km/h."
         )
     elif g_max >= 40:
-        lines.append(
+        (
             f"Vento moderato da {nome_v} con raffiche fino a {g_max:.0f} km/h."
         )
     else:
-        lines.append("Vento debole o assente, condizioni di calma in mare e a terra.")
+        ("Vento debole o assente, condizioni di calma in mare e a terra.")
 
     # ── Note orografiche ──────────────────────────────────────────────────
     if oro >= 0.6 and (wmo_dom >= 61 or cape >= 800):
-        lines.append(
+        (
             "Il forzante orografico dell'Appennino Ligure risulta molto attivo: "
             "gli accumuli saranno sensibilmente maggiori sulle zone interne."
         )
@@ -210,10 +210,10 @@ def render_section2_detailed(
     alert_detail: Optional[Dict[str, str]] = None,
 ) -> str:
     lines: List[str] = []
-    lines.append("═══ ANALISI TECNICA METEOROLOGICA ═══")
+    ("═══ ANALISI TECNICA METEOROLOGICA ═══")
 
     if alert_detail:
-        lines.append("\n▌ LIVELLI ALLERTA ARPAL:")
+        ("\n▌ LIVELLI ALLERTA ARPAL:")
         for risk, lvl in alert_detail.items():
             emoji = ALERT_EMOJI.get(lvl, "⚪")
             lines.append(f"   {emoji} {risk.capitalize()}: {lvl.upper()}")
@@ -226,11 +226,15 @@ def render_section2_detailed(
     lines.append(f"   LI     : {_fmt(params.get('LI'), '.1f')} | PWAT   : {_fmt(params.get('PWAT'), '.1f', ' mm')}")
 
     lines.append("\n▌ SHEAR E ROTAZIONE:")
-    lines.append(f"   Shear 0–6 km : {_fmt(params.get('shear_0_6'), '.1f', ' kt')}")
-    lines.append(f"   SRH 0–3 km   : {_fmt(params.get('srh_0_3'), '.1f', ' m²/s²')}")
+    shear06 = params.get('shear_0_6')
+    srh03 = params.get('srh_0_3')
+    lines.append(f" Shear 0–6 km : {_fmt(shear06, '.1f', ' kt')}" if shear06 is not None else " Shear 0–6 km : N/D (profilo vento non disponibile)")
+    lines.append(f" SRH 0–3 km : {_fmt(srh03, '.1f', ' m²/s²')}" if srh03 is not None else " SRH 0–3 km : N/D (profilo vento non disponibile)")
 
     lines.append("\n▌ INDICI COMPOSITI:")
-    lines.append(f"   SCP : {_fmt(params.get('SCP'), '.2f')} | STP : {_fmt(params.get('STP'), '.2f')}")
+    scp = params.get('SCP')
+    stp = params.get('STP')
+    lines.append(f" SCP : {_fmt(scp, '.2f')} | STP : {_fmt(stp, '.2f')}" if (scp is not None and stp is not None) else " SCP/STP : N/D (richiede profilo vento completo)")
 
     lines.append(f"\n▌ MODALITÀ CONVETTIVA:\n   {mode}")
 
