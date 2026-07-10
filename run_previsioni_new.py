@@ -44,7 +44,7 @@ LOCATION_NAME = "La Spezia"
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 GEMINI_MODELS = [
-    ("gemini-2.5-flash",   "Gemini 2.5 Flash"),
+    ("gemini-3.5-flash",   "Gemini 3.5 Flash"),
     ("gemini-2.0-flash",   "Gemini 2.0 Flash"),
     ("gemini-1.5-flash",   "Gemini 1.5 Flash"),
 ]
@@ -94,8 +94,8 @@ def call_gemini(prompt: str, api_key: str) -> tuple[str, str]:
         )}]},
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 100,
+            "temperature": 0.25,
+            "maxOutputTokens": 4096,
             "topP": 0.85,
         },
         "safetySettings": [
