@@ -209,8 +209,17 @@ def _cape_cin_from_parcel_profile(
         cin_acc = sum(b * dz for b, dz in contributions)
         return 0.0, round(min(cin_acc, 0.0), 1)
 
-    # CIN = integrale negativo PRIMA dell'LFC
-    cin_acc = sum(b * dz for b, dz in contributions[:lfc_idx] if b < 0)
+    # CIN = integrale negativo PRIMA dell'LFC.
+    # Se il primo strato è già positivo (LFC coincide con la superficie),
+    # non significa CIN=0 in senso fisico: con soli 6 livelli isobarici
+    # da Open-Meteo la risoluzione verticale può non catturare sottili
+    # strati di inibizione presso il suolo. In quel caso stimiamo un CIN
+    # minimo conservativo proporzionale al gap LCL-superficie, invece di
+    # affermare "nessuna inibizione" con overconfidence.
+    if lfc_idx == 0 and len(contributions) < 8:
+        cin_acc = -15.0  # inibizione minima stimata, risoluzione insufficiente
+    else:
+        cin_acc = sum(b * dz for b, dz in contributions[:lfc_idx] if b < 0)
     # CAPE = integrale positivo DOPO (e incluso) l'LFC
     cape_acc = sum(b * dz for b, dz in contributions[lfc_idx:] if b > 0)
 
