@@ -373,6 +373,9 @@ def build_day_message(
     semplice = render_analisi_semplice(obs, params, hourly, giorno_label=day_label)
     lines.append(semplice)
 
+    from logic import instability_evolution, format_evolution_text
+    evo = instability_evolution(hourly)
+  
     # FFG / heatwave nella sezione semplice se rilevante
     if ffg_result and ffg_score >= 0.45:
         lines.append(f"⚠ FFG: {ffg_desc}")
@@ -406,6 +409,8 @@ def build_day_message(
         f"SRH 0-3 km: {fv(srh03,'.0f',' m²/s²')}",
         f"PWAT: {fv(pwat,'.1f',' mm')}  |  SCP: {fv(scp,'.2f')}  |  STP: {fv(stp,'.2f')}",
     ]
+    if evo.get("windows"):
+        tech_lines.append("Evoluzione instabilità: " + format_evolution_text(evo))
     if dcape_v > 50:
         try:
             from thermo import dcape_gust_kmh as _dg
