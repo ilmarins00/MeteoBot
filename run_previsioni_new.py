@@ -307,12 +307,13 @@ def build_day_message(
     ) if temp_history else None
 
     # Spread modelli (AROME vs ICON-EU)
+    # Spread modelli (AROME vs ICON-EU) — solo come indicatore di incertezza,
+    # MAI come dato alternativo da mostrare al posto di AROME.
+    # AROME resta sempre il valore "ufficiale" del bollettino (richiesta:
+    # priorità al modello più affidabile nelle prime 48h).
     spread = {}
     if day_hourly_icon:
         try:
-            from io_ingest import fetch_forecast_3days as _unused
-            # build_day_obs restituisce obs aggregato; per lo spread usiamo
-            # i raw hourly che abbiamo già nei campi cape_icon ecc.
             cape_arome = max((h.get("CAPE") or 0 for h in hourly), default=0)
             cape_icon  = max((h.get("CAPE_icon") or 0 for h in hourly), default=None)
             gust_arome = max((h.get("wind_gust") or 0 for h in hourly), default=0)
@@ -320,9 +321,6 @@ def build_day_message(
             prec_arome = sum((h.get("precip") or 0 for h in hourly))
             prec_icon  = sum((h.get("precip_icon") or 0 for h in hourly
                               if h.get("precip_icon") is not None))
-            tmax_arome = max((h.get("T") or 0 for h in hourly if h.get("T")), default=None)
-            tmax_icon_vals = [h.get("T") for h in hourly if h.get("T") is not None]
-            tmax_icon = max(tmax_icon_vals) if tmax_icon_vals else None  # stessa serie
 
             checks = [
                 ("CAPE_peak",  cape_arome, cape_icon,  500.0, "J/kg"),
@@ -336,6 +334,8 @@ def build_day_message(
                         spread[lbl] = {
                             "AROME": round(va, 1), "ICON": round(vi, 1),
                             "diff": round(diff, 1), "unit": unit,
+                            # "high" ora indica solo se l'incertezza è forte,
+                            # non cambia mai quale valore viene usato nel bollettino
                             "high": diff >= thr_v * 2,
                         }
         except Exception as e:
