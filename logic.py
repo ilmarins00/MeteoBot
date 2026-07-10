@@ -174,7 +174,8 @@ def convective_score(params: Dict[str, float]) -> int:
 
 def classify_storm_mode(params: Dict[str, float]) -> str:
     """
-    Classifica la modalità convettiva attesa in base a CAPE, shear, SRH, SCP, STP.
+    Classifica la modalità convettiva attesa in base a CAPE, shear, SRH, SCP, STP,
+    e alla presenza reale di innesco (pioggia prevista nei dati).
     """
     cape   = max(params.get("SBCAPE", params.get("CAPE", 0)),
                  params.get("MUCAPE", 0))
@@ -184,17 +185,26 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
     stp    = params.get("STP",  0) or 0
     pwat   = params.get("PWAT", 0) or 0
     oro    = params.get("orographic_factor", 0.0) or 0.0
+    precip = params.get("precip_rate_mm_h", 0) or 0
+    wmo    = int(params.get("wmo_code", 0) or 0)
+    wmo_convettivo = wmo in (80, 81, 82, 95, 96, 99)
+    ha_innesco = precip > 1.0 or wmo_convettivo
 
     if cape < thresholds.SBCAPE_WEAK:
         if pwat >= thresholds.PWAT_HUMID:
             return "precipitazioni stratiforme con debole convezione embedded"
         return "attività convettiva assente o molto debole"
 
+    # CORREZIONE: senza shear organizzato E senza innesco reale nei dati,
+    # non si può parlare di "temporali forti/isolati" — è energia latente, punto.
+    if not ha_innesco and shear < thresholds.SHEAR_06_ORGANIZED:
+        return "energia convettiva elevata ma senza innesco previsto – cielo probabilmente stabile"
+
     if stp >= thresholds.STP_VIOLENT:
         return "supercella intensa con rischio tornado significativo"
     if scp >= thresholds.SCP_HIGH and srh >= thresholds.SRH_03_HIGH:
         return "supercelle probabili – ambiente fortemente rotante"
-    if scp >= thresholds.SCP_MODERATE:
+    if scp >= thresholds.SCP_MODERATE and shear >= thresholds.SHEAR_06_ORGANIZED:
         return "supercella isolata possibile"
     if shear >= thresholds.SHEAR_06_SUPERCELL and srh >= thresholds.SRH_03_MODERATE:
         return "multicelle organizzate con possibile supercella"
@@ -202,10 +212,9 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
         if oro >= 0.5:
             return "multicelle organizzate con forte forzante orografico (Appennino Ligure)"
         return "multicelle organizzate – cluster temporalesco (MCS probabile)"
-    if oro >= 0.5:
+    if oro >= 0.5 and ha_innesco:
         return "temporali orografici su Appennino Ligure – rischio accumuli rapidi"
-    if cape >= thresholds.SBCAPE_STRONG:
-        # Richiede almeno un parametro dinamico di supporto oltre alla sola CAPE
+    if cape >= thresholds.SBCAPE_STRONG and ha_innesco:
         lr03_v = params.get("lr_0_3km", 0) or 0
         li_v   = params.get("LI") or 0
         if (li_v <= thresholds.LI_UNSTABLE
@@ -213,8 +222,9 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
                 or float(params.get("shear_0_6", 0) or 0) >= thresholds.SHEAR_06_WEAK):
             return "temporali isolati forti – celle singole dominanti"
         return "instabilità latente – temporali di calore possibili ma disorganizzati"
-    return "temporali sparsi di calore – bassa organizzazione"
-
+    if ha_innesco:
+        return "temporali sparsi di calore – bassa organizzazione"
+    return "energia convettiva presente ma innesco improbabile – giornata prevalentemente stabile"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Hazard mapping completo
@@ -222,12 +232,24 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
 
 def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
     """
-    Determina i fenomeni severi separando i RISCHI REALI (innescati) dai RISCHI POTENZIALI (latenti).
-    Analizza umidità, gradienti verticali, inibizione e forzanti dinamiche.
+    Determina i fenomeni severi separando i RISCHI REALI (innescati, con pioggia/temporale
+    già in atto nei dati) dai RISCHI POTENZIALI (energia presente ma innesco non confermato).
+
+    PRINCIPIO FONDAMENTALE (correzione bug "meteo immaginario"):
+    Nessun hazard (grandine, downburst, trombe marine, V-shape) può essere "reale" senza
+    un innesco realistico. L'innesco richiede ALMENO UNA delle due condizioni:
+      a) Nei dati orari è già prevista pioggia/temporale (wmo_code convettivo, o precip > soglia)
+      b) C'è organizzazione dinamica sufficiente (shear organizzato) a supportare che
+         l'energia disponibile possa davvero scaricarsi in un temporale strutturato.
+
+    Se NESSUNA delle due è vera (es. CAPE altissimo ma shear debole e zero pioggia nei dati
+    orari), tutti gli hazard convettivi vanno in "potenziali" con una nota che spiega che
+    l'innesco è improbabile — non vanno mai presentati come "reali" o come narrazione
+    di un temporale in corso.
     """
     reali: List[str] = []
     potenziali: List[str] = []
-    
+
     cape = max(params.get("SBCAPE", params.get("CAPE", 0)), params.get("MUCAPE", 0))
     shear = params.get("shear_0_6", 0)
     srh1 = params.get("srh_0_1", 0)
@@ -243,14 +265,21 @@ def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
     lr75 = params.get("lr_700_500", 0) or 0
     oro = params.get("orographic_factor", 0.0) or 0.0
     wmo_haz = int(params.get("wmo_code", 0) or 0)
-    
-    # 1. VALUTAZIONE DEL "TAPPO" (CAP) E DELL'INNESCO (TRIGGER)
-    # L'atmosfera è "tappata" o sfavorevole se l'inibizione è alta, l'aria è secca, 
-    # o i gradienti in quota (700-500hPa) sono stabili (< 5.5 K/km).
+
     is_capped = cin >= abs(thresholds.CIN_STRONG) or lcl >= thresholds.LCL_HIGH or rh <= 40 or lr75 < 5.5
-    
-    # C'è un innesco se piove in modo convettivo (WMO > 80) o c'è forte orografia attiva
-    has_trigger = wmo_haz in (80, 81, 82, 95, 96, 99) or (precip > 2 and oro > 0.5)
+
+    # ── INNESCO REALE: richiede pioggia/temporale nei dati orari OPPURE shear organizzato.
+    # Senza shear organizzato (>= SHEAR_06_ORGANIZED = 20 kt), l'energia CAPE anche enorme
+    # produce al massimo celle isolate e brevi, NON un sistema strutturato che genera
+    # downburst/grandine/trombe in modo affidabile.
+    wmo_convettivo = wmo_haz in (80, 81, 82, 95, 96, 99)
+    shear_organizzato = shear >= thresholds.SHEAR_06_ORGANIZED
+    ha_precipitazione_prevista = precip > 1.0 or wmo_convettivo
+
+    has_trigger = ha_precipitazione_prevista and not is_capped
+    # Il "supporto dinamico" serve per dire che l'energia PUO' scaricarsi in modo organizzato;
+    # senza di esso, anche con innesco, i fenomeni restano isolati/deboli.
+    has_dynamic_support = shear_organizzato or (has_trigger and oro >= 0.5)
 
     def add_hazard(testo: str, is_real: bool):
         if is_real:
@@ -259,52 +288,58 @@ def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
             potenziali.append(testo)
 
     # -- TORNADO / TROMBE MARINE --
+    # Richiede STP/SRH elevati E supporto dinamico reale, altrimenti resta ipotesi teorica
     tornado_risk = params.get("STP", 0) >= thresholds.STP_MODERATE or (srh1 >= thresholds.SRH_01_HIGH and shear >= thresholds.SHEAR_01_TORNADO)
-    if tornado_risk:
+    if tornado_risk and has_dynamic_support:
         add_hazard("Trombe d'aria/marine (STP/SRH elevati)", has_trigger and not is_capped)
 
-    # -- GRANDINE --
-    if cape >= 1500 and shear >= thresholds.SHEAR_06_ORGANIZED:
+    # -- GRANDINE -- richiede shear organizzato, non solo CAPE
+    if cape >= 1500 and shear_organizzato:
         dim = ">2 cm" if lr03 >= 8.0 and cape >= 2500 else "1-2 cm"
         add_hazard(f"Grandine di dimensioni significative ({dim})", has_trigger and not is_capped)
 
     # -- DOWNBURST E RAFFICHE --
-    storm_active = (cape >= thresholds.SBCAPE_WEAK or wmo_haz in (80, 81, 82, 95, 96, 99))
-    if dcape >= thresholds.DCAPE_HIGH and storm_active:
+    # Un downburst richiede che ci sia REALMENTE un temporale/rovescio in corso (has_trigger),
+    # non solo DCAPE teorico. Senza innesco, il DCAPE alto è energia "sulla carta" ma non
+    # rappresenta un rischio concreto per la giornata.
+    if dcape >= thresholds.DCAPE_HIGH:
         from thermo import dcape_gust_kmh as _dcape_gust
         v_est = _dcape_gust(dcape)
-        nota_isolamento = (
-            " (fenomeno puntiforme e imprevedibile in tempo/luogo, "
-            "shear insufficiente per struttura organizzata)"
-            if shear < thresholds.SHEAR_06_ORGANIZED else ""
-        )
-        add_hazard(
-            f"Downburst severo – DCAPE {dcape:.0f} J/kg, "
-            f"raffica stimata fino a {v_est:.0f} km/h{nota_isolamento}",
-            has_trigger and not is_capped,
-        )
-    elif dcape >= thresholds.DCAPE_MODERATE and storm_active:
+        if has_trigger:
+            add_hazard(
+                f"Downburst severo possibile in caso di temporale – raffica stimata fino a {v_est:.0f} km/h",
+                not is_capped,
+            )
+        else:
+            # Energia da downburst presente ma NESSUN innesco nei dati: nota informativa,
+            # mai presentata come rischio della giornata.
+            potenziali.append(
+                f"Energia per downburst teoricamente elevata (DCAPE {dcape:.0f} J/kg), ma "
+                f"nessun innesco convettivo previsto nei dati orari: rischio pratico basso"
+            )
+    elif dcape >= thresholds.DCAPE_MODERATE and has_trigger:
         from thermo import dcape_gust_kmh as _dcape_gust
         v_est = _dcape_gust(dcape)
         add_hazard(
-            f"Raffiche discendenti (downburst) – DCAPE {dcape:.0f} J/kg, stima {v_est:.0f} km/h",
-            has_trigger and not is_capped,
+            f"Raffiche discendenti (downburst) in caso di temporale – stima {v_est:.0f} km/h",
+            not is_capped,
         )
 
-    # -- ALLUVIONI LAMPO E RIGENERANTI (Tipico Ligure) --
-    if pwat >= thresholds.PWAT_HUMID and oro >= 0.6 and srh3 >= 200:
-        add_hazard("Sistemi stazionari rigeneranti (V-Shaped) su Appennino", has_trigger)
-    elif pwat >= thresholds.PWAT_NORMAL and precip >= 15:
-        add_hazard("Allagamenti rapidi (Flash Flood) per accumuli orari", True)
+    # -- ALLUVIONI LAMPO E RIGENERANTI -- richiedono pioggia realmente prevista
+    if has_trigger:
+        if pwat >= thresholds.PWAT_HUMID and oro >= 0.6 and srh3 >= 200:
+            add_hazard("Sistemi stazionari rigeneranti (V-Shaped) su Appennino", True)
+        elif pwat >= thresholds.PWAT_NORMAL and precip >= 15:
+            add_hazard("Allagamenti rapidi (Flash Flood) per accumuli orari", True)
 
-    # -- RISCHI SINOTTICI (Sempre reali se presenti) --
+    # -- RISCHI SINOTTICI (Sempre reali se presenti, indipendenti da innesco convettivo) --
     snow_level = params.get("snow_level_m", 2000)
     if snow_level <= thresholds.SNOW_LEVEL_COASTAL_M and params.get("temp_c", 10) <= 3:
         reali.append("Neve a quote collinari/costiere")
-        
+
     if wind >= thresholds.ARPAL_WIND_ARANCIONE:
         reali.append(f"Vento burrascoso (> {thresholds.ARPAL_WIND_ARANCIONE} km/h)")
-        
+
     if params.get("wave_height_m", 0) >= thresholds.WAVE_HEIGHT_ARANCIONE:
         reali.append("Mareggiata significativa")
 
@@ -784,36 +819,40 @@ def format_evolution_text(evo: Dict[str, Any]) -> str:
 
 def rileva_fenomeni_costieri(params: Dict[str, float]) -> List[str]:
     """
-    [ADVANCED] Logica da previsore per la costa Ligure: 
-    1. Temporali V-Shape (Autorigeneranti)
-    2. Trombe Marine (Waterspout)
+    Logica avanzata costa Ligure: V-Shape autorigenerante e trombe marine.
+
+    CORREZIONE BUG: questi fenomeni venivano segnalati anche con zero pioggia prevista
+    e shear troppo debole per organizzare qualsiasi struttura (es. CAPE 4000 J/kg ma
+    shear 11 kt e nessuna precipitazione nei dati orari). Ora richiedono un innesco
+    minimo realistico: pioggia/temporale nei dati orari, non solo energia teorica.
     """
     avvisi_avanzati = []
-    
-    # Estrazione parametri essenziali
+
     pwat = params.get("PWAT", 0)
     mlcape = params.get("MLCAPE", params.get("SBCAPE", 0))
     shear_0_6 = params.get("shear_0_6", 0)
-    lr_0_3km = params.get("lr_0_3km", 0) # Gradiente termico nei primi 3km
+    lr_0_3km = params.get("lr_0_3km", 0)
     shear_0_1 = params.get("shear_0_1", 0)
+    precip = params.get("precip_rate_mm_h", 0)
+    wmo_haz = int(params.get("wmo_code", 0) or 0)
 
-    # ---------------------------------------------------------
-    # 1. RILEVATORE TEMPORALI V-SHAPE (Autorigeneranti)
-    # ---------------------------------------------------------
-    # Un V-Shape necessita di carburante altissimo (PWAT) e uno shear 
-    # moderato (15-35 kt) che tiene la cella in vita ma non la spazza via veloce.
+    # Innesco minimo richiesto: pioggia/temporale già previsto nei dati,
+    # altrimenti qualunque "rischio" qui sotto è pura teoria da non comunicare come reale.
+    ha_innesco = precip > 1.0 or wmo_haz in (80, 81, 82, 95, 96, 99)
+    if not ha_innesco:
+        return avvisi_avanzati
+
+    # 1. V-SHAPE (temporali autorigeneranti)
     if pwat >= 35.0 and mlcape >= 1000 and (15 <= shear_0_6 <= 35):
-        avvisi_avanzati.append("🔴 ALLERTA ESTREMA: Setup termodinamico da V-Shape (Temporale Autorigenerante). Rischio elevatissimo di ALLUVIONE LAMPO per stazionarietà dei fenomeni.")
+        avvisi_avanzati.append("Setup da temporale autorigenerante (V-Shape): rischio elevato di nubifragio concentrato nello stesso punto.")
     elif pwat >= 30.0 and mlcape >= 600 and (10 <= shear_0_6 <= 40):
-        avvisi_avanzati.append("🟠 ATTENZIONE: Condizioni favorevoli per celle temporalesche stazionarie. Rischio di nubifragi concentrati.")
+        avvisi_avanzati.append("Possibili celle temporalesche stazionarie: rischio di piogge concentrate.")
 
-    # ---------------------------------------------------------
-    # 2. RILEVATORE TROMBE MARINE (Waterspout Index)
-    # ---------------------------------------------------------
-    # Le trombe marine amano alto gradiente termico sui mari caldi e CAPE concentrato.
+    # 2. TROMBE MARINE (Waterspout) — richiedono comunque shear basso nei bassi strati,
+    # ma solo se c'è già un contesto di rovesci/instabilità in atto (ha_innesco sopra)
     if params.get("SBCAPE", 0) > 400 and lr_0_3km > 7.5 and shear_0_1 < 15:
-        avvisi_avanzati.append("🌪️ RISCHIO TROMBE MARINE: Instabilità nei bassi strati ideale per 'fair weather waterspout' (trombe marine) al largo del Golfo.")
+        avvisi_avanzati.append("Possibili trombe marine (fair weather waterspout) al largo, in presenza dei rovesci previsti.")
     elif params.get("SBCAPE", 0) > 800 and lr_0_3km > 8.0 and shear_0_1 >= 15:
-        avvisi_avanzati.append("🌪️⚠️ RISCHIO TROMBE MARINE TORNADICHE: Condizioni dinamiche severe. Possibile sviluppo di trombe marine in grado di compiere landfall sulla costa (Raffiche distruttive).")
+        avvisi_avanzati.append("Possibili trombe marine anche intense, con rischio di landfall in caso di rovesci organizzati.")
 
     return avvisi_avanzati
