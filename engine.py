@@ -109,6 +109,10 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
                 Tdc700 = Td700 - 273.15
                 params["KI"] = round(k_index(Tc850, Tdc850, Tc700, Tdc700, Tc500), 1)
                 params["TT"] = round(totals_totals(Tc850, Tdc850, Tc500), 1)
+                params["T_850hPa"] = round(Tc850, 1)
+                params["T_700hPa"] = round(Tc700, 1)
+                params["T_500hPa"] = round(Tc500, 1)
+                params["Td_850hPa"] = round(Tdc850, 1)
 
             # — Lapse rates
             if heights:
