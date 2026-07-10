@@ -269,19 +269,27 @@ def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
         add_hazard(f"Grandine di dimensioni significative ({dim})", has_trigger and not is_capped)
 
     # -- DOWNBURST E RAFFICHE --
+    storm_active = (cape >= thresholds.SBCAPE_WEAK or wmo_haz in (80, 81, 82, 95, 96, 99))
     if dcape >= thresholds.DCAPE_HIGH and storm_active:
-    from thermo import dcape_gust_kmh as _dcape_gust
-    v_est = _dcape_gust(dcape)
-    shear06_v = params.get("shear_0_6", 0)
-    nota_isolamento = (
-        " (fenomeno puntiforme e imprevedibile in tempo/luogo, "
-        "shear insufficiente per struttura organizzata)"
-        if shear06_v < thresholds.SHEAR_06_ORGANIZED else ""
-    )
-    hazards.append(
-        f"DOWNBURST SEVERO – DCAPE {dcape:.0f} J/kg, "
-        f"raffica stimata fino a {v_est:.0f} km/h{nota_isolamento}"
-    )
+        from thermo import dcape_gust_kmh as _dcape_gust
+        v_est = _dcape_gust(dcape)
+        nota_isolamento = (
+            " (fenomeno puntiforme e imprevedibile in tempo/luogo, "
+            "shear insufficiente per struttura organizzata)"
+            if shear < thresholds.SHEAR_06_ORGANIZED else ""
+        )
+        add_hazard(
+            f"Downburst severo – DCAPE {dcape:.0f} J/kg, "
+            f"raffica stimata fino a {v_est:.0f} km/h{nota_isolamento}",
+            has_trigger and not is_capped,
+        )
+    elif dcape >= thresholds.DCAPE_MODERATE and storm_active:
+        from thermo import dcape_gust_kmh as _dcape_gust
+        v_est = _dcape_gust(dcape)
+        add_hazard(
+            f"Raffiche discendenti (downburst) – DCAPE {dcape:.0f} J/kg, stima {v_est:.0f} km/h",
+            has_trigger and not is_capped,
+        )
 
     # -- ALLUVIONI LAMPO E RIGENERANTI (Tipico Ligure) --
     if pwat >= thresholds.PWAT_HUMID and oro >= 0.6 and srh3 >= 200:
