@@ -83,22 +83,30 @@ def render_section1_simple(
     # Filtro intelligente anti-falsi positivi per la descrizione semplice
     is_capped = cin <= thresholds.CIN_STRONG or lcl >= thresholds.LCL_HIGH or rh <= 35
     
-    if (stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH) and not is_capped:
+    shear_06 = float(params.get("shear_0_6", 0) or 0)
+    shear_organizzato = shear_06 >= thresholds.SHEAR_06_ORGANIZED
+
+    if (stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH) and not is_capped and shear_organizzato:
         lines.append(
-            "ALLERTA CONVETTIVA: Nonostante le condizioni apparentemente stabili, "
-            "l'atmosfera è estremamente instabile e favorevole allo sviluppo di supercelle "
-            "isolate ma violente. Possibili grandinate di grosse dimensioni e colpi di vento distruttivi."
+            "ALLERTA CONVETTIVA: l'atmosfera è molto instabile e lo shear del vento è "
+            "sufficiente a organizzare temporali forti, con possibili grandinate di grosse "
+            "dimensioni e raffiche violente."
         )
-    elif (scp >= thresholds.SCP_MODERATE or (cape >= thresholds.SBCAPE_EXTREME and wmo_dom < 80)) and not is_capped:
+    elif (scp >= thresholds.SCP_MODERATE and shear_organizzato and wmo_dom >= 80) and not is_capped:
         lines.append(
-            "ATTENZIONE: L'elevata energia termodinamica in presenza di shear del vento "
-            "crea un ambiente esplosivo. Possibile sviluppo improvviso di temporali intensi "
-            "anche in assenza di nubi consistenti al mattino."
+            "ATTENZIONE: energia disponibile e organizzazione del vento favoriscono lo "
+            "sviluppo di temporali anche intensi nelle ore centrali/pomeridiane."
+        )
+    elif cape >= thresholds.SBCAPE_STRONG and not shear_organizzato and wmo_dom < 80:
+        lines.append(
+            "L'aria è molto instabile (energia convettiva elevata), ma la scarsa "
+            "ventilazione in quota rende improbabile che si organizzino temporali: "
+            "giornata attesa prevalentemente stabile, salvo isolati episodi di calore."
         )
     elif is_capped and (scp >= thresholds.SCP_MODERATE or cape >= thresholds.SBCAPE_STRONG):
         lines.append(
-            "NOTA: Sebbene gli indici di instabilità siano elevati, la presenza di aria secca "
-            "o inibizione atmosferica dovrebbe impedire lo sviluppo di temporali significativi."
+            "Nonostante l'energia disponibile sia elevata, l'aria secca in quota o "
+            "l'inibizione atmosferica dovrebbero impedire lo sviluppo di temporali."
         )
     elif wmo_dom == 99:
         lines.append(
@@ -355,14 +363,28 @@ EVOLUZIONE ORARIA:
         prompt += f"\nRADIOSONDAGGIO OSSERVATO (dato reale, non da modello): {uwyo_summary}\n"
 
     prompt += """
-ISTRUZIONI PER L'ANALISI:
-1. ANALISI EVOLUTIVA: Analizza la tabella oraria. Specifica QUANDO avverranno i fenomeni più importanti (es. "picco convettivo tra le 16 e le 18").
-2. INTELLIGENZA FISICA: Se gli indici (CAPE, SCP) sono alti ma c'è un "tappo" (CIN forte o aria secca), spiega che il rischio è latente ma potrebbe non innescarsi.
-3. STILE ELEGANTE: Scrivi in italiano fluente, evita elenchi puntati se possibile, preferisci 2-3 paragrafi ben scritti. Usa un tono da meteorologo professionista.
-4. DETTAGLIO FENOMENI: Non dire solo "temporali", specifica se c'è rischio grandine, raffiche o alluvioni lampo basandoti sui dati.
-5. LUNGHEZZA: Max 200 parole.
+ISTRUZIONI PER L'ANALISI — SEGUI RIGOROSAMENTE:
 
-RISPONDI SOLO CON L'ANALISI NARRATIVA.
+1. REALISMO PRIMA DI TUTTO: descrivi COSA SUCCEDERÀ REALMENTE secondo i dati, non il
+   potenziale teorico. Se la tabella oraria e i dati indicano che NON è prevista pioggia
+   o temporali, DEVI scrivere chiaramente che la giornata sarà stabile/soleggiata, anche
+   se CAPE o altri indici sono alti. Un'energia convettiva elevata SENZA innesco (pioggia
+   prevista, shear organizzato, forzante) NON è un temporale: è solo un potenziale che
+   quasi certamente non si scarica. Non descrivere mai downburst, grandine, trombe marine
+   o nubifragi come se accadessero, se i dati orari non mostrano pioggia.
+2. NIENTE CONTRADDIZIONI: non scrivere mai nella stessa risposta sia "cielo sereno tutto
+   il giorno" sia "rischio di downburst/nubifragi/trombe marine" per lo stesso giorno.
+   Se l'innesco manca, di' semplicemente che il rischio resta teorico e improbabile,
+   senza elencare i fenomeni come se fossero attesi.
+3. SOLO SE C'È INNESCO REALE (pioggia/temporali nei dati): specifica quando (fascia oraria)
+   e quali fenomeni concreti sono plausibili (grandine, raffiche, allagamenti).
+4. STILE: italiano semplice e diretto, tono da meteorologo che parla al pubblico, non
+   accademico. Evita termini come "instabilità latente profonda" se poi non succede nulla:
+   di' semplicemente "l'aria è instabile ma mancano le condizioni per scatenare temporali".
+5. LUNGHEZZA MASSIMA TASSATIVA: 100 PAROLE. Non superare mai questo limite. Se necessario
+   taglia dettagli tecnici secondari pur di restare entro 100 parole.
+
+RISPONDI SOLO CON L'ANALISI NARRATIVA, MASSIMO 100 PAROLE.
 """
     return prompt.strip()
 
