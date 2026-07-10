@@ -485,18 +485,40 @@ def build_day_obs(
 
     def _agg(key: str, mode: str = "mean") -> Optional[float]:
         vals = day_hourly.get(key, [])
+        all_valid = [v for v in vals if v is not None]
+        if not all_valid:
+            return None
+
+        if mode == "min":
+            # Per la minima NON si deve restringere alle ore 11-18 (pomeriggio):
+            # la minima di solito cade di notte/mattina presto. Usa tutte le
+            # ore disponibili del giorno.
+            return min(all_valid)
+
+        if mode == "max":
+            # Per la massima, preferisci la finestra 11-18 se disponibile
+            # (rappresentativa del picco diurno), altrimenti usa tutte le ore.
+            peak = [
+                vals[i] for i, t in enumerate(times)
+                if i < len(vals) and vals[i] is not None
+                and any(str(t).endswith(f"{h:02d}:00") for h in range(11, 18))
+            ]
+            src = peak or all_valid
+            return max(src)
+
+        if mode == "sum":
+            return sum(all_valid)
+        if mode == "dom":
+            return max(set([int(v) for v in all_valid]), key=[int(v) for v in all_valid].count)
+
+        # mode == "mean" (default): usa la finestra pomeridiana se disponibile,
+        # altrimenti la media su tutte le ore
         peak = [
             vals[i] for i, t in enumerate(times)
             if i < len(vals) and vals[i] is not None
             and any(str(t).endswith(f"{h:02d}:00") for h in range(11, 18))
         ]
-        src = peak or [v for v in vals if v is not None]
-        if not src:
-            return None
-        if mode == "max":   return max(src)
-        if mode == "min":   return min(src)
-        if mode == "sum":   return sum(src)
-        if mode == "dom":   return max(set([int(v) for v in src]), key=[int(v) for v in src].count)
+        src = peak or all_valid
         return sum(src) / len(src)
 
     temp_max    = _agg("temperature_2m", "max")
