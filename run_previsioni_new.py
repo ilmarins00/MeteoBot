@@ -488,6 +488,15 @@ def build_day_message(
     if api_key and GEMINI_API_KEY:
         analisi_tecnica_str = "\n".join(tech_lines_for_prompt)
         hourly_table = result.get("section3", "")
+        wind_dir_val = obs.get("wind_dir_deg")
+        wind_gust_val = obs.get("wind_gust_kmh")
+        wind_speed_val = obs.get("wind_speed_kmh")
+        directions = ["Nord", "Nord-Est", "Est", "Sud-Est", "Sud", "Sud-Ovest", "Ovest", "Nord-Ovest"]
+        wind_dir_name = directions[int(((wind_dir_val or 0) + 22.5) % 360 / 45)]
+        wind_summary_str = (
+            f"direzione {wind_dir_name}, velocità media {wind_speed_val or 0:.0f} km/h, "
+            f"raffiche fino a {wind_gust_val or 0:.0f} km/h"
+        )
         prompt_gemini = build_gemini_prompt_tecnico(
             analisi_tecnica    = analisi_tecnica_str,
             params             = params,
@@ -501,6 +510,7 @@ def build_day_message(
             uwyo_summary       = uwyo_summary,
             evolution_result   = evo,
             multi_evolution    = multi_evo,
+            wind_summary       = wind_summary_str,
         )
         narrativa, gem_model = call_gemini(prompt_gemini, api_key)
         lines.append("🤖 ANALISI AI")
