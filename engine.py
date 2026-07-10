@@ -268,16 +268,16 @@ def run_pipeline(
         wind_kmh=params.get("wind_gust_kmh", 0), temp_c=params.get("temp_c"), wave_height_m=params.get("wave_height_m", 0),
     )
 
-    # In templates.py useremo nuove funzioni per le frasi componibili
-    # Passiamo hourly_forecast per l'analisi dell'evoluzione temporale
-    from templates import costuisci_bollettino_compatto
-    messaggio_compatto = costuisci_bollettino_compatto(obs, params, hourly_forecast, mode, hazards_dict, score, alert_level, alert_emoji)
-
-# [ADVANCED METEO] - Iniezione logiche per V-Shape e Trombe marine
+    # V-Shape e trombe marine (logica aggiuntiva, indipendente dal bollettino)
     from logic import rileva_fenomeni_costieri
     nuovi_rischi = rileva_fenomeni_costieri(params)
     all_hazards_flat.extend(nuovi_rischi)
-  
+
+    section1 = render_section1_simple(obs, params, score, alert_level)
+    section2 = render_section2_detailed(obs, params, mode, all_hazards_flat, alert_detail)
+    section3 = render_section3_objective_table(hourly_forecast)
+    gemini_prompt = build_gemini_prompt(section1, section2, score, params, alert_level)
+
     return {
         "meta": {
             "generated_at": obs.get("time_generated", datetime.now(timezone.utc).isoformat()),
@@ -290,11 +290,12 @@ def run_pipeline(
             "orographic_factor": params.get("orographic_factor", 0),
         },
         "hazards_dict": hazards_dict,
-        "hazards": all_hazards_flat, # Legacy
-        "telegram_message": messaggio_compatto,
+        "hazards": all_hazards_flat,
         "params": params,
-        # Mantengo le chiavi per compatibilità esterna, ma non le useremo
-        "section1": "", "section2": "", "section3": "", "gemini_prompt": ""
+        "section1": section1,
+        "section2": section2,
+        "section3": section3,
+        "gemini_prompt": gemini_prompt,
     }
 
 
