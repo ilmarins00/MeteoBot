@@ -226,6 +226,19 @@ def render_section2_detailed(
 
     lines.append(f"\n▌ MODALITÀ CONVETTIVA:\n   {mode}")
 
+    if lr03 is not None or lr_mid is not None:
+        lines.append("\n▌ GRADIENTI TERMICI:")
+        if lr03 is not None:
+            instab = "MOLTO INSTABILE" if lr03 >= 8 else ("instabile" if lr03 >= 6.5 else "stabile")
+            lines.append(f"   LR 0–3 km    : {lr03:.1f} K/km  ({instab})")
+        if lr_mid is not None:
+            lines.append(f"   LR 700–500 hPa: {lr_mid:.1f} K/km")
+        t850 = params.get("T_850hPa")
+        t700 = params.get("T_700hPa")
+        t500 = params.get("T_500hPa")
+        if t850 is not None and t700 is not None and t500 is not None:
+            lines.append(f"   T 850/700/500 hPa: {t850:.1f}°C / {t700:.1f}°C / {t500:.1f}°C")
+
     lines.append("\n▌ FENOMENI POSSIBILI:")
     if hazards:
         for h in hazards:
