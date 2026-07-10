@@ -12,6 +12,7 @@ Modelli: AROME (day 0-1) + ICON-EU (tutti e 3 i giorni, sempre).
 
 import sys
 import time
+import json
 import datetime
 import requests
 from zoneinfo import ZoneInfo
@@ -541,18 +542,22 @@ def build_day_message(
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
+import os
+import atexit
+
+LOCK_FILE = "/tmp/meteobot.lock"
+
 def main():
-    print("=" * 60)
-    print("  METEOBOT – PREVISIONI 3 GIORNI (nuovo motore)")
-    print("=" * 60)
+    if os.path.exists(LOCK_FILE):
+        print("⚠️ Un'altra esecuzione è già in corso, esco per evitare doppioni.")
+        return
+    open(LOCK_FILE, "w").close()
+    atexit.register(lambda: os.path.exists(LOCK_FILE) and os.remove(LOCK_FILE))
 
-    if not GEMINI_API_KEY:
-        print("ATTENZIONE: GEMINI_API_KEY non configurata – invio senza AI")
-
+    print("=" * 60)
     now   = datetime.datetime.now(TZ_ROME)
     today = now.date()
     print(f"\nOra: {now.strftime('%d/%m/%Y %H:%M')} – {LOCATION_NAME}")
-
     # ── 1. Fetch dati 3 giorni ────────────────────────────────────────────
     print("\n📡 Scaricamento dati Open-Meteo (AROME + ICON-EU)...")
     try:
