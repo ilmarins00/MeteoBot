@@ -515,32 +515,49 @@ def maltempo_score(
     ])
 
     conv_score = 0.0
-    
+
     # FILTRO INTELLIGENTE: se c'è un forte tappo, riduciamo il contributo convettivo
     is_capped = cin <= thresholds.CIN_STRONG or lcl >= thresholds.LCL_HIGH or rh <= 35
-    
+
+    # Lapse rate come indicatore di instabilità reale bassi/media quota
+    lr03 = float(params.get("lr_0_3km", 0) or 0)
+    lr75 = float(params.get("lr_700_500", 0) or 0)
+    lr_bonus = 0.0
+    if lr03 >= thresholds.LAPSE_03_EXTREME or lr75 >= thresholds.LAPSE_75_VERY_UNSTABLE:
+        lr_bonus = 0.3
+    elif lr03 >= thresholds.LAPSE_03_VERY_UNSTABLE or lr75 >= thresholds.LAPSE_75_UNSTABLE:
+        lr_bonus = 0.15
+
+    # Termine di organizzazione: CAPE da solo senza shear non basta più
+    # a raggiungere le fasce alte. Serve shear organizzato per salire.
+    organized = shear_06 >= thresholds.SHEAR_06_ORGANIZED
+
     if stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH:
         conv_score += 2.5
-    elif (scp >= thresholds.SCP_MODERATE 
-          or wmo == 99 
-          or (cape >= thresholds.SBCAPE_EXTREME and supp_params >= 2)
+    elif (scp >= thresholds.SCP_MODERATE
+          or wmo == 99
+          or (cape >= thresholds.SBCAPE_EXTREME and supp_params >= 2 and organized)
           or (cape >= thresholds.SBCAPE_STRONG and supp_params >= 3)):
         conv_score += 2.0
     elif (wmo in (95, 96)
           or li_f <= thresholds.LI_VERY_UNSTABLE
           or (cape >= thresholds.SBCAPE_STRONG and supp_params >= 1)
-          or (cape >= thresholds.SBCAPE_EXTREME)):
+          or (cape >= thresholds.SBCAPE_EXTREME and organized)):
         conv_score += 1.0
     elif (wmo in (80, 81, 82, 91, 92)
           or li_f <= thresholds.LI_UNSTABLE
-          or (cape >= thresholds.SBCAPE_MODERATE)):
+          or (cape >= thresholds.SBCAPE_MODERATE)
+          or (cape >= thresholds.SBCAPE_EXTREME and not organized)):
+        # CAPE estremo ma isolato (no shear) resta qui, non sale oltre
         conv_score += 0.5
-    
+
+    conv_score += lr_bonus
+
     # Se c'è tappo e non ci sono temporali in atto, dimezziamo il rischio convettivo
     if is_capped and wmo < 80:
         conv_score *= 0.5
-        
-    score += conv_score
+
+    score += min(conv_score, 1.5)  # rispetta il cap di categoria dichiarato in docstring
 
     # ── 3. Vento (costa spezzina) ─────────────────────────────────────────
     wind = float(params.get("wind_gust_kmh", 0) or 0)
