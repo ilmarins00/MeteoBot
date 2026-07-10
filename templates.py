@@ -391,6 +391,12 @@ EVOLUZIONE ORARIA:
     prompt += """
 ISTRUZIONI PER L'ANALISI — SEGUI RIGOROSAMENTE:
 
+REGOLA CRITICA: Usa ESCLUSIVAMENTE i valori numerici forniti nei dati tecnici.
+    NON inventare raffiche, temperature o velocità del vento non presenti nei dati.
+    Se un parametro è 'N/D', NON menzionarlo o ipotizzarne il valore.
+    Se CAPE e shear provengono da fonti diverse, non trarre conclusioni che le contraddicano.
+    Se lo shear è 'N/D', NON parlare di organizzazione del vento o raffiche specifiche.
+
 1. REALISMO PRIMA DI TUTTO, MA SENZA FALSE CERTEZZE: descrivi COSA SUCCEDERÀ REALMENTE
    secondo i dati. Se CAPE è alto ma CIN è forte/moderato (inibizione presente), puoi
    scrivere con sicurezza che la giornata sarà stabile. MA se CAPE è alto E CIN è quasi
