@@ -528,21 +528,7 @@ def build_day_message(
             multi_evolution    = multi_evo,
             wind_summary       = wind_summary_str,
         )
-      
-        gemini_params = {}
-    for k, v in params.items():
-        if v is None:
-            continue
-        try:
-            if isinstance(v, float) and (v != v):  # NaN check
-                continue
-        except (TypeError, ValueError):
-            pass
-        gemini_params[k] = v
-    
-    # Se shear è None, non inviarlo a Gemini (evita che inventi valori di vento)
-    # I dati tecnici vengono passati tramite build_gemini_prompt_tecnico
-      
+
         narrativa, gem_model = call_gemini(prompt_gemini, api_key)
         lines.append("🤖 ANALISI AI")
         lines.append(narrativa)
