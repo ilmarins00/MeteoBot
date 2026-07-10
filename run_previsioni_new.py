@@ -364,16 +364,16 @@ def build_day_message(
 
     lines = [
         "",
-        f"{icona_giorno} <b>LA SPEZIA — {day_label.upper()}</b>",
+        f"{icona_giorno} LA SPEZIA — {day_label.upper()}",
         f"{_format_date(day_date)}",
         "",
-        f"{emoji_liv} <b>{livello}</b> · Score {m_score:.1f}/5",
+        f"{emoji_liv} {livello} · Score {m_score:.1f}/5",
         f"📡 Modello: {model_label}{sounding_tag}",
         "",
     ]
 
     # ── SINTESI (analisi semplice) ──────────────────────────────────────
-    lines.append("📋 <b>SINTESI</b>")
+    lines.append("📋 SINTESI")
     semplice = render_analisi_semplice(obs, params, hourly, giorno_label=day_label)
     lines.append(semplice)
 
@@ -481,11 +481,11 @@ def build_day_message(
             evolution_result   = evo,
         )
         narrativa, gem_model = call_gemini(prompt_gemini, api_key)
-        lines.append("🤖 <b>ANALISI AI</b>")
+        lines.append("🤖 ANALISI AI")
         lines.append(narrativa)
-        lines.append(f"<i>[{gem_model}]</i>")
+        lines.append(f"[{gem_model}]")
     else:
-        lines.append("<i>(analisi AI non disponibile)</i>")
+        lines.append("(analisi AI non disponibile)")
 
     return "\n".join(lines)
 
