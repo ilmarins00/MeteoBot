@@ -404,28 +404,30 @@ def build_day_message(
         return f"{v:{fmt}}{u}" if v is not None else "n.d."
 
     # Coppie (etichetta sinistra, valore sinistra, etichetta destra, valore destra)
+    def fv(v, fmt=".1f", u=""):
+        return f"{v:{fmt}}{u}" if v is not None else "n.d."
+
     dati_tabella = [
-        ("SBCAPE",  fv(sbcape, '.0f', ' J/kg'),  "CIN",   fv(cin_v, '.0f', ' J/kg')),
-        ("MUCAPE",  fv(mucape, '.0f', ' J/kg'),  "LI",    fv(li_v, '.1f')),
-        ("Shear06", fv(shear06, '.1f', ' kt'),   "SRH03", fv(srh03, '.0f', ' m²/s²')),
-        ("PWAT",    fv(pwat, '.1f', ' mm'),      "SCP",   fv(scp, '.2f')),
+        ("SBCAPE",  fv(sbcape, '.0f', ' J/kg')),
+        ("MUCAPE",  fv(mucape, '.0f', ' J/kg')),
+        ("CIN",     fv(cin_v, '.0f', ' J/kg')),
+        ("LI",      fv(li_v, '.1f')),
+        ("Shear06", fv(shear06, '.1f', ' kt')),
+        ("SRH03",   fv(srh03, '.0f', ' m²/s²')),
+        ("PWAT",    fv(pwat, '.1f', ' mm')),
+        ("SCP",     fv(scp, '.2f')),
     ]
 
-    # Calcola la larghezza massima della colonna sinistra (etichetta+valore)
-    col_sx_width = max(len(f"{lbl} {val}") for lbl, val, _, _ in dati_tabella) + 2
-
-    tabella = []
-    for lbl_sx, val_sx, lbl_dx, val_dx in dati_tabella:
-        sx = f"{lbl_sx} {val_sx}"
-        tabella.append(sx.ljust(col_sx_width) + f"{lbl_dx} {val_dx}")
+    etichetta_width = max(len(lbl) for lbl, _ in dati_tabella) + 1
+    tabella = [f"{lbl.ljust(etichetta_width)}{val}" for lbl, val in dati_tabella]
 
     if dcape_v > 50:
         try:
             from thermo import dcape_gust_kmh as _dg
             v_est = _dg(dcape_v)
-            tabella.append(f"DCAPE {dcape_v:.0f} J/kg (raffica stim. {v_est:.0f} km/h)")
+            tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_v:.0f} J/kg (raffica stim. {v_est:.0f} km/h)")
         except Exception:
-            tabella.append(f"DCAPE {dcape_v:.0f} J/kg")
+            tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_v:.0f} J/kg")
 
     lines.append("📊 <b>DATI TECNICI</b>")
     lines.append("<code>" + "\n".join(tabella) + "</code>")
