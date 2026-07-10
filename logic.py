@@ -163,7 +163,7 @@ def convective_score(params: Dict[str, float]) -> int:
             and srh < 50
             and (ehi is None or ehi < thresholds.EHI_MODERATE)
             and (scp is None or scp < thresholds.SCP_MODERATE)):
-        score -= 2  # celle singole effimere: riduce il rischio sistemico
+        score -= 3 if cape >= thresholds.SBCAPE_EXTREME else 2  # celle singole effimere: riduce il rischio sistemico
 
     return max(score, 0)
 
