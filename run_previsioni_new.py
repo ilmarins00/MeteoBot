@@ -434,16 +434,22 @@ def build_day_message(
         ("SRH03",   fv(srh03, '.0f', ' m²/s²')),
         ("PWAT",    fv(pwat, '.1f', ' mm')),
         ("SCP",     fv(scp, '.2f')),
+        ("Vento",   fv(obs.get("wind_speed_kmh"), '.0f', ' km/h')),
+        ("Raffica", fv(obs.get("wind_gust_kmh"), '.0f', ' km/h')),
     ]
 
     etichetta_width = max(len(lbl) for lbl, _ in dati_tabella) + 1
     tabella = [f"{lbl.ljust(etichetta_width)}{val}" for lbl, val in dati_tabella]
 
+    ha_innesco_oggi = float(obs.get("precip_rate_mm_h", 0) or 0) > 1.0 or int(obs.get("wmo_code", 0) or 0) in (80, 81, 82, 95, 96, 99)
     if dcape_v > 50:
         try:
             from thermo import dcape_gust_kmh as _dg
             v_est = _dg(dcape_v)
-            tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_v:.0f} J/kg (raffica stim. {v_est:.0f} km/h)")
+            if ha_innesco_oggi:
+                tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_v:.0f} J/kg (raffica stim. {v_est:.0f} km/h)")
+            else:
+                tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_v:.0f} J/kg (teorico, nessun innesco previsto)")
         except Exception:
             tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_v:.0f} J/kg")
 
