@@ -378,6 +378,8 @@ def build_day_message(
     lines.append(semplice)
 
     evo = instability_evolution(hourly)
+    from logic import multi_param_evolution
+    multi_evo = multi_param_evolution(hourly)
 
     if ffg_result and ffg_score >= 0.45:
         lines.append(f"⚠️ {ffg_desc}")
@@ -451,6 +453,10 @@ def build_day_message(
 
     if evo.get("windows"):
         lines.append("📈 " + format_evolution_text(evo))
+    if multi_evo.get("cape"):
+        lines.append("📈 " + multi_evo["cape"])
+    if multi_evo.get("shear"):
+        lines.append("📈 " + multi_evo["shear"])
 
     if ffg_result:
         lines.append(f"🌊 FFG {ffg_score:.2f}/1.0 – {ffg_desc}")
@@ -494,6 +500,7 @@ def build_day_message(
             heatwave_result    = hw_result,
             uwyo_summary       = uwyo_summary,
             evolution_result   = evo,
+            multi_evolution    = multi_evo,
         )
         narrativa, gem_model = call_gemini(prompt_gemini, api_key)
         lines.append("🤖 ANALISI AI")
