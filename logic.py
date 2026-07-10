@@ -173,10 +173,6 @@ def convective_score(params: Dict[str, float]) -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def classify_storm_mode(params: Dict[str, float]) -> str:
-    """
-    Classifica la modalità convettiva attesa in base a CAPE, shear, SRH, SCP, STP,
-    e alla presenza reale di innesco (pioggia prevista nei dati).
-    """
     cape   = max(params.get("SBCAPE", params.get("CAPE", 0)),
                  params.get("MUCAPE", 0))
     shear  = params.get("shear_0_6", 0)
@@ -187,6 +183,7 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
     oro    = params.get("orographic_factor", 0.0) or 0.0
     precip = params.get("precip_rate_mm_h", 0) or 0
     wmo    = int(params.get("wmo_code", 0) or 0)
+    cin    = abs(params.get("CIN", params.get("SBCIN", 0)) or 0)   # NUOVO
     wmo_convettivo = wmo in (80, 81, 82, 95, 96, 99)
     ha_innesco = precip > 1.0 or wmo_convettivo
 
@@ -195,9 +192,13 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
             return "precipitazioni stratiforme con debole convezione embedded"
         return "attività convettiva assente o molto debole"
 
-    # CORREZIONE: senza shear organizzato E senza innesco reale nei dati,
-    # non si può parlare di "temporali forti/isolati" — è energia latente, punto.
+    # NUOVO: distingui "nessun tappo, ma dinamica debole" da "tappo forte, energia bloccata"
     if not ha_innesco and shear < thresholds.SHEAR_06_ORGANIZED:
+        cin_debole = cin < abs(thresholds.CIN_MODERATE)  # CIN quasi assente
+        if cin_debole and cape >= thresholds.SBCAPE_STRONG:
+            return ("energia convettiva elevata e priva di inibizione (CIN quasi nullo) — "
+                    "non si può escludere l'innesco di celle isolate da riscaldamento diurno, "
+                    "pur in assenza di organizzazione dinamica (shear debole)")
         return "energia convettiva elevata ma senza innesco previsto – cielo probabilmente stabile"
 
     if stp >= thresholds.STP_VIOLENT:
@@ -280,6 +281,25 @@ def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
     # Il "supporto dinamico" serve per dire che l'energia PUO' scaricarsi in modo organizzato;
     # senza di esso, anche con innesco, i fenomeni restano isolati/deboli.
     has_dynamic_support = shear_organizzato or (has_trigger and oro >= 0.5)
+
+    # NUOVO: caso "energia scoperta" — CAPE alto, CIN quasi nullo, ma shear debole
+    # e nessuna precipitazione già prevista nei dati orari. Non è un innesco confermato,
+    # ma nemmeno un ambiente "tappato": va segnalato come possibilità concreta,
+    # non come teoria remota.
+    cin_quasi_nulla = cin < abs(thresholds.CIN_MODERATE)
+    energia_scoperta = (
+        cape >= thresholds.SBCAPE_STRONG
+        and cin_quasi_nulla
+        and not shear_organizzato
+        and not ha_precipitazione_prevista
+    )
+    if energia_scoperta:
+        potenziali.append(
+            f"Energia convettiva elevata (CAPE {cape:.0f} J/kg) con inibizione quasi assente "
+            f"(CIN {cin:.0f} J/kg): possibile sviluppo di celle isolate da riscaldamento diurno "
+            f"nelle ore centrali/pomeridiane, specie su rilievi ed entroterra, nonostante "
+            f"l'organizzazione dinamica resti debole (shear {shear:.1f} kt)"
+        )
 
     def add_hazard(testo: str, is_real: bool):
         if is_real:
