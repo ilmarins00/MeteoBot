@@ -436,6 +436,8 @@ def build_day_message(
         ("SCP",     fv(scp, '.2f')),
         ("Vento",   fv(obs.get("wind_speed_kmh"), '.0f', ' km/h')),
         ("Raffica", fv(obs.get("wind_gust_kmh"), '.0f', ' km/h')),
+        ("K-Index", fv(params.get("KI"), '.0f')),
+        ("Totals-Totals", fv(params.get("TT"), '.0f')),
     ]
 
     etichetta_width = max(len(lbl) for lbl, _ in dati_tabella) + 1
@@ -500,7 +502,22 @@ def build_day_message(
 
     lines.append(f"🌪️ Modalità: {mode}")
     if hazards:
-        lines.append("⚠️ Fenomeni: " + " | ".join(hazards[:5]))
+        # Evita di ripetere un concetto già espresso in "Modalità": se un hazard
+        # condivide troppe parole chiave con la modalità, è quasi certamente
+        # la stessa informazione ridetta con altre parole — la scartiamo.
+        def _troppo_simile(hazard_txt: str, mode_txt: str) -> bool:
+            stop = {"e", "di", "la", "il", "in", "a", "con", "non", "un", "una",
+                    "che", "per", "resta", "pur", "assenza", "presente"}
+            parole_mode = {w.lower().strip(",.():") for w in mode_txt.split() if w.lower() not in stop and len(w) > 3}
+            parole_haz  = {w.lower().strip(",.():") for w in hazard_txt.split() if w.lower() not in stop and len(w) > 3}
+            if not parole_mode or not parole_haz:
+                return False
+            comuni = parole_mode & parole_haz
+            return len(comuni) / len(parole_haz) >= 0.5
+
+        hazards_filtrati = [h for h in hazards if not _troppo_simile(h, mode)]
+        if hazards_filtrati:
+            lines.append("⚠️ Fenomeni: " + " | ".join(hazards_filtrati[:5]))
     lines.append("")
 
     # ── Narrativa Gemini ────────────────────────────────────────────────
