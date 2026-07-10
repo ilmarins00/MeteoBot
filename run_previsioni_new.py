@@ -429,8 +429,8 @@ def build_day_message(
         except Exception:
             tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_v:.0f} J/kg")
 
-    lines.append("📊 <b>DATI TECNICI</b>")
-    lines.append("<code>" + "\n".join(tabella) + "</code>")
+    lines.append("📊 DATI TECNICI")
+    lines.append("\n".join(tabella))
 
     # ── Note extra sotto la tabella (solo se rilevanti) ────────────────────
     cape_hrs    = [(h.get("time", ""), float(h.get("CAPE") or 0)) for h in hourly]
@@ -498,6 +498,7 @@ def build_day_message(
         narrativa, gem_model = call_gemini(prompt_gemini, api_key)
         lines.append("🤖 ANALISI AI")
         lines.append(narrativa)
+        lines.append("")
         lines.append(f"[{gem_model}]")
     else:
         lines.append("(analisi AI non disponibile)")
