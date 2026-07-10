@@ -479,6 +479,7 @@ def build_day_message(
             ffg_result         = ffg_result,
             heatwave_result    = hw_result,
             uwyo_summary       = uwyo_summary,
+            evolution_result   = evo,
         )
         narrativa, gem_model = call_gemini(prompt_gemini, api_key)
         lines.append(narrativa)
