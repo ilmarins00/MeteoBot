@@ -691,6 +691,96 @@ def heatwave_analysis(
         "desc": f"Disagio da calore {level} (HI {hi:.1f}°C)"
     }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Analisi evoluzione e persistenza dell'instabilità (serie oraria)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def instability_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Analizza la serie oraria di CAPE/CIN/LI per determinare:
+      - finestre orarie con instabilità elevata (CAPE >= SBCAPE_STRONG)
+      - durata in ore di ciascuna finestra consecutiva
+      - trend (crescente / decrescente / stabile) nell'arco della finestra
+      - il momento del picco assoluto
+
+    hourly: lista di dict con almeno 'time', 'CAPE', 'CIN' (opz. 'LI').
+    Ritorna un dict pronto sia per il rendering diretto sia per il prompt Gemini.
+    """
+    result: Dict[str, Any] = {
+        "windows": [],       # lista di {"start","end","duration_h","cape_avg","trend"}
+        "peak_time": None,
+        "peak_cape": 0.0,
+        "total_unstable_hours": 0,
+    }
+    if not hourly:
+        return result
+
+    thr = thresholds
+    rows = [
+        (h.get("time", "??:??"), float(h.get("CAPE") or 0), float(h.get("CIN") or 0))
+        for h in hourly
+    ]
+
+    # Picco assoluto
+    peak = max(rows, key=lambda r: r[1], default=None)
+    if peak:
+        result["peak_time"] = peak[0]
+        result["peak_cape"] = peak[1]
+
+    # Trova finestre consecutive con CAPE >= soglia "strong"
+    windows = []
+    cur_start = None
+    cur_vals = []
+    for t, cape, cin in rows:
+        if cape >= thr.SBCAPE_STRONG:
+            if cur_start is None:
+                cur_start = t
+            cur_vals.append(cape)
+        else:
+            if cur_start is not None:
+                windows.append((cur_start, t, cur_vals))
+                cur_start, cur_vals = None, []
+    if cur_start is not None:
+        windows.append((cur_start, rows[-1][0], cur_vals))
+
+    for start, end, vals in windows:
+        if len(vals) < 2:
+            trend = "picco isolato"
+        else:
+            delta = vals[-1] - vals[0]
+            if delta > 300:
+                trend = "in rafforzamento"
+            elif delta < -300:
+                trend = "in attenuazione"
+            else:
+                trend = "stazionaria"
+        result["windows"].append({
+            "start": start,
+            "end": end,
+            "duration_h": len(vals),
+            "cape_avg": round(sum(vals) / len(vals), 0),
+            "trend": trend,
+        })
+
+    result["total_unstable_hours"] = sum(w["duration_h"] for w in result["windows"])
+    return result
+
+
+def format_evolution_text(evo: Dict[str, Any]) -> str:
+    """Rende in testo breve (per uso diretto, non-Gemini) l'evoluzione instabilità."""
+    if not evo.get("windows"):
+        return "Nessuna finestra di instabilità significativa individuata."
+    parts = []
+    for w in evo["windows"]:
+        parts.append(
+            f"instabilità elevata dalle {w['start']} alle {w['end']} "
+            f"({w['duration_h']}h, CAPE medio {w['cape_avg']:.0f} J/kg, {w['trend']})"
+        )
+    peak_txt = (
+        f" Picco assoluto {evo['peak_cape']:.0f} J/kg alle {evo['peak_time']}."
+        if evo.get("peak_time") else ""
+    )
+    return "; ".join(parts) + "." + peak_txt
 
 def rileva_fenomeni_costieri(params: Dict[str, float]) -> List[str]:
     """
