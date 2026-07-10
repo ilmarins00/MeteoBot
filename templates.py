@@ -91,9 +91,9 @@ def render_section1_simple(
         )
     elif cape >= thresholds.SBCAPE_STRONG and not shear_organizzato and wmo_dom < 80:
         lines.append(
-            "L'aria è molto instabile (energia convettiva elevata), ma la scarsa "
-            "ventilazione in quota rende improbabile che si organizzino temporali: "
-            "giornata attesa prevalentemente stabile, salvo isolati episodi di calore."
+            "L'atmosfera dispone di molta energia convettiva, ma la debole organizzazione del vento "
+            "limita lo sviluppo di temporali strutturati. Nelle ore più calde resta possibile qualche "
+            "cella isolata sui rilievi o nell'entroterra."
         )
     elif is_capped and (scp >= thresholds.SCP_MODERATE or cape >= thresholds.SBCAPE_STRONG):
         lines.append(
