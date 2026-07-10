@@ -452,3 +452,71 @@ def sea_breeze_convergence_score(
     convergence_factor = max(0.0, (dir_diff - 90.0) / 90.0) if dir_diff > 90 else 0.0
     speed_factor = min(surface_wind_speed_ms / 10.0, 1.0)
     return min(time_factor * convergence_factor * speed_factor * 1.5, 1.0)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Evoluzione oraria multi-parametro (per bollettino e prompt Gemini)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def hourly_trend_series(
+    hourly: List[Dict[str, Any]],
+    field: str,
+    sample_hours: Optional[List[int]] = None,
+) -> List[Tuple[str, float]]:
+    """
+    Estrae una serie oraria campionata di un campo (es. 'CAPE', 'shear', 'SRH', 'PWAT')
+    dalla lista hourly_forecast. Se sample_hours è None, campiona ogni 3 ore.
+
+    Ritorna lista di (time_str, valore), solo per le ore effettivamente presenti.
+    Serve a evitare che un singolo "picco" isolato (es. CAPE alle 15:00) venga
+    mostrato senza il contesto della curva completa, che può indurre in errore
+    quando confrontato con un valore di sintesi (es. SBCAPE massimo giornaliero)
+    calcolato con un metodo diverso.
+    """
+    if not hourly:
+        return []
+
+    result = []
+    for i, h in enumerate(hourly):
+        t = h.get("time", "")
+        try:
+            hour_num = int(t.split(":")[0])
+        except (ValueError, IndexError):
+            continue
+        if sample_hours is not None and hour_num not in sample_hours:
+            continue
+        if sample_hours is None and hour_num % 3 != 0:
+            continue
+        v = h.get(field)
+        if v is not None:
+            result.append((t, float(v)))
+    return result
+
+
+def describe_trend_series(
+    series: List[Tuple[str, float]],
+    unit: str = "",
+    label: str = "",
+) -> str:
+    """
+    Converte una serie (time, valore) in una frase descrittiva del trend,
+    es. 'CAPE: 09:00=200, 12:00=1800, 15:00=4100 J/kg (in forte aumento)'.
+    """
+    if not series:
+        return f"{label}: dati non disponibili" if label else "dati non disponibili"
+
+    vals = [v for _, v in series]
+    delta = vals[-1] - vals[0]
+    if len(vals) >= 2:
+        rel = abs(delta) / max(abs(vals[0]), 1.0)
+        if rel < 0.15:
+            trend_txt = "stazionario"
+        elif delta > 0:
+            trend_txt = "in forte aumento" if rel > 0.6 else "in aumento"
+        else:
+            trend_txt = "in forte calo" if rel > 0.6 else "in calo"
+    else:
+        trend_txt = "punto singolo"
+
+    punti = ", ".join(f"{t}={v:.0f}" for t, v in series)
+    prefix = f"{label}: " if label else ""
+    return f"{prefix}{punti} {unit} ({trend_txt})"
