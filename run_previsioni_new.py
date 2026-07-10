@@ -288,6 +288,9 @@ def build_day_message(
         "24h": float(obs.get("rain_24h_mm", 0) or 0),
     }
     m_score  = maltempo_score(params, rain_obs)
+    print(f"  [DEBUG {day_label}] cape={params.get('SBCAPE')} shear={params.get('shear_0_6')} "
+          f"cin={params.get('CIN')} lcl={params.get('LCL')} rh={params.get('humidity_pct')} "
+          f"wind={params.get('wind_gust_kmh')} temp={params.get('temp_c')} score={m_score}")
     livello, emoji_liv = livello_attenzione(m_score)
 
     # Flash Flood Guidance
