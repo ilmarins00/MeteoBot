@@ -188,7 +188,7 @@ def build_obs_from_openmeteo(
                     sounding_Td.append(Td_k + 273.15)
                     sounding_h.append(zm)
 
-  if len(sounding_Td) < len(sounding_p):
+    if len(sounding_Td) < len(sounding_p):
                 # Ricostruisci solo i livelli con entrambi T e Td
                 aligned_p, aligned_T, aligned_Td, aligned_h = [], [], [], []
                 # Ripeti il ciclo ma salta livelli senza Td
