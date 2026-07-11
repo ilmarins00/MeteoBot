@@ -384,7 +384,15 @@ def build_day_message(
     # ── Intestazione ──────────────────────────────────────────────────────
     sounding_tag = f" · {obs.get('sounding_source','')}" if obs.get("sounding_source") else ""
 
-    icona_giorno = "☀️" if livello == "BASSO" else ("⛈️" if livello in ("ALTO", "MOLTO ALTO") else "🌤️")
+    ha_rischio_reale = bool(hazards_dict.get("reali"))
+    if ha_rischio_reale:
+        icona_giorno = "⛈️"
+    elif livello == "BASSO":
+        icona_giorno = "☀️"
+    elif hw_result and hw_result.get("is_heatwave"):
+        icona_giorno = "🌡️"
+    else:
+        icona_giorno = "🌤️"
 
     lines = [
         "",
@@ -487,8 +495,6 @@ def build_day_message(
 
     if evo.get("windows"):
         lines.append("📈 " + format_evolution_text(evo))
-    if multi_evo.get("cape"):
-        lines.append("📈 " + multi_evo["cape"])
 
     rain_evo     = rain_evolution(hourly)
     wind_evo     = wind_evolution(hourly)
