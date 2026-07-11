@@ -490,7 +490,7 @@ def build_day_obs(
 
     times = day_hourly.get("time", [])
 
-    def _agg(key: str, mode: str = "mean") -> Optional[float]:
+    def _agg(key: str, mode: str = "mean", restrict_afternoon: bool = True) -> Optional[float]:
         vals = day_hourly.get(key, [])
         all_valid = [v for v in vals if v is not None]
         if not all_valid:
@@ -503,8 +503,16 @@ def build_day_obs(
             return min(all_valid)
 
         if mode == "max":
+            if not restrict_afternoon:
+                # CAPE, raffiche, pioggia: il picco può cadere a qualunque ora
+                # (convezione notturna, scirocco nelle ore piccole, ecc.). Niente
+                # finestra: vero massimo giornaliero, altrimenti il dato di testa
+                # può risultare più basso di un picco già visibile nella tabella
+                # oraria sotto — l'incongruenza che hai notato.
+                return max(all_valid)
             # Per la massima, preferisci la finestra 11-18 se disponibile
-            # (rappresentativa del picco diurno), altrimenti usa tutte le ore.
+            # (rappresentativa del picco diurno per la temperatura), altrimenti
+            # usa tutte le ore.
             peak = [
                 vals[i] for i, t in enumerate(times)
                 if i < len(vals) and vals[i] is not None
@@ -532,12 +540,12 @@ def build_day_obs(
     temp_min    = _agg("temperature_2m", "min")
     rh          = _agg("relative_humidity_2m")
     app_temp    = _agg("apparent_temperature", "max")
-    gust        = _agg("wind_gusts_10m",  "max")
-    wind_spd    = _agg("wind_speed_10m",  "max")
+    gust        = _agg("wind_gusts_10m",  "max", restrict_afternoon=False)
+    wind_spd    = _agg("wind_speed_10m",  "max", restrict_afternoon=False)
     wind_dir    = _agg("wind_direction_10m")
     precip_sum  = _agg("precipitation", "sum") or 0.0
-    precip_max  = _agg("precipitation", "max") or 0.0
-    cape        = _agg("cape", "max") or 0.0
+    precip_max  = _agg("precipitation", "max", restrict_afternoon=False) or 0.0
+    cape        = _agg("cape", "max", restrict_afternoon=False) or 0.0
     li          = _agg("lifted_index",  "min")
     cin         = _agg("convective_inhibition", "min")
     cloud       = _agg("cloud_cover")
