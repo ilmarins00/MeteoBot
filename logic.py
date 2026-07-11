@@ -192,9 +192,18 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
             return "precipitazioni stratiforme con debole convezione embedded"
         return "attività convettiva assente o molto debole"
 
-    # NUOVO: distingui "nessun tappo, ma dinamica debole" da "tappo forte, energia bloccata"
-    if not ha_innesco and shear < thresholds.SHEAR_06_ORGANIZED:
+    # Senza un innesco confermato nei dati orari (pioggia/temporale già previsto),
+    # NON etichettiamo mai la giornata come "supercella"/"multicelle organizzate":
+    # quei nomi descrivono un fenomeno IN CORSO, non un ambiente teoricamente
+    # favorevole. Qui distinguiamo solo il grado di energia/organizzazione
+    # disponibile, restando espliciti sul fatto che resta non innescata.
+    if not ha_innesco:
         cin_debole = cin < abs(thresholds.CIN_MODERATE)  # CIN quasi assente
+        organizzato = shear >= thresholds.SHEAR_06_ORGANIZED
+        if organizzato and cin_debole and cape >= thresholds.SBCAPE_STRONG:
+            return ("ambiente dinamicamente favorevole a temporali organizzati (shear "
+                    "ed energia elevati) ma privo di un innesco previsto nei dati orari — "
+                    "il rischio resta teorico, non un evento atteso per la giornata")
         if cin_debole and cape >= thresholds.SBCAPE_STRONG:
             return ("energia convettiva elevata e priva di inibizione (CIN quasi nullo) — "
                     "non si può escludere l'innesco di celle isolate da riscaldamento diurno, "
@@ -588,6 +597,12 @@ def maltempo_score(
     # a raggiungere le fasce alte. Serve shear organizzato per salire.
     organized = shear_06 >= thresholds.SHEAR_06_ORGANIZED
 
+    # Innesco reale: pioggia già prevista nei dati orari, o wmo_code convettivo.
+    # Senza innesco, SCP/STP/CAPE alti restano energia "sulla carta": lo score
+    # deve riflettere il rischio pratico della giornata, non quello teorico.
+    wmo_convettivo_score = wmo in (80, 81, 82, 91, 92, 95, 96, 99)
+    ha_innesco_score = rain_1h > 1.0 or wmo_convettivo_score
+
     if stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH:
         conv_score += 2.5
     elif (scp >= thresholds.SCP_MODERATE
@@ -612,8 +627,14 @@ def maltempo_score(
 
     conv_score += lr_bonus
 
-    # Se c'è tappo e non ci sono temporali in atto, dimezziamo il rischio convettivo
-    if is_capped and wmo < 80:
+    if not ha_innesco_score:
+        # Nessuna precipitazione/temporale previsto nei dati orari: anche con
+        # SCP/STP elevati, il rischio pratico per la giornata resta basso.
+        # Riduciamo fortemente il contributo invece di lasciarlo quasi al
+        # massimo di categoria.
+        conv_score *= 0.3
+    elif is_capped and wmo < 80:
+        # Innesco presente ma forte tappo residuo: dimezziamo comunque
         conv_score *= 0.5
 
     score += min(conv_score, 1.5)  # rispetta il cap di categoria dichiarato in docstring
