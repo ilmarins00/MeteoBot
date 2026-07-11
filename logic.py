@@ -752,17 +752,23 @@ def heatwave_analysis(
 
 def instability_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Analizza la serie oraria di CAPE/CIN/LI per determinare:
-      - finestre orarie con instabilità elevata (CAPE >= SBCAPE_STRONG)
-      - durata in ore di ciascuna finestra consecutiva
-      - trend (crescente / decrescente / stabile) nell'arco della finestra
-      - il momento del picco assoluto
+    Analizza la serie oraria di CAPE/LI per determinare le finestre orarie con
+    instabilità realmente significativa.
 
-    hourly: lista di dict con almeno 'time', 'CAPE', 'CIN' (opz. 'LI').
+    CONCORDANZA: un'ora conta come "instabile" solo se CAPE supera la soglia
+    SPC/WMO di instabilità forte (SBCAPE_STRONG, 1500 J/kg) *e*, quando il dato
+    è disponibile, il Lifted Index conferma la stessa diagnosi (LI_VERY_UNSTABLE,
+    -6, soglia SPC). Un solo parametro fuori scala senza conferma dell'altro non
+    basta a dichiarare un periodo instabile.
+
+    NOTA: shear/SRH non sono calcolati ora per ora in questa pipeline (solo una
+    volta dal sounding rappresentativo del giorno), quindi non entrano in questa
+    concordanza oraria.
+
     Ritorna un dict pronto sia per il rendering diretto sia per il prompt Gemini.
     """
     result: Dict[str, Any] = {
-        "windows": [],       # lista di {"start","end","duration_h","cape_avg","trend"}
+        "windows": [],
         "peak_time": None,
         "peak_cape": 0.0,
         "total_unstable_hours": 0,
@@ -771,50 +777,63 @@ def instability_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
         return result
 
     thr = thresholds
-    rows = [
-        (h.get("time", "??:??"), float(h.get("CAPE") or 0), float(h.get("CIN") or 0))
-        for h in hourly
-    ]
+    rows = []
+    for h in hourly:
+        t = h.get("time", "??:??")
+        cape = float(h.get("CAPE") or 0)
+        cin = float(h.get("CIN") or 0)
+        li_raw = h.get("LI")
+        li = float(li_raw) if li_raw is not None else None
+        rows.append((t, cape, cin, li))
 
-    # Picco assoluto
     peak = max(rows, key=lambda r: r[1], default=None)
     if peak:
         result["peak_time"] = peak[0]
         result["peak_cape"] = peak[1]
 
-    # Trova finestre consecutive con CAPE >= soglia "strong"
+    def _is_unstable(cape: float, li: Optional[float]) -> bool:
+        if cape < thr.SBCAPE_STRONG:
+            return False
+        if li is None:
+            return True  # dato non disponibile: non lo richiediamo, non lo escludiamo
+        return li <= thr.LI_VERY_UNSTABLE
+
     windows = []
     cur_start = None
-    cur_vals = []
-    for t, cape, cin in rows:
-        if cape >= thr.SBCAPE_STRONG:
+    cur_vals = []  # lista di (time, cape)
+    for t, cape, cin, li in rows:
+        if _is_unstable(cape, li):
             if cur_start is None:
                 cur_start = t
-            cur_vals.append(cape)
+            cur_vals.append((t, cape))
         else:
             if cur_start is not None:
-                windows.append((cur_start, t, cur_vals))
+                windows.append((cur_start, cur_vals[-1][0], cur_vals))
                 cur_start, cur_vals = None, []
     if cur_start is not None:
-        windows.append((cur_start, rows[-1][0], cur_vals))
+        windows.append((cur_start, cur_vals[-1][0], cur_vals))
 
     for start, end, vals in windows:
-        if len(vals) < 2:
+        cape_vals = [v for _, v in vals]
+        if len(cape_vals) < 2:
             trend = "picco isolato"
         else:
-            delta = vals[-1] - vals[0]
+            delta = cape_vals[-1] - cape_vals[0]
             if delta > 300:
                 trend = "in rafforzamento"
             elif delta < -300:
                 trend = "in attenuazione"
             else:
                 trend = "stazionaria"
+        peak_hour, peak_cape_window = max(vals, key=lambda x: x[1])
         result["windows"].append({
             "start": start,
             "end": end,
-            "duration_h": len(vals),
-            "cape_avg": round(sum(vals) / len(vals), 0),
+            "duration_h": len(cape_vals),
+            "cape_avg": round(sum(cape_vals) / len(cape_vals), 0),
             "trend": trend,
+            "peak_hour": peak_hour,
+            "peak_cape_window": round(peak_cape_window, 0),
         })
 
     result["total_unstable_hours"] = sum(w["duration_h"] for w in result["windows"])
@@ -865,15 +884,25 @@ def multi_param_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 def format_evolution_text(evo: Dict[str, Any]) -> str:
-    """Rende in testo breve (per uso diretto, non-Gemini) l'evoluzione instabilità."""
+    """
+    Rende in testo breve l'evoluzione instabilità.
+    Finestre <= 3h: solo l'istante di picco (nessun elenco ora per ora).
+    Finestre > 3h: intervallo completo con trend.
+    """
     if not evo.get("windows"):
-        return "Nessuna finestra di instabilità significativa individuata."
+        return "Nessuna finestra di instabilità significativa individuata (CAPE e LI concordi)."
     parts = []
     for w in evo["windows"]:
-        parts.append(
-            f"instabilità elevata dalle {w['start']} alle {w['end']} "
-            f"({w['duration_h']}h, CAPE medio {w['cape_avg']:.0f} J/kg, {w['trend']})"
-        )
+        if w["duration_h"] <= 3:
+            parts.append(
+                f"picco di instabilità isolato alle {w.get('peak_hour', w['start'])} "
+                f"(CAPE {w.get('peak_cape_window', w['cape_avg']):.0f} J/kg)"
+            )
+        else:
+            parts.append(
+                f"instabilità elevata dalle {w['start']} alle {w['end']} "
+                f"({w['duration_h']}h, CAPE medio {w['cape_avg']:.0f} J/kg, {w['trend']})"
+            )
     peak_txt = (
         f" Picco assoluto {evo['peak_cape']:.0f} J/kg alle {evo['peak_time']}."
         if evo.get("peak_time") else ""
