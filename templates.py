@@ -320,10 +320,17 @@ EVOLUZIONE ORARIA:
     if evolution_result and evolution_result.get("windows"):
         ev_lines = []
         for w in evolution_result["windows"]:
-            ev_lines.append(
-                f"  - {w['start']}-{w['end']} ({w['duration_h']}h): "
-                f"CAPE medio {w['cape_avg']:.0f} J/kg, {w['trend']}"
-            )
+            if w["duration_h"] <= 3:
+                ev_lines.append(
+                    f"  - picco isolato alle {w.get('peak_hour', w['start'])}: "
+                    f"CAPE {w.get('peak_cape_window', w['cape_avg']):.0f} J/kg "
+                    f"(durata {w['duration_h']}h, NON un periodo esteso — non descriverlo come tale)"
+                )
+            else:
+                ev_lines.append(
+                    f"  - {w['start']}-{w['end']} ({w['duration_h']}h): "
+                    f"CAPE medio {w['cape_avg']:.0f} J/kg, {w['trend']}"
+                )
         prompt += (
             "\nEVOLUZIONE INSTABILITÀ (dati calcolati, usa questi orari esatti "
             "senza approssimare o arrotondare diversamente):\n"
