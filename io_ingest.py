@@ -20,6 +20,7 @@ import requests
 from typing import Dict, Any, Optional, List, Tuple
 
 from config import LATITUDE, LONGITUDE, ELEVATION, OPEN_METEO_BASE, TIMEZONE
+from indices import compute_shear_profile, compute_srh
 
 # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 # Open-Meteo – API integrazione reale
@@ -672,6 +673,77 @@ def build_day_obs(
         }
     return obs
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Shear / SRH orari — necessari per la concordanza multi-parametro nell'evoluzione
+# dell'instabilità (invece di un unico valore fisso per l'intera giornata).
+# ─────────────────────────────────────────────────────────────────────────────
+
+_LVLS_WIND_HOURLY = {
+    "1000hPa": 100.0,
+    "925hPa":  760.0,
+    "850hPa":  1460.0,
+    "700hPa":  3010.0,
+    "600hPa":  4500.0,
+    "500hPa":  5570.0,
+    "400hPa":  7180.0,
+    "300hPa":  9180.0,
+}
+
+
+def _hourly_shear_srh(
+    day_hourly: Dict[str, Any],
+    idx: int,
+    surface_speed_kmh: Optional[float],
+    surface_dir_deg: Optional[float],
+) -> Dict[str, Optional[float]]:
+    """
+    Shear (0-1/0-3/0-6 km, kt) e SRH (0-1/0-3 km, m²/s²) per UNA singola ora,
+    usando vento superficiale + vento sui livelli di pressione della stessa ora
+    (già presenti in day_hourly grazie a _PLEVEL_VARS_MULTIDAY).
+
+    Se per quell'ora sono disponibili meno di 3 livelli, ritorna None su tutto:
+    un finto "0" verrebbe letto come "vento assente", mentre qui è solo un dato
+    mancante — la differenza conta per la concordanza a valle.
+    """
+    import math as _math
+
+    heights: List[float] = []
+    u_list: List[float] = []
+    v_list: List[float] = []
+
+    if surface_speed_kmh is not None and surface_dir_deg is not None:
+        ws_ms = float(surface_speed_kmh) / 3.6
+        rad = _math.radians(float(surface_dir_deg))
+        u_list.append(-ws_ms * _math.sin(rad))
+        v_list.append(-ws_ms * _math.cos(rad))
+        heights.append(float(ELEVATION))
+
+    for sfx, zm in _LVLS_WIND_HOURLY.items():
+        ws_vals = day_hourly.get(f"wind_speed_{sfx}", [])
+        wd_vals = day_hourly.get(f"wind_direction_{sfx}", [])
+        if (idx < len(ws_vals) and idx < len(wd_vals)
+                and ws_vals[idx] is not None and wd_vals[idx] is not None):
+            ws_ms = float(ws_vals[idx]) / 3.6
+            rad = _math.radians(float(wd_vals[idx]))
+            u_list.append(-ws_ms * _math.sin(rad))
+            v_list.append(-ws_ms * _math.cos(rad))
+            heights.append(zm)
+
+    if len(heights) < 3:
+        return {
+            "shear_0_1": None, "shear_0_3": None, "shear_0_6": None,
+            "srh_0_1": None, "srh_0_3": None,
+        }
+
+    shear = compute_shear_profile(u_list, v_list, heights)
+    srh = compute_srh(u_list, v_list, heights)
+    return {
+        "shear_0_1": round(shear.get("shear_0_1", 0), 1),
+        "shear_0_3": round(shear.get("shear_0_3", 0), 1),
+        "shear_0_6": round(shear.get("shear_0_6", 0), 1),
+        "srh_0_1":   round(srh.get("srh_0_1", 0), 1),
+        "srh_0_3":   round(srh.get("srh_0_3", 0), 1),
+    }
 
 def build_day_hourly_list(
     day_hourly: Dict[str, Any],
@@ -721,6 +793,11 @@ def build_day_hourly_list(
         gust2_v = float(gusts2[j] or 0) if j is not None and j < len(gusts2) else None
         prec2_v = float(precip2[j] or 0) if j is not None and j < len(precip2) else None
 
+        # Shear/SRH reali per QUESTA ora (non più fissi a 0)
+        surf_speed = float(winds[i]) if i < len(winds) and winds[i] is not None else None
+        surf_dir   = float(dirs[i])  if i < len(dirs)  and dirs[i]  is not None else None
+        wp = _hourly_shear_srh(day_hourly, i, surf_speed, surf_dir)
+
         result.append({
             "time":       t_key,
             "T":          temps[i]  if i < len(temps)  else None,
@@ -733,10 +810,14 @@ def build_day_hourly_list(
             "precip_cum": round(cum, 1),
             "CAPE":       float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0,
             "CIN":        cins[i]   if i < len(cins)  else 0,
-            "shear": 0, "SRH": 0, "PWAT": 0,
+            "shear":      wp["shear_0_6"],   # 0-6km kt (etichetta usata a valle)
+            "SRH":        wp["srh_0_3"],     # 0-3km m²/s² (etichetta usata a valle)
+            "shear_0_1":  wp["shear_0_1"],
+            "shear_0_3":  wp["shear_0_3"],
+            "srh_0_1":    wp["srh_0_1"],
+            "PWAT": 0,
             "wmo_code":   wmos[i]   if i < len(wmos)  else None,
             "alert":      alert,
-            "CIN":        cins[i]   if i < len(cins)  else 0,
             "LI":         lifted[i] if i < len(lifted) and lifted[i] is not None else None,
             # Valori modello secondario per spread
             f"CAPE_{secondary_label}":  cape2_v,
