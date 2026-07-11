@@ -556,7 +556,7 @@ def maltempo_score(
     shear_06 = float(params.get("shear_0_6", 0) or 0)
     srh_03   = float(params.get("srh_0_3", 0) or 0)
     dcape    = float(params.get("DCAPE", 0) or 0)
-    cin      = float(params.get("CIN", 0) or 0)
+    cin      = abs(float(params.get("CIN", 0) or 0))
     lcl      = float(params.get("LCL", 1500) or 1500)
     rh       = float(params.get("humidity_pct", 50) or 50)
 
@@ -572,7 +572,7 @@ def maltempo_score(
     conv_score = 0.0
 
     # FILTRO INTELLIGENTE: se c'è un forte tappo, riduciamo il contributo convettivo
-    is_capped = cin <= thresholds.CIN_STRONG or lcl >= thresholds.LCL_HIGH or rh <= 35
+    is_capped = cin >= abs(thresholds.CIN_STRONG) or lcl >= thresholds.LCL_HIGH or rh <= 35
 
     # Lapse rate come indicatore di instabilità reale bassi/media quota
     lr03 = float(params.get("lr_0_3km", 0) or 0)
