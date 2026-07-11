@@ -467,3 +467,34 @@ THRESHOLDS: Dict = {
         7: "rossa",
     },
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Climatologia INDICATIVA mensile T a 500 hPa e 850 hPa — Nord Italia / Mar Ligure
+#
+# ATTENZIONE: questi valori sono una stima approssimativa di riferimento (ordine
+# di grandezza tipico per l'area, non un dataset ufficiale con verifica statistica
+# fatta qui). NON hanno lo stesso status "certificato" delle soglie ARPAL/SPC usate
+# altrove in questo file. Se hai accesso a una climatologia reale (es. serie storica
+# radiosondaggi Milano Linate/LIML, o un archivio ERA5 interrogabile), sostituisci
+# questi numeri con la media (e magari deviazione standard) calcolata sul periodo
+# di riferimento che preferisci: la funzione che li usa (logic.py,
+# upper_level_temperature_anomaly) non richiede altre modifiche.
+# ─────────────────────────────────────────────────────────────────────────────
+
+T500_CLIMATOLOGY_C: Dict[int, float] = {
+    1: -21.0, 2: -20.0, 3: -18.0, 4: -14.5, 5: -10.5, 6: -7.5,
+    7: -6.0,  8: -6.5,  9: -9.5,  10: -13.5, 11: -17.5, 12: -20.0,
+}
+
+T850_CLIMATOLOGY_C: Dict[int, float] = {
+    1: 2.0,  2: 3.0,  3: 6.0,  4: 9.5,  5: 14.0, 6: 18.0,
+    7: 20.5, 8: 20.5, 9: 17.0, 10: 12.5, 11: 7.0, 12: 3.0,
+}
+
+# Soglie di anomalia = scarto assoluto dalla climatologia del mese (°C).
+# Seguono la prassi diagnostica comune in meteorologia sinottica per
+# identificare avvezioni degne di nota rispetto alla norma stagionale;
+# non sono una soglia WMO specifica per questo uso puntuale.
+TEMP_ALOFT_ANOMALY_NOTABLE:     float = 6.0
+TEMP_ALOFT_ANOMALY_SIGNIFICANT: float = 10.0
+TEMP_ALOFT_ANOMALY_EXCEPTIONAL: float = 14.0
