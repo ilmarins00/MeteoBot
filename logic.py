@@ -506,6 +506,7 @@ def map_score_to_alert(score: float) -> str:
 def maltempo_score(
     params: Dict[str, float],
     rain_obs: Optional[Dict[str, float]] = None,
+    temp_anomaly: Optional[Dict[str, Any]] = None,
 ) -> float:
     """
     Score maltempo multi-categoria (0–5), cap a 5.
@@ -652,6 +653,19 @@ def maltempo_score(
         elif app_f >= thresholds.HEAT_INDEX_WARNING or disagio >= 2:
             score += 0.5
 
+    # ── 6. Anomalia termica in quota ────────────────────────────────────
+    # Contributo piccolo e volutamente limitato (max 0.3): un'avvezione
+    # fredda/calda marcata in quota segnala un contesto sinottico attivo
+    # (fronte organizzato), non un rischio diretto al suolo come gli altri.
+    if temp_anomaly is not None:
+        lvl = temp_anomaly.get("level")
+        if lvl == "eccezionale":
+            score += 0.3
+        elif lvl == "significativa":
+            score += 0.2
+        elif lvl == "degna di nota":
+            score += 0.1
+
     return round(min(score, 5.0), 1)
 
 
@@ -752,20 +766,21 @@ def heatwave_analysis(
 
 def instability_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Analizza la serie oraria di CAPE/LI per determinare le finestre orarie con
-    instabilità realmente significativa.
+    Analizza la serie oraria di CAPE/CIN/LI/shear/SRH per determinare le finestre
+    orarie con instabilità realmente significativa.
 
-    CONCORDANZA: un'ora conta come "instabile" solo se CAPE supera la soglia
-    SPC/WMO di instabilità forte (SBCAPE_STRONG, 1500 J/kg) *e*, quando il dato
-    è disponibile, il Lifted Index conferma la stessa diagnosi (LI_VERY_UNSTABLE,
-    -6, soglia SPC). Un solo parametro fuori scala senza conferma dell'altro non
-    basta a dichiarare un periodo instabile.
+    CONCORDANZA (soglie SPC/WMO definite in config.py):
+      - CAPE >= SBCAPE_STRONG (1500 J/kg) è la condizione di ingresso obbligatoria.
+      - CIN forte (valore assoluto >= |CIN_STRONG|, 200 J/kg) esclude comunque
+        l'ora: un'inibizione forte blocca la convezione a prescindere dal resto.
+      - Tra i parametri disponibili per quell'ora (LI, shear 0-6 km, SRH 0-3 km),
+        l'ora è "instabile" solo se ALMENO METÀ dei parametri disponibili
+        concordano nel superare la propria soglia SPC di instabilità forte.
+        Se nessuno dei tre è disponibile per quell'ora, si usa il solo CAPE.
 
-    NOTA: shear/SRH non sono calcolati ora per ora in questa pipeline (solo una
-    volta dal sounding rappresentativo del giorno), quindi non entrano in questa
-    concordanza oraria.
-
-    Ritorna un dict pronto sia per il rendering diretto sia per il prompt Gemini.
+    Un CAPE alto isolato, senza conferma da almeno metà degli indicatori
+    disponibili, non genera una finestra: da solo, quasi certamente, non porta
+    a nulla di rilevante.
     """
     result: Dict[str, Any] = {
         "windows": [],
@@ -781,39 +796,57 @@ def instability_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
     for h in hourly:
         t = h.get("time", "??:??")
         cape = float(h.get("CAPE") or 0)
-        cin = float(h.get("CIN") or 0)
+        cin_raw = h.get("CIN")
+        cin = abs(float(cin_raw)) if cin_raw is not None else None
         li_raw = h.get("LI")
         li = float(li_raw) if li_raw is not None else None
-        rows.append((t, cape, cin, li))
+        shear_raw = h.get("shear")
+        shear06 = float(shear_raw) if shear_raw is not None else None
+        srh_raw = h.get("SRH")
+        srh03 = float(srh_raw) if srh_raw is not None else None
+        rows.append((t, cape, cin, li, shear06, srh03))
 
     peak = max(rows, key=lambda r: r[1], default=None)
     if peak:
         result["peak_time"] = peak[0]
         result["peak_cape"] = peak[1]
 
-    def _is_unstable(cape: float, li: Optional[float]) -> bool:
+    def _is_unstable(cape, cin, li, shear06, srh03) -> bool:
         if cape < thr.SBCAPE_STRONG:
             return False
-        if li is None:
-            return True  # dato non disponibile: non lo richiediamo, non lo escludiamo
-        return li <= thr.LI_VERY_UNSTABLE
+        if cin is not None and cin >= abs(thr.CIN_STRONG):
+            return False
+        votes_total = 0
+        votes_favorable = 0
+        if li is not None:
+            votes_total += 1
+            if li <= thr.LI_VERY_UNSTABLE:
+                votes_favorable += 1
+        if shear06 is not None:
+            votes_total += 1
+            if shear06 >= thr.SHEAR_06_ORGANIZED:
+                votes_favorable += 1
+        if srh03 is not None:
+            votes_total += 1
+            if srh03 >= thr.SRH_03_MODERATE:
+                votes_favorable += 1
+        if votes_total == 0:
+            return True  # nessun dato di conferma disponibile: usa solo CAPE
+        return (votes_favorable / votes_total) >= 0.5
 
     windows = []
-    cur_start = None
-    cur_vals = []  # lista di (time, cape)
-    for t, cape, cin, li in rows:
-        if _is_unstable(cape, li):
-            if cur_start is None:
-                cur_start = t
+    cur_vals: List[Tuple[str, float]] = []
+    for t, cape, cin, li, shear06, srh03 in rows:
+        if _is_unstable(cape, cin, li, shear06, srh03):
             cur_vals.append((t, cape))
         else:
-            if cur_start is not None:
-                windows.append((cur_start, cur_vals[-1][0], cur_vals))
-                cur_start, cur_vals = None, []
-    if cur_start is not None:
-        windows.append((cur_start, cur_vals[-1][0], cur_vals))
+            if cur_vals:
+                windows.append(cur_vals)
+                cur_vals = []
+    if cur_vals:
+        windows.append(cur_vals)
 
-    for start, end, vals in windows:
+    for vals in windows:
         cape_vals = [v for _, v in vals]
         if len(cape_vals) < 2:
             trend = "picco isolato"
@@ -827,13 +860,14 @@ def instability_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
                 trend = "stazionaria"
         peak_hour, peak_cape_window = max(vals, key=lambda x: x[1])
         result["windows"].append({
-            "start": start,
-            "end": end,
-            "duration_h": len(cape_vals),
+            "start": vals[0][0],
+            "end": vals[-1][0],
+            "duration_h": len(vals),
             "cape_avg": round(sum(cape_vals) / len(cape_vals), 0),
             "trend": trend,
             "peak_hour": peak_hour,
             "peak_cape_window": round(peak_cape_window, 0),
+            "vals": vals,
         })
 
     result["total_unstable_hours"] = sum(w["duration_h"] for w in result["windows"])
@@ -885,29 +919,177 @@ def multi_param_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def format_evolution_text(evo: Dict[str, Any]) -> str:
     """
-    Rende in testo breve l'evoluzione instabilità.
-    Finestre <= 3h: solo l'istante di picco (nessun elenco ora per ora).
-    Finestre > 3h: intervallo completo con trend.
+    Rende in testo l'evoluzione instabilità.
+    Finestre <= 3h: intervallo orario + SOLO il valore di picco.
+    Finestre >= 4h: intervallo orario + valore CAPE di OGNI ora della finestra.
     """
     if not evo.get("windows"):
-        return "Nessuna finestra di instabilità significativa individuata (CAPE e LI concordi)."
+        return "Nessuna finestra di instabilità significativa individuata (CAPE concorde con almeno metà degli altri indici disponibili)."
     parts = []
     for w in evo["windows"]:
+        vals = w.get("vals", [])
         if w["duration_h"] <= 3:
             parts.append(
-                f"picco di instabilità isolato alle {w.get('peak_hour', w['start'])} "
-                f"(CAPE {w.get('peak_cape_window', w['cape_avg']):.0f} J/kg)"
+                f"instabilità dalle {w['start']} alle {w['end']} ({w['duration_h']}h) "
+                f"— picco {w.get('peak_cape_window', w['cape_avg']):.0f} J/kg "
+                f"alle {w.get('peak_hour', w['start'])}"
             )
         else:
+            punti = ", ".join(f"{t}={v:.0f}" for t, v in vals)
             parts.append(
-                f"instabilità elevata dalle {w['start']} alle {w['end']} "
-                f"({w['duration_h']}h, CAPE medio {w['cape_avg']:.0f} J/kg, {w['trend']})"
+                f"instabilità dalle {w['start']} alle {w['end']} "
+                f"({w['duration_h']}h, {w['trend']}): {punti} J/kg"
             )
     peak_txt = (
         f" Picco assoluto {evo['peak_cape']:.0f} J/kg alle {evo['peak_time']}."
         if evo.get("peak_time") else ""
     )
     return "; ".join(parts) + "." + peak_txt
+
+def _format_param_windows(
+    windows: List[List[Tuple[str, float]]], label: str, unit: str, fmt: str = ".0f"
+) -> List[str]:
+    """
+    Formattazione comune (pioggia, vento): durata <=3h → intervallo + solo picco;
+    durata >=4h → intervallo + valore di OGNI ora.
+    """
+    lines = []
+    for vals in windows:
+        duration = len(vals)
+        start_t, end_t = vals[0][0], vals[-1][0]
+        peak_t, peak_v = max(vals, key=lambda x: x[1])
+        if duration <= 3:
+            lines.append(
+                f"{label} dalle {start_t} alle {end_t} ({duration}h) — "
+                f"picco {peak_v:{fmt}}{unit} alle {peak_t}"
+            )
+        else:
+            punti = ", ".join(f"{t}={v:{fmt}}{unit}" for t, v in vals)
+            lines.append(f"{label} dalle {start_t} alle {end_t} ({duration}h): {punti}")
+    return lines
+
+
+def rain_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Finestre orarie con pioggia >= soglia ARPAL Gialla (ARPAL_RAIN_1H_GIALLO,
+    10 mm/h) — la soglia ufficiale più bassa di attenzione oraria in Liguria.
+    """
+    windows: List[List[Tuple[str, float]]] = []
+    cur: List[Tuple[str, float]] = []
+    for h in hourly:
+        t = h.get("time", "??:??")
+        p = float(h.get("precip") or 0)
+        if p >= thresholds.ARPAL_RAIN_1H_GIALLO:
+            cur.append((t, p))
+        else:
+            if cur:
+                windows.append(cur)
+                cur = []
+    if cur:
+        windows.append(cur)
+    return {"windows": windows}
+
+
+def wind_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Finestre orarie con raffiche >= soglia ARPAL Gialla costiera
+    (ARPAL_WIND_COAST_GIALLO, 40 km/h).
+    """
+    windows: List[List[Tuple[str, float]]] = []
+    cur: List[Tuple[str, float]] = []
+    for h in hourly:
+        t = h.get("time", "??:??")
+        g = float(h.get("wind_gust") or 0)
+        if g >= thresholds.ARPAL_WIND_COAST_GIALLO:
+            cur.append((t, g))
+        else:
+            if cur:
+                windows.append(cur)
+                cur = []
+    if cur:
+        windows.append(cur)
+    return {"windows": windows}
+
+
+def format_rain_evolution(evo: Dict[str, Any]) -> str:
+    windows = evo.get("windows", [])
+    if not windows:
+        return ""
+    return "; ".join(_format_param_windows(windows, "Pioggia significativa", " mm/h", ".1f")) + "."
+
+
+def format_wind_evolution(evo: Dict[str, Any]) -> str:
+    windows = evo.get("windows", [])
+    if not windows:
+        return ""
+    return "; ".join(_format_param_windows(windows, "Vento sostenuto", " km/h", ".0f")) + "."
+
+def upper_level_temperature_anomaly(
+    params: Dict[str, Any],
+    month: int,
+) -> Optional[Dict[str, Any]]:
+    """
+    Confronta T_500hPa (e, se disponibile, T_850hPa) con la climatologia
+    mensile indicativa (config.T500_CLIMATOLOGY_C / T850_CLIMATOLOGY_C).
+
+    -20°C a 500hPa è normale a gennaio, ma indica un'avvezione fredda molto
+    marcata a luglio/agosto: lo stesso numero ha significato opposto a seconda
+    del mese, va sempre letto come scarto dalla norma del periodo, non come
+    valore assoluto isolato.
+
+    ATTENZIONE: la climatologia usata qui è un riferimento INDICATIVO (vedi nota
+    in config.py), non una soglia "certificata" nello stesso senso di ARPAL/SPC.
+
+    Ritorna None se il dato o l'anomalia non sono rilevanti (sotto soglia).
+    """
+    from config import (
+        T500_CLIMATOLOGY_C, T850_CLIMATOLOGY_C,
+        TEMP_ALOFT_ANOMALY_NOTABLE, TEMP_ALOFT_ANOMALY_SIGNIFICANT,
+        TEMP_ALOFT_ANOMALY_EXCEPTIONAL,
+    )
+
+    t500 = params.get("T_500hPa")
+    if t500 is None:
+        return None
+    t500 = float(t500)
+    clima_500 = T500_CLIMATOLOGY_C.get(month)
+    if clima_500 is None:
+        return None
+    anomaly_500 = t500 - clima_500
+
+    t850 = params.get("T_850hPa")
+    clima_850 = T850_CLIMATOLOGY_C.get(month)
+    anomaly_850 = (
+        float(t850) - clima_850
+        if (t850 is not None and clima_850 is not None) else None
+    )
+
+    abs_anom = abs(anomaly_500)
+    if abs_anom >= TEMP_ALOFT_ANOMALY_EXCEPTIONAL:
+        livello = "eccezionale"
+    elif abs_anom >= TEMP_ALOFT_ANOMALY_SIGNIFICANT:
+        livello = "significativa"
+    elif abs_anom >= TEMP_ALOFT_ANOMALY_NOTABLE:
+        livello = "degna di nota"
+    else:
+        return None  # nella norma del mese: nessuna segnalazione
+
+    verso = "fredda" if anomaly_500 < 0 else "calda"
+    desc = (
+        f"Avvezione {verso} in quota {livello}: T 500hPa {t500:.1f}°C contro una "
+        f"norma climatologica del mese di circa {clima_500:.1f}°C "
+        f"(anomalia {anomaly_500:+.1f}°C)"
+    )
+    if anomaly_850 is not None:
+        desc += f"; a 850hPa {t850:.1f}°C vs norma {clima_850:.1f}°C ({anomaly_850:+.1f}°C)"
+
+    return {
+        "anomaly_500": round(anomaly_500, 1),
+        "anomaly_850": round(anomaly_850, 1) if anomaly_850 is not None else None,
+        "level": livello,
+        "sign": verso,
+        "desc": desc,
+    }
 
 def rileva_fenomeni_costieri(params: Dict[str, float]) -> List[str]:
     """
