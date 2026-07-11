@@ -295,6 +295,9 @@ def build_gemini_prompt_tecnico(
     evolution_result: Optional[Dict] = None,
     multi_evolution: Optional[Dict] = None,
     wind_summary: Optional[str] = None,
+    rain_evolution_text: Optional[str] = None,
+    wind_evolution_text: Optional[str] = None,
+    temp_anomaly_result: Optional[Dict] = None,
 ) -> str:
     from logic import livello_attenzione
     livello, emoji = livello_attenzione(maltempo_score_val)
@@ -322,23 +325,34 @@ EVOLUZIONE ORARIA:
         for w in evolution_result["windows"]:
             if w["duration_h"] <= 3:
                 ev_lines.append(
-                    f"  - picco isolato alle {w.get('peak_hour', w['start'])}: "
+                    f"  - {w['start']}-{w['end']} ({w['duration_h']}h) — SOLO PICCO: "
                     f"CAPE {w.get('peak_cape_window', w['cape_avg']):.0f} J/kg "
-                    f"(durata {w['duration_h']}h, NON un periodo esteso — non descriverlo come tale)"
+                    f"alle {w.get('peak_hour', w['start'])} "
+                    f"(finestra breve — NON descriverla come un periodo esteso)"
                 )
             else:
+                punti = ", ".join(f"{t}={v:.0f}" for t, v in w.get("vals", []))
                 ev_lines.append(
-                    f"  - {w['start']}-{w['end']} ({w['duration_h']}h): "
-                    f"CAPE medio {w['cape_avg']:.0f} J/kg, {w['trend']}"
+                    f"  - {w['start']}-{w['end']} ({w['duration_h']}h, {w['trend']}): {punti} J/kg"
                 )
         prompt += (
-            "\nEVOLUZIONE INSTABILITÀ (dati calcolati, usa questi orari esatti "
-            "senza approssimare o arrotondare diversamente):\n"
+            "\nEVOLUZIONE INSTABILITÀ (dati calcolati con concordanza multi-parametro "
+            "CAPE+CIN+LI+shear+SRH, usa questi orari esatti senza approssimare):\n"
             + "\n".join(ev_lines)
             + f"\nPicco assoluto: {evolution_result.get('peak_cape', 0):.0f} J/kg "
               f"alle {evolution_result.get('peak_time', 'n.d.')}\n"
-            "ISTRUZIONE: cita SEMPRE durata e orari quando descrivi l'instabilità, "
-            "es. 'instabilità elevata per 6 ore, dalle 14 alle 20, in rafforzamento'.\n"
+            "ISTRUZIONE: cita SEMPRE durata e orari quando descrivi l'instabilità.\n"
+        )
+
+    if rain_evolution_text:
+        prompt += f"\nEVOLUZIONE PIOGGIA SIGNIFICATIVA (soglia ARPAL 10 mm/h): {rain_evolution_text}\n"
+    if wind_evolution_text:
+        prompt += f"\nEVOLUZIONE VENTO SOSTENUTO (soglia ARPAL costiera 40 km/h): {wind_evolution_text}\n"
+    if temp_anomaly_result:
+        prompt += (
+            f"\nANOMALIA TERMICA IN QUOTA RISPETTO AL MESE: {temp_anomaly_result['desc']}. "
+            "ISTRUZIONE: se la citi, specifica che è un'anomalia rispetto alla norma "
+            "climatologica del periodo, non un valore assoluto generico.\n"
         )
 
     # ── Evoluzione multi-parametro (CAPE, shear, SRH, PWAT nel tempo) ──
