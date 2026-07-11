@@ -33,7 +33,12 @@ from io_ingest import (
     extract_day_hourly,
 )
 from engine import run_pipeline, export_json
-from logic import maltempo_score, livello_attenzione, flash_flood_guidance, heatwave_analysis, instability_evolution, format_evolution_text
+from logic import (
+    maltempo_score, livello_attenzione, flash_flood_guidance, heatwave_analysis,
+    instability_evolution, format_evolution_text,
+    rain_evolution, wind_evolution, format_rain_evolution, format_wind_evolution,
+    upper_level_temperature_anomaly,
+)
 from templates import (
     render_analisi_semplice,
     render_section2_detailed,
@@ -305,7 +310,8 @@ def build_day_message(
         "1h":  float(obs.get("precip_rate_mm_h", 0) or 0),
         "24h": float(obs.get("rain_24h_mm", 0) or 0),
     }
-    m_score  = maltempo_score(params, rain_obs)
+    temp_anomaly = upper_level_temperature_anomaly(params, day_date.month)
+    m_score  = maltempo_score(params, rain_obs, temp_anomaly=temp_anomaly)
     print(f"  [DEBUG {day_label}] cape={params.get('SBCAPE')} shear={params.get('shear_0_6')} "
           f"cin={params.get('CIN')} lcl={params.get('LCL')} rh={params.get('humidity_pct')} "
           f"wind={params.get('wind_gust_kmh')} temp={params.get('temp_c')} score={m_score}")
@@ -403,6 +409,8 @@ def build_day_message(
         lines.append(f"⚠️ {ffg_desc}")
     if hw_result and hw_result.get("is_heatwave"):
         lines.append(f"🌡️ {hw_result.get('desc', '')}")
+    if temp_anomaly:
+        lines.append(f"🧊 {temp_anomaly['desc']}")
     lines.append("")
 
     # ── DATI TECNICI (in colonna, blocco monospazio) ──────────────────────
@@ -482,6 +490,15 @@ def build_day_message(
     if multi_evo.get("cape"):
         lines.append("📈 " + multi_evo["cape"])
 
+    rain_evo     = rain_evolution(hourly)
+    wind_evo     = wind_evolution(hourly)
+    rain_evo_txt = format_rain_evolution(rain_evo)
+    wind_evo_txt = format_wind_evolution(wind_evo)
+    if rain_evo_txt:
+        lines.append("🌧️ " + rain_evo_txt)
+    if wind_evo_txt:
+        lines.append("💨 " + wind_evo_txt)
+
     if ffg_result:
         lines.append(f"🌊 FFG {ffg_score:.2f}/1.0 – {ffg_desc}")
 
@@ -556,6 +573,9 @@ def build_day_message(
             evolution_result   = evo,
             multi_evolution    = multi_evo,
             wind_summary       = wind_summary_str,
+            rain_evolution_text = rain_evo_txt,
+            wind_evolution_text = wind_evo_txt,
+            temp_anomaly_result  = temp_anomaly,
         )
 
         narrativa, gem_model = call_gemini(prompt_gemini, api_key)
