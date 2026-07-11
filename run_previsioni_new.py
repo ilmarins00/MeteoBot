@@ -287,16 +287,18 @@ def build_day_message(
 
     # Pipeline motore
     try:
-        result  = run_pipeline(obs, hourly)
-        params  = result["params"]
-        hazards = result["hazards"]
-        mode    = result["meta"]["mode"]
+        result       = run_pipeline(obs, hourly)
+        params       = result["params"]
+        hazards      = result["hazards"]
+        hazards_dict = result.get("hazards_dict", {"reali": [], "potenziali": []})
+        mode         = result["meta"]["mode"]
     except Exception as e:
         print(f"  [pipeline] Errore giorno {day_label}: {e}")
-        params  = {}
-        hazards = []
-        mode    = "n.d."
-        result  = {"meta": {"score": 0}, "params": {}, "hazards": []}
+        params       = {}
+        hazards      = []
+        hazards_dict = {"reali": [], "potenziali": []}
+        mode         = "n.d."
+        result       = {"meta": {"score": 0}, "params": {}, "hazards": []}
 
     # Score maltempo
     rain_obs = {
@@ -501,23 +503,29 @@ def build_day_message(
         lines.append("⚠️ Incertezza modelli: " + ", ".join(note_incertezza) + " — bollettino su AROME")
 
     lines.append(f"🌪️ Modalità: {mode}")
-    if hazards:
-        # Evita di ripetere un concetto già espresso in "Modalità": se un hazard
-        # condivide troppe parole chiave con la modalità, è quasi certamente
-        # la stessa informazione ridetta con altre parole — la scartiamo.
-        def _troppo_simile(hazard_txt: str, mode_txt: str) -> bool:
-            stop = {"e", "di", "la", "il", "in", "a", "con", "non", "un", "una",
-                    "che", "per", "resta", "pur", "assenza", "presente"}
-            parole_mode = {w.lower().strip(",.():") for w in mode_txt.split() if w.lower() not in stop and len(w) > 3}
-            parole_haz  = {w.lower().strip(",.():") for w in hazard_txt.split() if w.lower() not in stop and len(w) > 3}
-            if not parole_mode or not parole_haz:
-                return False
-            comuni = parole_mode & parole_haz
-            return len(comuni) / len(parole_haz) >= 0.5
 
-        hazards_filtrati = [h for h in hazards if not _troppo_simile(h, mode)]
-        if hazards_filtrati:
-            lines.append("⚠️ Fenomeni: " + " | ".join(hazards_filtrati[:5]))
+    # Evita di ripetere un concetto già espresso in "Modalità": se un hazard
+    # condivide troppe parole chiave con la modalità, è quasi certamente
+    # la stessa informazione ridetta con altre parole — la scartiamo.
+    def _troppo_simile(hazard_txt: str, mode_txt: str) -> bool:
+        stop = {"e", "di", "la", "il", "in", "a", "con", "non", "un", "una",
+                "che", "per", "resta", "pur", "assenza", "presente"}
+        parole_mode = {w.lower().strip(",.():") for w in mode_txt.split() if w.lower() not in stop and len(w) > 3}
+        parole_haz  = {w.lower().strip(",.():") for w in hazard_txt.split() if w.lower() not in stop and len(w) > 3}
+        if not parole_mode or not parole_haz:
+            return False
+        comuni = parole_mode & parole_haz
+        return len(comuni) / len(parole_haz) >= 0.5
+
+    reali_filtrati       = [h for h in hazards_dict.get("reali", [])       if not _troppo_simile(h, mode)]
+    potenziali_filtrati  = [h for h in hazards_dict.get("potenziali", [])  if not _troppo_simile(h, mode)]
+
+    if reali_filtrati:
+        lines.append("⚠️ Fenomeni in atto/certi: " + " | ".join(reali_filtrati[:5]))
+    if potenziali_filtrati:
+        lines.append("⏳ Fenomeni potenziali (richiedono innesco non ancora previsto): " + " | ".join(potenziali_filtrati[:5]))
+    if not reali_filtrati and not potenziali_filtrati:
+        lines.append("🟢 Nessun fenomeno severo rilevato")
     lines.append("")
 
     # ── Narrativa Gemini ────────────────────────────────────────────────
