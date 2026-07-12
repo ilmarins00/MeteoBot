@@ -511,20 +511,6 @@ def build_day_message(
     if hw_result and hw_result.get("severity") not in ("nessuna", None, ""):
         lines.append(f"🌡️ Calore: {hw_result.get('desc', '')}")
 
-    if spread:
-        note_incertezza = []
-        for lbl, info in spread.items():
-            etichetta = {
-                "CAPE_peak": "energia convettiva (CAPE)",
-                "precip_sum": "cumulata di pioggia",
-                "gust_max": "raffiche di vento",
-            }.get(lbl, lbl)
-            if info.get("high"):
-                note_incertezza.append(f"{etichetta} (forte incertezza)")
-            else:
-                note_incertezza.append(etichetta)
-        lines.append("⚠️ Incertezza modelli: " + ", ".join(note_incertezza) + " — bollettino su AROME")
-
     lines.append(f"🌪️ Modalità: {mode}")
 
     # Evita di ripetere un concetto già espresso in "Modalità": se un hazard
