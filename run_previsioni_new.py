@@ -669,27 +669,29 @@ def main():
 
     # ── 5. Costruisci messaggi per i 3 giorni ─────────────────────────────
     day_configs = [
-        (today,                        "OGGI",     forecast["day0"], forecast.get("day0_icon"), model_primary, False, 0),
-        (today + datetime.timedelta(1),"DOMANI",   forecast["day1"], forecast.get("day1_icon"), model_primary, False, 1),
-        (today + datetime.timedelta(2),"TENDENZA", forecast["day2"], None,                      forecast["model_fallback"], True, 2),
+        (today,                         "OGGI",     forecast["day0"], forecast.get("day0_icon"), forecast.get("day0_arome"),  forecast.get("day0_icon2i"), model_primary, False, 0),
+        (today + datetime.timedelta(1), "DOMANI",   forecast["day1"], forecast.get("day1_icon"), forecast.get("day1_arome"),  forecast.get("day1_icon2i"), model_primary, False, 1),
+        (today + datetime.timedelta(2), "TENDENZA", forecast["day2"], forecast.get("day2_icon"), forecast.get("day2_arome"),  forecast.get("day2_icon2i"), forecast["model_fallback"], True, 2),
     ]
 
     messages = []
-    for day_date, label, day_hourly, icon_raw, mdl, is_tend, day_off in day_configs:
+    for day_date, label, day_hourly, icon_raw, arome_raw, icon2i_raw, mdl, is_tend, day_off in day_configs:
         print(f"\n⚙️  Elaborazione {label} ({_format_date(day_date)})...")
         # Il sounding UWYO è usato solo per oggi/domani (se fresco)
         uwyo_for_day = uwyo_sounding if (not is_tend and uwyo_sounding) else None
         msg = build_day_message(
-            day_date        = day_date,
-            day_hourly      = day_hourly,
-            day_label       = label,
-            model_label     = mdl,
-            is_tendency     = is_tend,
-            api_key         = GEMINI_API_KEY,
-            day_hourly_icon = icon_raw,
-            day_offset      = day_off,
-            temp_history    = temp_history,
-            uwyo_sounding   = uwyo_for_day,
+            day_date          = day_date,
+            day_hourly        = day_hourly,
+            day_label         = label,
+            model_label       = mdl,
+            is_tendency       = is_tend,
+            api_key           = GEMINI_API_KEY,
+            day_hourly_icon   = icon_raw,
+            day_hourly_arome  = arome_raw,
+            day_hourly_icon2i = icon2i_raw,
+            day_offset        = day_off,
+            temp_history      = temp_history,
+            uwyo_sounding     = uwyo_for_day,
         )
         messages.append(msg)
         print(f"  ✓ {label}: {len(msg)} chars")
