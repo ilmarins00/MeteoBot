@@ -37,7 +37,7 @@ from logic import (
     maltempo_score, livello_attenzione, flash_flood_guidance, heatwave_analysis,
     instability_evolution, format_evolution_text,
     rain_evolution, wind_evolution, format_rain_evolution, format_wind_evolution,
-    upper_level_temperature_anomaly,
+    upper_level_temperature_anomaly, is_intense_storm_mode, hazard_probability,
 )
 from templates import (
     render_analisi_semplice,
@@ -511,7 +511,9 @@ def build_day_message(
     if hw_result and hw_result.get("severity") not in ("nessuna", None, ""):
         lines.append(f"🌡️ Calore: {hw_result.get('desc', '')}")
 
-    lines.append(f"🌪️ Modalità: {mode}")
+    is_intense = is_intense_storm_mode(mode)
+    if is_intense:
+        lines.append(f"🌪️ Modalità: {mode}")
 
     # Evita di ripetere un concetto già espresso in "Modalità": se un hazard
     # condivide troppe parole chiave con la modalità, è quasi certamente
@@ -531,9 +533,12 @@ def build_day_message(
 
     if reali_filtrati:
         lines.append("⚠️ Fenomeni in atto/certi: " + " | ".join(reali_filtrati[:5]))
-    if potenziali_filtrati:
-        lines.append("⏳ Fenomeni potenziali (richiedono innesco non ancora previsto): " + " | ".join(potenziali_filtrati[:5]))
-    if not reali_filtrati and not potenziali_filtrati:
+
+    if is_intense or potenziali_filtrati:
+        prob = hazard_probability(params)
+        lines.append(f"🎲 Probabilità fenomeni convettivi intensi: {prob}%")
+
+    if not reali_filtrati and not is_intense and not potenziali_filtrati:
         lines.append("🟢 Nessun fenomeno severo rilevato")
     lines.append("")
 
