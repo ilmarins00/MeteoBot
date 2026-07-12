@@ -156,8 +156,6 @@ def convective_score(params: Dict[str, float]) -> int:
             and pwat >= thresholds.PWAT_HUMID):
         score += 2
 
-    # ── MALUS ISOLAMENTO: CAPE alto senza dinamica = celle disorganizzate ──
-    # Alta energia ma nessun supporto = temporali brevi e poco organizzati
     if (cape >= thresholds.SBCAPE_STRONG
             and shear < thresholds.SHEAR_06_WEAK
             and srh < 50
@@ -186,19 +184,16 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
     cin    = abs(params.get("CIN", params.get("SBCIN", 0)) or 0)   # NUOVO
     wmo_convettivo = wmo in (80, 81, 82, 95, 96, 99)
     ha_innesco = precip > 1.0 or wmo_convettivo
+    wmo_con_pioggia = wmo in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99)
+    ha_segnale_pioggia = precip > 0.1 or wmo_con_pioggia
 
     if cape < thresholds.SBCAPE_WEAK:
-        if pwat >= thresholds.PWAT_HUMID:
+        if pwat >= thresholds.PWAT_HUMID and ha_segnale_pioggia:
             return "precipitazioni stratiforme con debole convezione embedded"
         return "attività convettiva assente o molto debole"
 
-    # Senza un innesco confermato nei dati orari (pioggia/temporale già previsto),
-    # NON etichettiamo mai la giornata come "supercella"/"multicelle organizzate":
-    # quei nomi descrivono un fenomeno IN CORSO, non un ambiente teoricamente
-    # favorevole. Qui distinguiamo solo il grado di energia/organizzazione
-    # disponibile, restando espliciti sul fatto che resta non innescata.
     if not ha_innesco:
-        cin_debole = cin < abs(thresholds.CIN_MODERATE)  # CIN quasi assente
+        cin_debole = cin < abs(thresholds.CIN_MODERATE)
         organizzato = shear >= thresholds.SHEAR_06_ORGANIZED
         if organizzato and cin_debole and cape >= thresholds.SBCAPE_STRONG:
             return ("ambiente dinamicamente favorevole a temporali organizzati (shear "
