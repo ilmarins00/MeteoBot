@@ -231,6 +231,78 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
         return "temporali sparsi di calore – bassa organizzazione"
     return "energia convettiva presente ma innesco improbabile – giornata prevalentemente stabile"
 
+def is_intense_storm_mode(mode: str) -> bool:
+    """
+    Ritorna True solo se la modalità convettiva descrive un rischio concreto di
+    fenomeni intensi (supercella, multicelle organizzate, temporali forti o
+    orografici, tornado, o un ambiente dinamicamente favorevole a temporali
+    organizzati anche se non ancora innescato).
+    Ritorna False per le descrizioni di stabilità, assenza di convezione o
+    debole/stratiforme: queste non vanno mostrate come riga "Modalità" nel
+    bollettino, per non dare risalto a un'etichetta che non segnala nulla di
+    rilevante.
+    """
+    if not mode:
+        return False
+    m = mode.lower()
+    keywords_intensi = (
+        "supercell", "multicelle organizzate", "tornado",
+        "temporali isolati forti", "temporali orografici",
+        "mcs probabile", "dinamicamente favorevole a temporali organizzati",
+    )
+    return any(k in m for k in keywords_intensi)
+
+
+def hazard_probability(params: Dict[str, float]) -> int:
+    """
+    Stima percentuale (0-100%) della probabilità che i fenomeni convettivi
+    elencati nel bollettino (grandine, downburst, temporali organizzati) si
+    verifichino davvero, combinando gli stessi ingredienti fisici già usati in
+    severe_hazards/maltempo_score: energia (CAPE), organizzazione dinamica
+    (shear), inibizione (CIN), umidità (PWAT) e presenza di un innesco
+    confermato nei dati orari (pioggia/wmo_code convettivo).
+
+    NON è una probabilità statistica verificata (tipo POP di un modello
+    d'ensemble): è una stima euristica costruita su soglie SPC/WMO già
+    presenti in config.py, pensata per dare un numero sintetico invece di un
+    lungo testo esplicativo. Va letta come "quanto è forte il segnale nei
+    dati", non come frequenza statistica di accadimento.
+    """
+    cape = max(
+        float(params.get("SBCAPE", params.get("CAPE", 0)) or 0),
+        float(params.get("MUCAPE", 0) or 0),
+    )
+    shear = float(params.get("shear_0_6", 0) or 0)
+    cin = abs(float(params.get("CIN", params.get("SBCIN", 0)) or 0))
+    pwat = float(params.get("PWAT", 0) or 0)
+    precip = float(params.get("precip_rate_mm_h", 0) or 0)
+    wmo = int(params.get("wmo_code", 0) or 0)
+
+    prob = 0.0
+    if cape >= thresholds.SBCAPE_WEAK:
+        prob += 0.15
+    if cape >= thresholds.SBCAPE_MODERATE:
+        prob += 0.15
+    if cape >= thresholds.SBCAPE_STRONG:
+        prob += 0.15
+    if shear >= thresholds.SHEAR_06_WEAK:
+        prob += 0.10
+    if shear >= thresholds.SHEAR_06_ORGANIZED:
+        prob += 0.15
+    if cin < abs(thresholds.CIN_MODERATE):
+        prob += 0.10
+    if pwat >= thresholds.PWAT_HUMID:
+        prob += 0.10
+
+    wmo_convettivo = wmo in (80, 81, 82, 95, 96, 99)
+    ha_innesco = precip > 1.0 or wmo_convettivo
+    if not ha_innesco:
+        # Senza innesco confermato nei dati orari, il rischio pratico resta
+        # basso indipendentemente da quanto "carica" sia l'atmosfera sulla carta.
+        prob *= 0.35
+
+    return int(round(min(prob, 1.0) * 100))
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Hazard mapping completo
 # ─────────────────────────────────────────────────────────────────────────────
