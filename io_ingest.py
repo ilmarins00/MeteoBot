@@ -76,6 +76,8 @@ _CURRENT_VARS = [
 
 # Modelli meteorologici disponibili su Open-Meteo (selezionato automaticamente)
 _MODELS = "best_match"  # Open-Meteo seleziona il migliore disponibile
+ICON2I_MODEL   = "italia_meteo_arpae_icon_2i"
+ICON2I_DISPLAY = "ARPAE ICON 2I"
 
 
 def fetch_openmeteo_current(
@@ -860,19 +862,60 @@ def fetch_forecast_3days(
             print(f"  [io] {model}: {len(d['hourly']['time'])} ore")
             break
     if arome_data is None:
-        print("  [io] AROME non disponibile, solo ICON-EU")
+        print("  [io] AROME non disponibile")
 
-    merged, fallback_stats = _merge_hourly(arome_data, icon_data)
-    if fallback_stats:
-        print(f"  [io] Variabili colmate da ICON-EU: {fallback_stats}")
+    print("  [io] Scarico ItaliaMeteo ARPAE ICON 2I (3 giorni)...")
+    icon2i_data = _fetch_one_model(ICON2I_MODEL, start_s, end_d2, lat, lon, timeout)
+    if icon2i_data is not None:
+        print(f"  [io] {ICON2I_DISPLAY}: {len(icon2i_data['hourly']['time'])} ore")
+    else:
+        print(f"  [io] {ICON2I_DISPLAY} non disponibile")
+
+    # Catena di priorità a 3 livelli per i giorni 0-1: AROME (dominio francese,
+    # ma aggiornato ogni ora) → ARPAE ICON 2I (dominio Italia intera, quindi
+    # La Spezia è ben dentro il dominio, non al bordo come per AROME) →
+    # ICON-EU (riserva finale, risoluzione più bassa). _merge_hourly preferisce
+    # sempre il primo argomento quando ha un valore non-null, quindi incatenare
+    # due chiamate produce esattamente questa priorità AROME > ICON2I > ICON-EU.
+    merged_ai, stats_ai = _merge_hourly(arome_data, icon2i_data)
+    if stats_ai:
+        print(f"  [io] Variabili colmate da {ICON2I_DISPLAY}: {stats_ai}")
+    merged, stats_final = _merge_hourly(merged_ai, icon_data)
+    if stats_final:
+        print(f"  [io] Variabili colmate da ICON-EU: {stats_final}")
+
+    # Giorno 2 (TENDENZA): AROME non arriva così lontano, ma ARPAE ICON 2I sì
+    # (orizzonte 3 giorni) — lo usiamo al posto di ICON-EU puro come primario,
+    # con ICON-EU solo a riempire eventuali buchi.
+    merged_day2, stats_day2 = _merge_hourly(icon2i_data, icon_data)
+    if stats_day2:
+        print(f"  [io] TENDENZA – variabili colmate da ICON-EU: {stats_day2}")
+
+    if arome_data and icon2i_data:
+        model_primary_label = "AROME+ARPAE ICON 2I+ICON-EU"
+    elif arome_data:
+        model_primary_label = "AROME+ICON-EU"
+    elif icon2i_data:
+        model_primary_label = "ARPAE ICON 2I+ICON-EU"
+    else:
+        model_primary_label = "ICON-EU"
+
     return {
-        "day0":         extract_day_hourly(merged,     0),
-        "day1":         extract_day_hourly(merged,     1),
-        "day2":         extract_day_hourly(icon_data,  2),
-        # Raw ICON-EU per giorno (usato per calcolo spread)
-        "day0_icon":    extract_day_hourly(icon_data,  0),
-        "day1_icon":    extract_day_hourly(icon_data,  1),
-        "model_primary":  "AROME+ICON-EU" if arome_data else "ICON-EU",
+        "day0": extract_day_hourly(merged,      0),
+        "day1": extract_day_hourly(merged,      1),
+        "day2": extract_day_hourly(merged_day2, 2),
+        # Dati grezzi per singolo modello, per giorno — servono al bollettino
+        # per mostrare il valore AROME e il valore ARPAE ICON 2I separatamente,
+        # ciascuno calcolato sul proprio profilo verticale coerente.
+        "day0_arome":  extract_day_hourly(arome_data,  0) if arome_data  else {},
+        "day1_arome":  extract_day_hourly(arome_data,  1) if arome_data  else {},
+        "day0_icon2i": extract_day_hourly(icon2i_data, 0) if icon2i_data else {},
+        "day1_icon2i": extract_day_hourly(icon2i_data, 1) if icon2i_data else {},
+        "day2_icon2i": extract_day_hourly(icon2i_data, 2) if icon2i_data else {},
+        "day0_icon":   extract_day_hourly(icon_data,   0),
+        "day1_icon":   extract_day_hourly(icon_data,   1),
+        "day2_icon":   extract_day_hourly(icon_data,   2),
+        "model_primary":  model_primary_label,
         "model_fallback": "ICON-EU",
     }
 
