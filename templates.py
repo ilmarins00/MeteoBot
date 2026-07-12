@@ -175,7 +175,7 @@ def render_section1_simple(
     elif g_max >= 40:
         lines.append(f"Vento moderato da {nome_v} con raffiche fino a {g_max:.0f} km/h.")
     else:
-        lines.append("Vento debole o assente, condizioni di calma in mare e a terra.")
+        lines.append(f"Vento debole da {nome_v}, media {w_max:.0f} km/h, raffiche fino a {g_max:.0f} km/h.")
 
     # ── Note orografiche ──────────────────────────────────────────────────
     if oro >= 0.6 and (wmo_dom >= 61 or cape >= 800):
