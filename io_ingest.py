@@ -951,25 +951,25 @@ def fetch_forecast_3days(
     else:
         print("  [io] ICON-2I non disponibile")
 
-    print("  [io] Provo ECMWF IFS (per Lifted Index)...")
-    ecmwf_data = _fetch_one_model("ecmwf_ifs025", start_s, end_d2, lat, lon, timeout)
-    if ecmwf_data is not None:
-        print(f"  [io] ECMWF: {len(ecmwf_data['hourly']['time'])} ore")
+    print("  [io] Provo best_match (per Lifted Index)...")
+    li_data = _fetch_one_model("best_match", start_s, end_d2, lat, lon, timeout)
+    if li_data is not None:
+        print(f"  [io] best_match: {len(li_data['hourly']['time'])} ore")
     else:
-        print("  [io] ECMWF non disponibile")
+        print("  [io] best_match non disponibile")
 
     merged, fallback_stats = _merge_hourly(arome_data, icon_data)
     if fallback_stats:
         print(f"  [io] Variabili colmate da ICON-EU: {fallback_stats}")
 
-    if ecmwf_data is not None:
-        ecmwf_h = ecmwf_data.get("hourly", {})
-        ecmwf_times = ecmwf_h.get("time", [])
-        ecmwf_li = ecmwf_h.get("lifted_index", [])
+    if li_data is not None:
+        li_h = li_data.get("hourly", {})
+        li_times = li_h.get("time", [])
+        li_vals = li_h.get("lifted_index", [])
         li_map = {
-            str(t)[-5:]: ecmwf_li[i]
-            for i, t in enumerate(ecmwf_times)
-            if i < len(ecmwf_li) and ecmwf_li[i] is not None
+            str(t)[-5:]: li_vals[i]
+            for i, t in enumerate(li_times)
+            if i < len(li_vals) and li_vals[i] is not None
         }
         if li_map:
             for dataset in (merged, icon_data):
@@ -980,11 +980,20 @@ def fetch_forecast_3days(
                     li_map.get(str(t)[-5:], old_li[i] if i < len(old_li) else None)
                     for i, t in enumerate(times)
                 ]
-            print(f"  [io] Lifted Index sovrascritto da ECMWF su {len(li_map)} ore")
+            print(f"  [io] Lifted Index sovrascritto da best_match su {len(li_map)} ore")
         else:
-            print("  [io] ECMWF non ha restituito valori di lifted_index utilizzabili")
+            print("  [io] best_match non ha restituito valori di lifted_index utilizzabili")
     else:
-        print("  [io] ECMWF non disponibile, Lifted Index resta quello di AROME/ICON-EU (se presente)")
+        print("  [io] best_match non disponibile, Lifted Index resta quello di AROME/ICON-EU (se presente)")
+
+    if icon2i_data is not None and 'li_map' in dir() and li_map:
+        h2i = icon2i_data.get("hourly", {})
+        times2i = h2i.get("time", [])
+        old_li2i = h2i.get("lifted_index", [None] * len(times2i))
+        h2i["lifted_index"] = [
+            li_map.get(str(t)[-5:], old_li2i[i] if i < len(old_li2i) else None)
+            for i, t in enumerate(times2i)
+        ]
 
     # Giorno 2 (TENDENZA): usa ICON-2I se copre a sufficienza, altrimenti ICON-EU
     day2_icon2i = extract_day_hourly(icon2i_data, 2) if icon2i_data is not None else {}
