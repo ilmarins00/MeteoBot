@@ -515,8 +515,8 @@ def build_day_message(
     if reali_filtrati:
         lines.append("⚠️ Fenomeni in atto/certi: " + " | ".join(reali_filtrati[:5]))
 
+    prob = hazard_probability(params)
     if is_intense or potenziali_filtrati:
-        prob = hazard_probability(params)
         lines.append(f"🎲 Probabilità fenomeni convettivi intensi: {prob}%")
 
     if not reali_filtrati and not is_intense and not potenziali_filtrati:
@@ -565,20 +565,33 @@ def build_day_message(
         lines.append("(analisi AI non disponibile)")
 
     if html_blocks is not None:
-            from templates import render_tech_table_html, render_hourly_table_html, render_day_html_block
+            from templates import (
+                render_tech_table_html, render_hourly_meteo_table_html,
+                render_hourly_tech_table_html, render_phenomena_risks_html,
+                render_fenomeni_html, render_day_html_block,
+            )
             html_blocks.append(render_day_html_block(
                 day_label=day_label,
                 date_str=_format_date(day_date),
                 alert_emoji=icona_giorno,
-                alert_level=livello,
-                score=m_score,
+                model_label=model_label,
+                risks_html=render_phenomena_risks_html(risks),
                 sintesi_text=semplice,
                 tech_table_html=render_tech_table_html(params, hourly),
-                hourly_table_html=render_hourly_table_html(hourly),
-                hazards_reali=reali_filtrati,
-                hazards_potenziali=potenziali_filtrati,
+                hourly_meteo_html=render_hourly_meteo_table_html(hourly),
+                hourly_tech_html=render_hourly_tech_table_html(hourly),
+                fenomeni_html=render_fenomeni_html(
+                    reali=reali_filtrati,
+                    potenziali=potenziali_filtrati,
+                    mode=mode,
+                    is_intense=is_intense,
+                    prob_pct=prob,
+                    ffg_result=ffg_result,
+                    hw_result=hw_result,
+                    rain_evo_txt=rain_evo_txt,
+                    wind_evo_txt=wind_evo_txt,
+                ),
                 narrativa=narrativa if (api_key and GEMINI_API_KEY) else "(analisi AI non disponibile)",
-                model_label=model_label,
             ))
     
     return "\n".join(lines)
