@@ -394,14 +394,14 @@ def build_day_message(
     else:
         icona_giorno = "🌤️"
 
+    risks = assess_phenomena_risks(params, obs, hourly)
     lines = [
         "",
         f"{icona_giorno} LA SPEZIA — {day_label.upper()}",
         f"{_format_date(day_date)}",
         "",
-        risks = assess_phenomena_risks(params, obs, hourly)
-        lines.append(render_phenomena_risks(risks))
-        lines.append("")
+        render_phenomena_risks(risks),
+        "",
         f"📡 Modello: {model_label}{sounding_tag}",
         "",
     ]
