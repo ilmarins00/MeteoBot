@@ -165,6 +165,96 @@ def convective_score(params: Dict[str, float]) -> int:
 
     return max(score, 0)
 
+def assess_phenomena_risks(params: Dict, obs: Dict, hourly: list) -> Dict[str, str]:
+    """
+    Valuta il rischio per ciascun fenomeno atmosferico.
+    Scala: Trascurabile | Marginale | Moderato | Elevato | Estremo
+    """
+    r = {}
+
+    # --- TEMPORALI ---
+    cape = max(params.get("SBCAPE", 0) or 0, params.get("MUCAPE", 0) or 0, params.get("CAPE", 0) or 0)
+    shear = params.get("shear_0_6") or 0
+    cin = abs(params.get("CIN", 0) or 0)
+    wmo = int(params.get("wmo_code", 0) or 0)
+    has_trigger = wmo in (80, 81, 82, 95, 96, 99) or (params.get("precip_rate_mm_h", 0) or 0) > 1.0
+
+    if cape < 300 or cin > 200:
+        r["Temporali"] = "Trascurabile"
+    elif cape < 1000 and not has_trigger:
+        r["Temporali"] = "Marginale"
+    elif (cape < 1500) or (cape >= 1500 and shear < 20 and not has_trigger):
+        r["Temporali"] = "Moderato"
+    elif cape >= 1500 and shear >= 20 and has_trigger:
+        r["Temporali"] = "Elevato"
+    elif cape >= 2500 and shear >= 35 and has_trigger:
+        r["Temporali"] = "Estremo"
+    else:
+        r["Temporali"] = "Moderato" if has_trigger else "Marginale"
+
+    # --- PIOGGIA ---
+    max_precip = max((h.get("precip", 0) or 0 for h in hourly), default=0)
+    rain_24h = obs.get("rain_24h_mm", 0) or 0
+
+    if max_precip < 2 and rain_24h < 10:
+        r["Pioggia"] = "Trascurabile"
+    elif max_precip < 10 and rain_24h < 30:
+        r["Pioggia"] = "Marginale"
+    elif max_precip < 30 and rain_24h < 60:
+        r["Pioggia"] = "Moderato"
+    elif max_precip < 50 and rain_24h < 100:
+        r["Pioggia"] = "Elevato"
+    else:
+        r["Pioggia"] = "Estremo"
+
+    # --- VENTO ---
+    gust = obs.get("wind_gust_km_h", 0) or 0
+    max_gust_hourly = max((h.get("wind_gust", h.get("wind", 0)) or 0 for h in hourly), default=0)
+    gust_eff = max(gust, max_gust_hourly)
+
+    if gust_eff < 30:
+        r["Vento"] = "Trascurabile"
+    elif gust_eff < 50:
+        r["Vento"] = "Marginale"
+    elif gust_eff < 70:
+        r["Vento"] = "Moderato"
+    elif gust_eff < 90:
+        r["Vento"] = "Elevato"
+    else:
+        r["Vento"] = "Estremo"
+
+    # --- TEMPERATURA (caldo estremo / freddo) ---
+    t_max = obs.get("temp_max_c", obs.get("temp_c", 0)) or 0
+    t_min = obs.get("temp_min_c", obs.get("temp_c", 0)) or 0
+
+    if t_max >= 40 or t_min <= -10:
+        r["Tempertura"] = "Estremo"
+    elif t_max >= 38 or t_min <= -5:
+        r["Temperatura"] = "Elevato"
+    elif t_max >= 35 or t_min <= 0:
+        r["Temperatura"] = "Moderato"
+    elif t_max >= 32 or t_min <= 5:
+        r["Temperatura"] = "Marginale"
+    else:
+        r["Temperatura"] = "Trascurabile"
+
+    # --- AFA / DISAGIO TERMICO ---
+    hi = obs.get("heat_index", params.get("heat_index"))
+    if hi is None:
+        hi = t_max
+
+    if hi >= 41:
+        r["Afa"] = "Estremo"
+    elif hi >= 38:
+        r["Afa"] = "Elevato"
+    elif hi >= 35:
+        r["Afa"] = "Moderato"
+    elif hi >= 32:
+        r["Afa"] = "Marginale"
+    else:
+        r["Afa"] = "Trascurabile"
+
+    return r
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Classificazione modalità convettiva
