@@ -31,9 +31,8 @@ from io_ingest import (
     compute_model_spread,
     fetch_temperature_history,
     extract_day_hourly,
-    ICON2I_DISPLAY,
 )
-from engine import run_pipeline, export_json, build_params_from_obs
+from engine import run_pipeline, export_json
 from logic import (
     maltempo_score, livello_attenzione, flash_flood_guidance, heatwave_analysis,
     instability_evolution, format_evolution_text,
@@ -256,8 +255,6 @@ def build_day_message(
     is_tendency:      bool = False,
     api_key:          str  = "",
     day_hourly_icon:  dict = None,   # dati ICON-EU raw per spread
-    day_hourly_arome:  dict = None,  # dati AROME raw (per tabella doppio modello)
-    day_hourly_icon2i: dict = None,  # dati ARPAE ICON 2I raw (per tabella doppio modello)
     day_offset:       int  = 0,
     temp_history:     list = None,   # storia T per heatwave
     uwyo_sounding:    dict = None,   # sounding UWYO se disponibile
@@ -280,47 +277,6 @@ def build_day_message(
 
     if not obs:
         return f"\n{'─'*50}\n{day_label.upper()}\n(dati insufficienti)\n"
-
-    # ── Indici calcolati separatamente per AROME e ARPAE ICON 2I ──────────
-    # Ogni modello ha il proprio profilo verticale coerente (T, Td, vento
-    # sugli stessi livelli), quindi shear/SRH/SCP/K-Index vengono ricalcolati
-    # su ciascun profilo indipendentemente — non si mescolano mai dati di
-    # modelli diversi nello stesso calcolo di un indice.
-    obs_arome  = build_day_obs(day_hourly_arome,  "AROME")        if day_hourly_arome  else {}
-    obs_icon2i = build_day_obs(day_hourly_icon2i, ICON2I_DISPLAY) if day_hourly_icon2i else {}
-    obs_iconeu = build_day_obs(day_hourly_icon,   "ICON-EU")      if day_hourly_icon   else {}
-
-    params_arome  = build_params_from_obs(obs_arome)  if obs_arome  else {}
-    params_icon2i = build_params_from_obs(obs_icon2i) if obs_icon2i else {}
-    params_iconeu = build_params_from_obs(obs_iconeu) if obs_iconeu else {}
-
-    def _fmt_dual(field, fmt=".1f", unit="", src_a=None, src_i=None, src_e=None):
-        """
-        Formato '[AROME] / [ARPAE ICON 2I]' quando entrambi disponibili.
-        Solo uno disponibile → mostra quello, etichettato con il modello.
-        Nessuno dei due → mostra ICON-EU, etichettato esplicitamente.
-        src_a/src_i/src_e permettono di leggere da dizionari diversi
-        (params per gli indici, obs per vento/raffica).
-        """
-        da = src_a if src_a is not None else params_arome
-        di = src_i if src_i is not None else params_icon2i
-        de = src_e if src_e is not None else params_iconeu
-        va = da.get(field) if da else None
-        vi = di.get(field) if di else None
-        ve = de.get(field) if de else None
-
-        def _f(v):
-            return f"{v:{fmt}}{unit}"
-
-        if va is not None and vi is not None:
-            return f"{_f(va)} / {_f(vi)}"
-        if va is not None:
-            return f"{_f(va)} (AROME)"
-        if vi is not None:
-            return f"{_f(vi)} ({ICON2I_DISPLAY})"
-        if ve is not None:
-            return f"{_f(ve)} (ICON-EU)"
-        return "n.d."
 
     # Se c'è un sounding UWYO valido, sostituisce il sounding da modello
     if uwyo_sounding and len(uwyo_sounding.get("pressure_pa", [])) >= 6:
@@ -466,72 +422,44 @@ def build_day_message(
     lines.append("")
 
     # ── DATI TECNICI (in colonna, blocco monospazio) ──────────────────────
-    dcape_v = params.get("DCAPE", 0) or 0   # valore ufficiale (dal dataset di riferimento) usato per lo score
-
-    ha_confronto = bool(obs_arome)  # AROME disponibile → mostra anche la colonna ARPAE ICON 2I
+    dcape_v = params.get("DCAPE", 0) or 0
 
     def fv(v, fmt=".1f", u=""):
         return f"{v:{fmt}}{u}" if v is not None else "n.d."
 
-    if ha_confronto:
-        dati_tabella = [
-            ("SBCAPE",  _fmt_dual("SBCAPE",  ".0f", " J/kg")),
-            ("MUCAPE",  _fmt_dual("MUCAPE",  ".0f", " J/kg")),
-            ("CIN",     _fmt_dual("CIN",     ".0f", " J/kg")),
-            ("LI",      _fmt_dual("LI",      ".1f")),
-            ("Shear06", _fmt_dual("shear_0_6", ".1f", " kt")),
-            ("SRH03",   _fmt_dual("srh_0_3",   ".0f", " m²/s²")),
-            ("PWAT",    _fmt_dual("PWAT",    ".1f", " mm")),
-            ("SCP",     _fmt_dual("SCP",     ".2f")),
-            ("Vento",   _fmt_dual("wind_speed_kmh", ".0f", " km/h",
-                                   src_a=obs_arome, src_i=obs_icon2i, src_e=obs_iconeu)),
-            ("Raffica", _fmt_dual("wind_gust_kmh",  ".0f", " km/h",
-                                   src_a=obs_arome, src_i=obs_icon2i, src_e=obs_iconeu)),
-            ("K-Index", _fmt_dual("KI", ".0f")),
-            ("Totals-Totals", _fmt_dual("TT", ".0f")),
-        ]
-        tabella_header = "📊 DATI TECNICI — riferimento AROME / confronto ARPAE ICON 2I"
-    else:
-        # Nessun AROME per questo giorno (tipicamente TENDENZA): un solo
-        # dataset ufficiale (ARPAE ICON 2I con ICON-EU come riempitivo di
-        # emergenza), quindi nessuna colonna di confronto da mostrare — e
-        # niente rischio che "params" mostri un picco diverso dalla tabella,
-        # perché entrambi vengono dallo stesso identico dataset.
-        dati_tabella = [
-            ("SBCAPE",  fv(params.get("SBCAPE", params.get("CAPE")), ".0f", " J/kg")),
-            ("MUCAPE",  fv(params.get("MUCAPE"), ".0f", " J/kg")),
-            ("CIN",     fv(params.get("CIN"), ".0f", " J/kg")),
-            ("LI",      fv(params.get("LI"), ".1f")),
-            ("Shear06", fv(params.get("shear_0_6"), ".1f", " kt")),
-            ("SRH03",   fv(params.get("srh_0_3"), ".0f", " m²/s²")),
-            ("PWAT",    fv(params.get("PWAT"), ".1f", " mm")),
-            ("SCP",     fv(params.get("SCP"), ".2f")),
-            ("Vento",   fv(obs.get("wind_speed_kmh"), ".0f", " km/h")),
-            ("Raffica", fv(obs.get("wind_gust_kmh"), ".0f", " km/h")),
-            ("K-Index", fv(params.get("KI"), ".0f")),
-            ("Totals-Totals", fv(params.get("TT"), ".0f")),
-        ]
-        tabella_header = f"📊 DATI TECNICI — riferimento {model_label}"
+    dati_tabella = [
+        ("SBCAPE",  fv(params.get("SBCAPE", params.get("CAPE")), ".0f", " J/kg")),
+        ("MUCAPE",  fv(params.get("MUCAPE"), ".0f", " J/kg")),
+        ("CIN",     fv(params.get("CIN"), ".0f", " J/kg")),
+        ("LI",      fv(params.get("LI"), ".1f")),
+        ("Shear06", fv(params.get("shear_0_6"), ".1f", " kt")),
+        ("SRH03",   fv(params.get("srh_0_3"), ".0f", " m²/s²")),
+        ("PWAT",    fv(params.get("PWAT"), ".1f", " mm")),
+        ("SCP",     fv(params.get("SCP"), ".2f")),
+        ("Vento",   fv(obs.get("wind_speed_kmh"), ".0f", " km/h")),
+        ("Raffica", fv(obs.get("wind_gust_kmh"), ".0f", " km/h")),
+        ("K-Index", fv(params.get("KI"), ".0f")),
+        ("Totals-Totals", fv(params.get("TT"), ".0f")),
+    ]
 
     etichetta_width = max(len(lbl) for lbl, _ in dati_tabella) + 1
     tabella = [f"{lbl.ljust(etichetta_width)}{val}" for lbl, val in dati_tabella]
 
     ha_innesco_oggi = float(obs.get("precip_rate_mm_h", 0) or 0) > 1.0 or int(obs.get("wmo_code", 0) or 0) in (80, 81, 82, 95, 96, 99)
-    dcape_txt = _fmt_dual("DCAPE", ".0f", " J/kg") if ha_confronto else fv(dcape_v, ".0f", " J/kg")
     if dcape_v > 50:
         try:
             from thermo import dcape_gust_kmh as _dg
             v_est = _dg(dcape_v)
             if ha_innesco_oggi:
-                tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_txt} (raffica stim. {v_est:.0f} km/h)")
+                tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_v:.0f} J/kg (raffica stim. {v_est:.0f} km/h)")
             else:
-                tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_txt} (teorico, nessun innesco previsto)")
+                tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_v:.0f} J/kg (teorico, nessun innesco previsto)")
         except Exception:
-            tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_txt}")
+            tabella.append(f"DCAPE{'':<{etichetta_width-5}}{dcape_v:.0f} J/kg")
 
-    lines.append(tabella_header)
+    lines.append(f"📊 DATI TECNICI — modello {model_label}")
     lines.append("\n".join(tabella))
-    # ── Note extra sotto la tabella (solo se rilevanti) ────────────────────
+   
     # ── Note extra sotto la tabella (solo se rilevanti) ────────────────────
     rain_hrs = [(h.get("time", ""), float(h.get("precip") or 0))
                 for h in hourly if (h.get("precip") or 0) > 0.1]
@@ -696,29 +624,27 @@ def main():
 
     # ── 5. Costruisci messaggi per i 3 giorni ─────────────────────────────
     day_configs = [
-        (today,                         "OGGI",     forecast["day0"], forecast.get("day0_icon"), forecast.get("day0_arome"),  forecast.get("day0_icon2i"), model_primary, False, 0),
-        (today + datetime.timedelta(1), "DOMANI",   forecast["day1"], forecast.get("day1_icon"), forecast.get("day1_arome"),  forecast.get("day1_icon2i"), model_primary, False, 1),
-        (today + datetime.timedelta(2), "TENDENZA", forecast["day2"], forecast.get("day2_icon"), forecast.get("day2_arome"),  forecast.get("day2_icon2i"), forecast.get("model_tendency", forecast["model_fallback"]), True, 2),
+        (today,                        "OGGI",     forecast["day0"], forecast.get("day0_icon"), model_primary, False, 0),
+        (today + datetime.timedelta(1),"DOMANI",   forecast["day1"], forecast.get("day1_icon"), model_primary, False, 1),
+        (today + datetime.timedelta(2),"TENDENZA", forecast["day2"], None,                      forecast["model_fallback"], True, 2),
     ]
 
     messages = []
-    for day_date, label, day_hourly, icon_raw, arome_raw, icon2i_raw, mdl, is_tend, day_off in day_configs:
+    for day_date, label, day_hourly, icon_raw, mdl, is_tend, day_off in day_configs:
         print(f"\n⚙️  Elaborazione {label} ({_format_date(day_date)})...")
         # Il sounding UWYO è usato solo per oggi/domani (se fresco)
         uwyo_for_day = uwyo_sounding if (not is_tend and uwyo_sounding) else None
         msg = build_day_message(
-            day_date          = day_date,
-            day_hourly        = day_hourly,
-            day_label         = label,
-            model_label       = mdl,
-            is_tendency       = is_tend,
-            api_key           = GEMINI_API_KEY,
-            day_hourly_icon   = icon_raw,
-            day_hourly_arome  = arome_raw,
-            day_hourly_icon2i = icon2i_raw,
-            day_offset        = day_off,
-            temp_history      = temp_history,
-            uwyo_sounding     = uwyo_for_day,
+            day_date        = day_date,
+            day_hourly      = day_hourly,
+            day_label       = label,
+            model_label     = mdl,
+            is_tendency     = is_tend,
+            api_key         = GEMINI_API_KEY,
+            day_hourly_icon = icon_raw,
+            day_offset      = day_off,
+            temp_history    = temp_history,
+            uwyo_sounding   = uwyo_for_day,
         )
         messages.append(msg)
         print(f"  ✓ {label}: {len(msg)} chars")
