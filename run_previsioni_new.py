@@ -257,9 +257,9 @@ def build_day_message(
     day_hourly_icon:  dict = None,   # dati ICON-EU raw per spread
     day_offset:       int  = 0,
     temp_history:     list = None,   # storia T per heatwave
-    uwyo_sounding:    dict = None,   # sounding UWYO se disponibile\n    
-    html_blocks:      list = None,   # se fornito, accumula qui il blocco HTML del giorno\n) 
-  -> str:
+    uwyo_sounding:    dict = None,   # sounding UWYO se disponibile
+    html_blocks:      list = None    # se fornito, accumula qui il blocco HTML del giorno
+) -> str:
     """
     Costruisce il testo completo per un giorno:
     intestazione + ANALISI SEMPLICE + ANALISI TECNICA (dati + Gemini).
