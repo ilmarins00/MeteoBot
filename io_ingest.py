@@ -871,54 +871,41 @@ def fetch_forecast_3days(
     else:
         print(f"  [io] {ICON2I_DISPLAY} non disponibile")
 
-    # Catena di priorità a 3 livelli per i giorni 0-1: AROME (dominio francese,
-    # ma aggiornato ogni ora) → ARPAE ICON 2I (dominio Italia intera, quindi
-    # La Spezia è ben dentro il dominio, non al bordo come per AROME) →
-    # ICON-EU (riserva finale, risoluzione più bassa). _merge_hourly preferisce
-    # sempre il primo argomento quando ha un valore non-null, quindi incatenare
-    # due chiamate produce esattamente questa priorità AROME > ICON2I > ICON-EU.
-    merged_ai, stats_ai = _merge_hourly(arome_data, icon2i_data)
-    if stats_ai:
-        print(f"  [io] Variabili colmate da {ICON2I_DISPLAY}: {stats_ai}")
-    merged, stats_final = _merge_hourly(merged_ai, icon_data)
-    if stats_final:
-        print(f"  [io] Variabili colmate da ICON-EU: {stats_final}")
+    merged_01, stats_01 = _merge_hourly(arome_data, icon_data)
+    if stats_01:
+        print(f"  [io] Variabili colmate da ICON-EU (giorno 0-1): {stats_01}")
 
-    # Giorno 2 (TENDENZA): AROME non arriva così lontano, ma ARPAE ICON 2I sì
-    # (orizzonte 3 giorni) — lo usiamo al posto di ICON-EU puro come primario,
-    # con ICON-EU solo a riempire eventuali buchi.
     merged_day2, stats_day2 = _merge_hourly(icon2i_data, icon_data)
     if stats_day2:
         print(f"  [io] TENDENZA – variabili colmate da ICON-EU: {stats_day2}")
 
     if arome_data and icon2i_data:
-        model_primary_label = "AROME+ARPAE ICON 2I+ICON-EU"
+        model_primary_label = "AROME (riferimento) + ARPAE ICON 2I (confronto)"
     elif arome_data:
         model_primary_label = "AROME+ICON-EU"
-    elif icon2i_data:
-        model_primary_label = "ARPAE ICON 2I+ICON-EU"
     else:
         model_primary_label = "ICON-EU"
 
+    model_tendency_label = "ARPAE ICON 2I+ICON-EU" if icon2i_data else "ICON-EU"
+
     return {
-        "day0": extract_day_hourly(merged,      0),
-        "day1": extract_day_hourly(merged,      1),
+        "day0": extract_day_hourly(merged_01,   0),
+        "day1": extract_day_hourly(merged_01,   1),
         "day2": extract_day_hourly(merged_day2, 2),
-        # Dati grezzi per singolo modello, per giorno — servono al bollettino
-        # per mostrare il valore AROME e il valore ARPAE ICON 2I separatamente,
-        # ciascuno calcolato sul proprio profilo verticale coerente.
+        # Dati grezzi per singolo modello — SOLO per la colonna di confronto
+        # nella tabella tecnica di OGGI/DOMANI. Mai usati per punteggio,
+        # modalità o evoluzione: quelli derivano sempre e solo da "day0"/"day1"
+        # (il dataset ufficiale sopra).
         "day0_arome":  extract_day_hourly(arome_data,  0) if arome_data  else {},
         "day1_arome":  extract_day_hourly(arome_data,  1) if arome_data  else {},
         "day0_icon2i": extract_day_hourly(icon2i_data, 0) if icon2i_data else {},
         "day1_icon2i": extract_day_hourly(icon2i_data, 1) if icon2i_data else {},
-        "day2_icon2i": extract_day_hourly(icon2i_data, 2) if icon2i_data else {},
         "day0_icon":   extract_day_hourly(icon_data,   0),
         "day1_icon":   extract_day_hourly(icon_data,   1),
-        "day2_icon":   extract_day_hourly(icon_data,   2),
-        "model_primary":  model_primary_label,
-        "model_fallback": "ICON-EU",
+        "model_primary":   model_primary_label,
+        "model_tendency":  model_tendency_label,
+        "model_fallback":  "ICON-EU",
     }
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stub GRIB / NetCDF / Sounding / Radar (pronti per implementazione)
