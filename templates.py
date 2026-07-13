@@ -191,7 +191,8 @@ def render_fenomeni_html(reali, potenziali, mode, is_intense, prob_pct,
     parts = []
 
     possibili = list(reali)
-    if is_intense and mode:
+    mode_teorico = bool(mode) and ("resta teorico" in mode or "rischio pratico basso" in mode)
+    if is_intense and mode and not mode_teorico:
         possibili.append(f"Modalità convettiva: {mode}")
     if rain_evo_txt: possibili.append(rain_evo_txt)
     if wind_evo_txt: possibili.append(wind_evo_txt)
@@ -204,6 +205,8 @@ def render_fenomeni_html(reali, potenziali, mode, is_intense, prob_pct,
         parts.append(f"<div><b>Possibili</b><ul>{items}</ul></div>")
 
     potenz = list(potenziali)
+    if is_intense and mode and mode_teorico:
+        potenz.append(f"Modalità convettiva: {mode}")
     if is_intense or potenziali:
         potenz.append(f"Probabilità fenomeni convettivi intensi: {prob_pct}%")
     if potenz:
@@ -865,12 +868,12 @@ def render_day_html_block(day_label, date_str, alert_emoji, model_label,
 """
 
 
-def render_bulletin_html(day_blocks: List[str], header_info: str) -> str:
+def render_bulletin_html(day_blocks: List[str], header_info: str, title: str = "Bollettino MeteoBot") -> str:
     blocks = "\n".join(day_blocks)
     return f"""<!DOCTYPE html>
 <html lang="it"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bollettino MeteoBot</title>
+<title>{title}</title>
 <style>
 body {{ font-family: -apple-system, Arial, sans-serif; margin:12px; color:#222; }}
 table {{ margin-bottom:8px; }}
