@@ -860,11 +860,8 @@ def fetch_forecast_3days(
     timeout: int = 35,
 ) -> Dict[str, Any]:
     """
-    Scarica previsioni 3 giorni da AROME + ICON-EU e le unisce.
-    Ritorna:
-      'day0', 'day1': hourly mergiati AROME+ICON-EU
-      'day2':         hourly solo ICON-EU
-      'model_primary', 'model_fallback'
+    Scarica previsioni 3 giorni da AROME + ICON-EU (+ ICON-2I per LI e TENDENZA)
+    e le unisce.
     """
     import datetime as _dt
     today   = _dt.date.today()
@@ -889,18 +886,52 @@ def fetch_forecast_3days(
     if arome_data is None:
         print("  [io] AROME non disponibile, solo ICON-EU")
 
+    # ICON-2I (ItaliaMeteo-ARPAE, 2km): usato per il Lifted Index (AROME non lo
+    # fornisce in modo affidabile su quest'area) e come base per la TENDENZA
+    # (giorno 2), dato che AROME non copre quell'orizzonte.
+    print("  [io] Provo ICON-2I (ItaliaMeteo-ARPAE)...")
+    icon2i_data = _fetch_one_model("italia_meteo_arpae_icon_2i", start_s, end_d2, lat, lon, timeout)
+    if icon2i_data is not None:
+        print(f"  [io] ICON-2I: {len(icon2i_data['hourly']['time'])} ore")
+    else:
+        print("  [io] ICON-2I non disponibile")
+
     merged, fallback_stats = _merge_hourly(arome_data, icon_data)
     if fallback_stats:
         print(f"  [io] Variabili colmate da ICON-EU: {fallback_stats}")
+
+    # Sovrascrivi il Lifted Index con quello di ICON-2I ovunque disponibile
+    if icon2i_data is not None:
+        li_map = dict(zip(
+            icon2i_data["hourly"].get("time", []),
+            icon2i_data["hourly"].get("lifted_index", []),
+        ))
+        for dataset in (merged, icon_data):
+            h = dataset.get("hourly", {})
+            times = h.get("time", [])
+            old_li = h.get("lifted_index", [None] * len(times))
+            h["lifted_index"] = [
+                li_map.get(t, old_li[i] if i < len(old_li) else None)
+                for i, t in enumerate(times)
+            ]
+
+    # Giorno 2 (TENDENZA): usa ICON-2I se copre a sufficienza, altrimenti ICON-EU
+    day2_icon2i = extract_day_hourly(icon2i_data, 2) if icon2i_data is not None else {}
+    if day2_icon2i.get("time") and len(day2_icon2i["time"]) >= 12:
+        day2_final = day2_icon2i
+        model_fallback_label = "ICON-2I"
+    else:
+        day2_final = extract_day_hourly(icon_data, 2)
+        model_fallback_label = "ICON-EU"
+
     return {
         "day0":         extract_day_hourly(merged,     0),
         "day1":         extract_day_hourly(merged,     1),
-        "day2":         extract_day_hourly(icon_data,  2),
-        # Raw ICON-EU per giorno (usato per calcolo spread)
+        "day2":         day2_final,
         "day0_icon":    extract_day_hourly(icon_data,  0),
         "day1_icon":    extract_day_hourly(icon_data,  1),
         "model_primary":  "AROME+ICON-EU" if arome_data else "ICON-EU",
-        "model_fallback": "ICON-EU",
+        "model_fallback": model_fallback_label,
     }
 
 # ─────────────────────────────────────────────────────────────────────────────
