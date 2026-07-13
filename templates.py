@@ -407,7 +407,7 @@ def render_section2_detailed(
     lines.append("═══ ANALISI TECNICA METEOROLOGICA ═══")
 
     if alert_detail:
-        ("\n▌ LIVELLI ALLERTA ARPAL:")
+        lines.append("\n▌ LIVELLI ALLERTA ARPAL:")
         for risk, lvl in alert_detail.items():
             emoji = ALERT_EMOJI.get(lvl, "⚪")
             lines.append(f"   {emoji} {risk.capitalize()}: {lvl.upper()}")
