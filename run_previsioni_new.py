@@ -692,26 +692,16 @@ def main():
 
     # ── 4. Invia su Telegram ──────────────────────────────────────────────
     print("\n📤 Invio via Telegram (solo bollettino HTML)...")
-from templates import render_bulletin_html
+    from templates import render_bulletin_html
 
-if 'html_blocks' not in locals() and 'html_blocks' not in globals():
-    html_blocks = []
+    if html_blocks:
+        html_doc = render_bulletin_html(html_blocks, header.replace("\n", "<br>"))
+        nome_file = f"BOLLETTINO METEO DEL {today.strftime('%d-%m-%Y')}.html"
+        send_telegram_document(html_doc, filename=nome_file)
+    else:
+        print("  ⚠ Nessun blocco HTML generato, invio saltato.")
 
-if html_blocks:
-    html_doc = render_bulletin_html(html_blocks, header.replace("\n", "<br>"))
-    nome_file = f"BOLLETTINO METEO DEL {today.strftime('%d-%m-%Y')}.html"
-    send_telegram_document(html_doc, filename=nome_file)
-else:
-    print("  ⚠ Nessun blocco HTML generato, invio saltato.")
-
-    # ── 5. Salva JSON ──────────────────────────────────────────────────────
-if 'messages' not in locals() and 'messages' not in globals():
-    messages = []
-
-if 'now' not in locals() and 'now' not in globals():
-    from datetime import datetime
-    now = datetime.now()
-  
+    # ── 5. Salva JSON ────────────────────────────────────────────────────
     export_json({"messages": messages, "generated": now.isoformat()}, "previsioni_output.json")
     print(f"\n✅ Completato. Output in previsioni_output.json")
 
