@@ -26,6 +26,22 @@ def render_analisi_semplice(
 ) -> str:
     return render_section1_simple(obs, params, 0, "", giorno_label)
 
+_RISK_EMOJI = {
+    "Trascurabile": "⬜",
+    "Marginale": "🟩",
+    "Moderato": "❗",
+    "Elevato": "‼️",
+    "Estremo": "🟥",
+}
+
+def render_phenomena_risks(risks: Dict[str, str]) -> str:
+    """Renderizza la tabella dei rischi per fenomeno."""
+    lines = ["📋 RISCHIO FENOMENI INTENSI"]
+    for phen, level in risks.items():
+        emoji = _RISK_EMOJI.get(level, "⚪")
+        lines.append(f"  {emoji} {phen:<12} {level}")
+    return "\n".join(lines)
+
 def render_section1_simple(
     obs: Dict,
     params: Dict,
