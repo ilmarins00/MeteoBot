@@ -944,24 +944,31 @@ def fetch_forecast_3days(
     else:
         print("  [io] ICON-2I non disponibile")
 
+    print("  [io] Provo ECMWF IFS (per Lifted Index)...")
+    ecmwf_data = _fetch_one_model("ecmwf_ifs025", start_s, end_d2, lat, lon, timeout)
+    if ecmwf_data is not None:
+        print(f"  [io] ECMWF: {len(ecmwf_data['hourly']['time'])} ore")
+    else:
+        print("  [io] ECMWF non disponibile")
+
     merged, fallback_stats = _merge_hourly(arome_data, icon_data)
     if fallback_stats:
         print(f"  [io] Variabili colmate da ICON-EU: {fallback_stats}")
 
     # Sovrascrivi il Lifted Index con quello di ICON-2I ovunque disponibile
-    if icon2i_data is not None:
+    if ecmwf_data is not None:
         li_map = dict(zip(
-            icon2i_data["hourly"].get("time", []),
-            icon2i_data["hourly"].get("lifted_index", []),
-        ))
-        for dataset in (merged, icon_data):
-            h = dataset.get("hourly", {})
-            times = h.get("time", [])
-            old_li = h.get("lifted_index", [None] * len(times))
-            h["lifted_index"] = [
-                li_map.get(t, old_li[i] if i < len(old_li) else None)
-                for i, t in enumerate(times)
-            ]
+        ecmwf_data["hourly"].get("time", []),
+        ecmwf_data["hourly"].get("lifted_index", []),
+    ))
+    for dataset in (merged, icon_data):
+        h = dataset.get("hourly", {})
+        times = h.get("time", [])
+        old_li = h.get("lifted_index", [None]*len(times))
+        h["lifted_index"] = [
+            li_map.get(t, old_li[i] if i < len(old_li) else None)
+            for i, t in enumerate(times)
+        ]
 
     # Giorno 2 (TENDENZA): usa ICON-2I se copre a sufficienza, altrimenti ICON-EU
     day2_icon2i = extract_day_hourly(icon2i_data, 2) if icon2i_data is not None else {}
