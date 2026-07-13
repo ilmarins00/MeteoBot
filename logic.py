@@ -208,7 +208,7 @@ def assess_phenomena_risks(params: Dict, obs: Dict, hourly: list) -> Dict[str, s
         r["Pioggia"] = "Estremo"
 
     # --- VENTO ---
-    gust = obs.get("wind_gust_km_h", 0) or 0
+    gust = obs.get("wind_gust_kmh", 0) or 0
     max_gust_hourly = max((h.get("wind_gust", h.get("wind", 0)) or 0 for h in hourly), default=0)
     gust_eff = max(gust, max_gust_hourly)
 
@@ -228,7 +228,7 @@ def assess_phenomena_risks(params: Dict, obs: Dict, hourly: list) -> Dict[str, s
     t_min = obs.get("temp_min_c", obs.get("temp_c", 0)) or 0
 
     if t_max >= 40 or t_min <= -10:
-        r["Tempertura"] = "Estremo"
+        r["Temperatura"] = "Estremo"
     elif t_max >= 38 or t_min <= -5:
         r["Temperatura"] = "Elevato"
     elif t_max >= 35 or t_min <= 0:
