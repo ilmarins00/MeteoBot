@@ -34,6 +34,48 @@ _RISK_EMOJI = {
     "Estremo": "🟥",
 }
 
+_TECH_DESCRIPTIONS = {
+    "SBCAPE": "Energia convettiva disponibile per temporali (particella da superficie)",
+    "MUCAPE": "Energia dalla particella più instabile del profilo",
+    "CIN": "Inibizione: energia necessaria per innescare la convezione",
+    "LI": "Indice di sollevamento: negativo = instabile, positivo = stabile",
+    "Shear06": "Shear 0-6 km: organizzazione e durata delle celle temporalesche",
+    "SRH03": "Elicità 0-3 km: potenziale di rotazione delle celle",
+    "PWAT": "Acqua precipitabile totale nella colonna atmosferica",
+    "SCP": "Parametro composito supercella (CAPE × shear × SRH)",
+    "K-Index": "Indice K: potenziale per pioggia convettiva",
+    "Totals-Totals": "Indice di instabilità a media quota (850+500 hPa)",
+    "DCAPE": "Energia per downburst: potenziale raffiche discendenti",
+}
+
+def render_tech_table_html(params: Dict) -> str:
+    """Tabella HTML a 3 colonne: parametro | valore | descrizione."""
+    rows = [
+        ("SBCAPE", params.get("SBCAPE"), "J/kg"),
+        ("MUCAPE", params.get("MUCAPE"), "J/kg"),
+        ("CIN", params.get("CIN"), "J/kg"),
+        ("LI", params.get("LI"), ""),
+        ("Shear06", params.get("shear_0_6"), "kt"),
+        ("SRH03", params.get("srh_0_3"), "m²/s²"),
+        ("PWAT", params.get("PWAT"), "mm"),
+        ("SCP", params.get("SCP"), ""),
+        ("K-Index", params.get("KI"), ""),
+        ("Totals-Totals", params.get("TT"), ""),
+        ("DCAPE", params.get("DCAPE"), "J/kg"),
+    ]
+    html = '<table style="border-collapse:collapse;width:100%;font-size:14px">'
+    html += '<tr style="background:#e0e0e0"><th style="padding:6px;border:1px solid #999;text-align:left">Parametro</th>'
+    html += '<th style="padding:6px;border:1px solid #999;text-align:left">Valore</th>'
+    html += '<th style="padding:6px;border:1px solid #999;text-align:left">Descrizione</th></tr>'
+    for name, val, unit in rows:
+        vstr = _fmt(val, '.1f', f' {unit}') if val is not None else "N/D"
+        desc = _TECH_DESCRIPTIONS.get(name, "")
+        html += f'<tr><td style="padding:6px;border:1px solid #ccc">{name}</td>'
+        html += f'<td style="padding:6px;border:1px solid #ccc">{vstr}</td>'
+        html += f'<td style="padding:6px;border:1px solid #ccc;color:#555">{desc}</td></tr>'
+    html += '</table>'
+    return html
+
 def render_phenomena_risks(risks: Dict[str, str]) -> str:
     """Renderizza la tabella dei rischi per fenomeno."""
     lines = ["📋 RISCHIO FENOMENI INTENSI"]
