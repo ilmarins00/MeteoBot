@@ -690,16 +690,14 @@ def main():
         print(f"  ✓ {label}: {len(msg)} chars")
 
     # ── 4. Invia su Telegram ──────────────────────────────────────────────
-    print("\n📤 Invio via Telegram...")
-    from templates import render_bulletin_html
-    if html_blocks:
-        html_doc = render_bulletin_html(html_blocks, header.replace("\n", "<br>"))
-        send_telegram_document(html_doc, filename=f"bollettino_{today.strftime('%Y%m%d')}.html")
-    # Prima: header + giorno 0 nello stesso messaggio
-    send_telegram(header + messages[0])
-    # Poi: giorni 1 e 2 separati
-    for msg in messages[1:]:
-        send_telegram(msg)
+    print("\n📤 Invio via Telegram (solo bollettino HTML)...")
+from templates import render_bulletin_html
+if html_blocks:
+    html_doc = render_bulletin_html(html_blocks, header.replace("\n", "<br>"))
+    nome_file = f"BOLLETTINO METEO DEL {today.strftime('%d-%m-%Y')}.html"
+    send_telegram_document(html_doc, filename=nome_file)
+else:
+    print("  ⚠ Nessun blocco HTML generato, invio saltato.")
 
     # ── 5. Salva JSON ──────────────────────────────────────────────────────
     export_json({"messages": messages, "generated": now.isoformat()}, "previsioni_output.json")
