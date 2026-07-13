@@ -611,6 +611,7 @@ import atexit
 LOCK_FILE = "/tmp/meteobot.lock"
 
 def main():
+    from datetime import timedelta
     if os.path.exists(LOCK_FILE):
         print("⚠️ Un'altra esecuzione è già in corso, esco per evitare doppioni.")
         return
