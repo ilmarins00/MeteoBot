@@ -772,6 +772,27 @@ def _hourly_shear_srh(
         "srh_0_3":   round(srh.get("srh_0_3", 0), 1),
     }
 
+def _hourly_full_profile(day_hourly, idx, surf_t_c, surf_td_c, surf_p_hpa):
+    LVLS = {
+        "1000hPa": (100000.0,100.0), "925hPa": (92500.0,760.0),
+        "850hPa": (85000.0,1460.0),  "700hPa": (70000.0,3010.0),
+        "600hPa": (60000.0,4500.0),  "500hPa": (50000.0,5570.0),
+        "400hPa": (40000.0,7180.0),  "300hPa": (30000.0,9180.0),
+    }
+    _DEW = {"1000hPa","925hPa","850hPa","700hPa","500hPa","300hPa"}
+    p, T, Td, h = [], [], [], []
+    if surf_t_c is not None and surf_td_c is not None:
+        p.append((surf_p_hpa or 1013.0)*100); T.append(surf_t_c+273.15)
+        Td.append(surf_td_c+273.15); h.append(float(ELEVATION))
+    for sfx,(pa,zm) in LVLS.items():
+        tv  = day_hourly.get(f"temperature_{sfx}", [])
+        tdv = day_hourly.get(f"dew_point_{sfx}" if sfx in _DEW else f"dewpoint_{sfx}", [])
+        if idx < len(tv) and tv[idx] is not None:
+            Tk = tv[idx]+273.15
+            Tdk = tdv[idx]+273.15 if idx < len(tdv) and tdv[idx] is not None else Tk-3.0
+            p.append(pa); T.append(Tk); Td.append(Tdk); h.append(zm)
+    return p, T, Td, h
+
 def build_day_hourly_list(
     day_hourly: Dict[str, Any],
     day_hourly_secondary: Optional[Dict[str, Any]] = None,
@@ -824,34 +845,61 @@ def build_day_hourly_list(
         surf_speed = float(winds[i]) if i < len(winds) and winds[i] is not None else None
         surf_dir   = float(dirs[i])  if i < len(dirs)  and dirs[i]  is not None else None
         wp = _hourly_shear_srh(day_hourly, i, surf_speed, surf_dir)
+        surf_t  = float(temps[i]) if i < len(temps) and temps[i] is not None else None
+        dew2m   = day_hourly.get("dewpoint_2m", [])
+        surf_td = float(dew2m[i]) if i < len(dew2m) and dew2m[i] is not None else None
+        sp2m    = day_hourly.get("surface_pressure", [])
+        surf_p  = float(sp2m[i]) if i < len(sp2m) and sp2m[i] is not None else None
 
-        result.append({
-            "time":       t_key,
-            "T":          temps[i]  if i < len(temps)  else None,
-            "RH":         rhs[i]    if i < len(rhs)    else None,
-            "wind":       float(winds[i]) if i < len(winds) and winds[i] is not None else None,
-            "wind_dir":   dirs[i]   if i < len(dirs)   else None,
-            "wind_gust":  float(gusts[i]) if i < len(gusts) and gusts[i] is not None else 0.0,
-            "cloud":      clouds[i] if i < len(clouds) and clouds[i] is not None else None,
-            "precip":     p,
-            "precip_cum": round(cum, 1),
-            "CAPE":       float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0,
-            "CIN":        cins[i]   if i < len(cins)  else 0,
-            "shear":      wp["shear_0_6"],   # 0-6km kt (etichetta usata a valle)
-            "SRH":        wp["srh_0_3"],     # 0-3km m²/s² (etichetta usata a valle)
-            "shear_0_1":  wp["shear_0_1"],
-            "shear_0_3":  wp["shear_0_3"],
-            "srh_0_1":    wp["srh_0_1"],
-            "PWAT": 0,
-            "wmo_code":   wmos[i]   if i < len(wmos)  else None,
-            "alert":      alert,
-            "LI":         lifted[i] if i < len(lifted) and lifted[i] is not None else None,
-            # Valori modello secondario per spread
-            f"CAPE_{secondary_label}":  cape2_v,
-            f"gust_{secondary_label}":  gust2_v,
-            f"precip_{secondary_label}": prec2_v,
-        })
-    return result
+        p_prof, T_prof, Td_prof, h_prof = _hourly_full_profile(day_hourly, i, surf_t, surf_td, surf_p)
+
+        pwat_h = ki_h = tt_h = dcape_h = scp_h = None
+        if len(p_prof) >= 4:
+            from indices import pwat_from_profile, k_index, totals_totals, supercell_composite
+            pwat_h = pwat_from_profile(p_prof, T_prof, Td_prof)
+            t850v = day_hourly.get("temperature_850hPa", []); td850v = day_hourly.get("dew_point_850hPa", [])
+            t700v = day_hourly.get("temperature_700hPa", []); td700v = day_hourly.get("dew_point_700hPa", [])
+            t500v = day_hourly.get("temperature_500hPa", [])
+            if all(i < len(v) and v[i] is not None for v in (t850v,td850v,t700v,td700v,t500v)):
+                ki_h = round(k_index(t850v[i], td850v[i], t700v[i], td700v[i], t500v[i]), 1)
+                tt_h = round(totals_totals(t850v[i], td850v[i], t500v[i]), 1)
+            from thermo import dcape_from_profile
+            dcape_h = dcape_from_profile(p_prof, T_prof, Td_prof)
+            cape_h  = float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0
+            if wp["shear_0_6"] is not None and wp["srh_0_3"] is not None:
+                scp_h = round(supercell_composite(cape_h, wp["srh_0_3"], wp["shear_0_6"]), 2)
+        
+                result.append({
+                    "time":       t_key,
+                    "T":          temps[i]  if i < len(temps)  else None,
+                    "RH":         rhs[i]    if i < len(rhs)    else None,
+                    "wind":       float(winds[i]) if i < len(winds) and winds[i] is not None else None,
+                    "wind_dir":   dirs[i]   if i < len(dirs)   else None,
+                    "wind_gust":  float(gusts[i]) if i < len(gusts) and gusts[i] is not None else 0.0,
+                    "cloud":      clouds[i] if i < len(clouds) and clouds[i] is not None else None,
+                    "precip":     p,
+                    "precip_cum": round(cum, 1),
+                    "CAPE":       float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0,
+                    "CIN":        cins[i]   if i < len(cins)  else 0,
+                    "shear":      wp["shear_0_6"],   # 0-6km kt (etichetta usata a valle)
+                    "SRH":        wp["srh_0_3"],     # 0-3km m²/s² (etichetta usata a valle)
+                    "shear_0_1":  wp["shear_0_1"],
+                    "shear_0_3":  wp["shear_0_3"],
+                    "PWAT": pwat_h if pwat_h is not None else 0,
+                    "KI": ki_h,
+                    "TT": tt_h, 
+                    "DCAPE": dcape_h, 
+                    "SCP": scp_h,
+                    "srh_0_1":    wp["srh_0_1"],
+                    "wmo_code":   wmos[i]   if i < len(wmos)  else None,
+                    "alert":      alert,
+                    "LI":         lifted[i] if i < len(lifted) and lifted[i] is not None else None,
+                    # Valori modello secondario per spread
+                    f"CAPE_{secondary_label}":  cape2_v,
+                    f"gust_{secondary_label}":  gust2_v,
+                    f"precip_{secondary_label}": prec2_v,
+                })
+            return result
 
 
 def fetch_forecast_3days(
