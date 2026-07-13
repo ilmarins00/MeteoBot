@@ -71,18 +71,28 @@ def render_section1_simple(
     # ── Precipitazioni e Rischio Convettivo Nascosto ──────────────────────
     scp = float(params.get("SCP", 0) or 0)
     stp = float(params.get("STP", 0) or 0)
-    cin = float(params.get("CIN", 0) or 0)
+    cin = abs(float(params.get("CIN", 0) or 0))
     lcl = float(params.get("LCL", 1500) or 1500)
+    precip_now = float(obs.get("precip_rate_mm_h", 0) or 0)
 
-    is_capped = cin <= thresholds.CIN_STRONG or lcl >= thresholds.LCL_HIGH or rh <= 35
+    is_capped = cin >= abs(thresholds.CIN_STRONG) or lcl >= thresholds.LCL_HIGH or rh <= 35
     shear_06 = float(params.get("shear_0_6", 0) or 0)
     shear_organizzato = shear_06 >= thresholds.SHEAR_06_ORGANIZED
 
-    if (stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH) and not is_capped and shear_organizzato:
+    wmo_con_pioggia = wmo_dom in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99)
+    ha_innesco = precip_now > 1.0 or wmo_con_pioggia
+
+    if (stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH) and not is_capped and shear_organizzato and ha_innesco:
         lines.append(
             "ALLERTA CONVETTIVA: l'atmosfera è molto instabile e lo shear del vento è "
             "sufficiente a organizzare temporali forti, con possibili grandinate di grosse "
             "dimensioni e raffiche violente."
+        )
+    elif (stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH) and not is_capped and shear_organizzato and not ha_innesco:
+        lines.append(
+            "L'ambiente è dinamicamente favorevole a temporali organizzati (energia e shear "
+            "elevati), ma senza un innesco previsto nei dati orari il rischio resta teorico, "
+            "non un evento atteso per la giornata."
         )
     elif (scp >= thresholds.SCP_MODERATE and shear_organizzato and wmo_dom >= 80) and not is_capped:
         lines.append(
