@@ -121,17 +121,18 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
                 params["MLCAPE"] = model_mlcape
                 params["CIN"] = model_cin
                 params["SBCIN"] = model_cin
-               
-            cape_check = max(model_cape, model_mucape)
-                # Soglia continua invece di due fasce fisse: più il CAPE è
-                # basso, meno negativo può essere un LI credibile.
-                li_limit = -6.0 - (cape_check / 150.0)
-                if cape_check < 1500 and model_li < li_limit:
-                    params["LI"] = None  # inattendibile, scarta
+
+                # Controllo plausibilità LI: più il CAPE è basso, meno
+                # negativo può essere un LI credibile (soglia continua).
+                cape_check = max(model_cape, model_mucape)
+                if model_li is None:
+                    params["LI"] = None
                 else:
-                    params["LI"] = model_li
-            else:
-                params["LI"] = None  # niente fallback al thermo low-res
+                    li_limit = -6.0 - (cape_check / 150.0)
+                    if cape_check < 1500 and model_li < li_limit:
+                        params["LI"] = None  # inattendibile, scarta
+                    else:
+                        params["LI"] = model_li
 
             # — PWAT nativo (integrazione discreta)
             params["PWAT"] = pwat_from_profile(pres, temp, dewp)
