@@ -122,14 +122,12 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
                 params["CIN"] = model_cin
                 params["SBCIN"] = model_cin
                
-            if model_li is not None:
-                # Controllo di consistenza: LI molto negativo con CAPE basso
-                # è fisicamente impossibile (LI < -8 richiede tipicamente CAPE > 1000)
-                cape_check = max(model_cape, model_mucape)
-                if cape_check < 200 and model_li < -8:
+            cape_check = max(model_cape, model_mucape)
+                # Soglia continua invece di due fasce fisse: più il CAPE è
+                # basso, meno negativo può essere un LI credibile.
+                li_limit = -6.0 - (cape_check / 150.0)
+                if cape_check < 1500 and model_li < li_limit:
                     params["LI"] = None  # inattendibile, scarta
-                elif cape_check < 500 and model_li < -12:
-                    params["LI"] = None
                 else:
                     params["LI"] = model_li
             else:
