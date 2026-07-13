@@ -336,7 +336,7 @@ _SURF_VARS_MULTIDAY = [
     "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
     "surface_pressure", "cape", "lifted_index", "convective_inhibition",
     "freezing_level_height", "snowfall_height", "visibility",
-    "soil_moisture_0_to_10cm",   # per Flash Flood Guidance
+    "soil_moisture_0_to_10cm", "cloud_cover_mid",
 ]
 
 _PLEVEL_VARS_MULTIDAY = [
@@ -579,6 +579,7 @@ def build_day_obs(
     cloud       = _agg("cloud_cover")
     cloud_low   = _agg("cloud_cover_low")
     cloud_high  = _agg("cloud_cover_high")
+    cloud_mid = _agg("cloud_cover_mid")
     p_hpa       = _agg("surface_pressure")
     snow_lvl    = _agg("snowfall_height",  "min") or 2000.0
     vis_m       = _agg("visibility",       "min") or 10000.0
@@ -661,6 +662,7 @@ def build_day_obs(
         "cloud_cover_pct": cloud,
         "cloud_low_pct":   cloud_low,
         "cloud_high_pct":  cloud_high,
+        "cloud_mid_pct": cloud_mid,
         "precip_rate_mm_h": precip_max,
         "rain_1h_mm":       precip_max,
         "rain_24h_mm":      precip_sum,
@@ -811,6 +813,9 @@ def build_day_hourly_list(
     dirs    = day_hourly.get("wind_direction_10m", [])
     gusts   = day_hourly.get("wind_gusts_10m", [])
     clouds  = day_hourly.get("cloud_cover", [])
+    clouds_low  = day_hourly.get("cloud_cover_low", [])
+    clouds_mid  = day_hourly.get("cloud_cover_mid", [])
+    clouds_high = day_hourly.get("cloud_cover_high", [])
     precips = day_hourly.get("precipitation", [])
     capes   = day_hourly.get("cape", [])
     cins    = day_hourly.get("convective_inhibition", [])
@@ -877,6 +882,9 @@ def build_day_hourly_list(
                     "wind_dir":   dirs[i]   if i < len(dirs)   else None,
                     "wind_gust":  float(gusts[i]) if i < len(gusts) and gusts[i] is not None else 0.0,
                     "cloud":      clouds[i] if i < len(clouds) and clouds[i] is not None else None,
+                    "cloud_low":  clouds_low[i]  if i < len(clouds_low)  and clouds_low[i]  is not None else None,
+                    "cloud_mid":  clouds_mid[i]  if i < len(clouds_mid)  and clouds_mid[i]  is not None else None,
+                    "cloud_high": clouds_high[i] if i < len(clouds_high) and clouds_high[i] is not None else None,
                     "precip":     p,
                     "precip_cum": round(cum, 1),
                     "CAPE":       float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0,
