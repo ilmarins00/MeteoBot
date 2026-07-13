@@ -706,6 +706,10 @@ else:
     # ── 5. Salva JSON ──────────────────────────────────────────────────────
 if 'messages' not in locals() and 'messages' not in globals():
     messages = []
+
+if 'now' not in locals() and 'now' not in globals():
+    from datetime import datetime
+    now = datetime.now()
   
     export_json({"messages": messages, "generated": now.isoformat()}, "previsioni_output.json")
     print(f"\n✅ Completato. Output in previsioni_output.json")
