@@ -618,7 +618,7 @@ def main():
     atexit.register(lambda: os.path.exists(LOCK_FILE) and os.remove(LOCK_FILE))
 
     print("=" * 60)
-    now   = datetime.datetime.now(TZ_ROME)
+    now   = datetime.now(TZ_ROME)
     today = now.date()
     print(f"\nOra: {now.strftime('%d/%m/%Y %H:%M')} – {LOCATION_NAME}")
     # ── 1. Fetch dati 3 giorni ────────────────────────────────────────────
