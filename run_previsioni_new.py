@@ -663,8 +663,8 @@ def main():
     # ── 5. Costruisci messaggi per i 3 giorni ─────────────────────────────
     day_configs = [
         (today,                        "OGGI",     forecast["day0"], forecast.get("day0_icon"), model_primary, False, 0),
-        (today + datetime.timedelta(1),"DOMANI",   forecast["day1"], forecast.get("day1_icon"), model_primary, False, 1),
-        (today + datetime.timedelta(2),"TENDENZA", forecast["day2"], None,                      forecast["model_fallback"], True, 2),
+        (today + timedelta(1),"DOMANI",   forecast["day1"], forecast.get("day1_icon"), model_primary, False, 1),
+        (today + timedelta(2),"DOPODOMANI", forecast["day2"], forecast.get("day2_icon"), model_primary, False, 2),
     ]
 
     messages = []
