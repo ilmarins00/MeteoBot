@@ -253,6 +253,13 @@ def render_section1_simple(
     elif rh <= 35:
         lines.append(f"Aria secca (umidità relativa intorno al {rh:.0f}%): scarsa nuvolosità, buona visibilità e nessun disagio da afa.")
 
+    cl_v = obs.get("cloud_low_pct"); cm_v = obs.get("cloud_mid_pct"); ch_v = obs.get("cloud_high_pct")
+    if cl_v is not None or cm_v is not None or ch_v is not None:
+        lines.append(
+            f"Nuvolosità: strati bassi {_fmt(cl_v,'.0f','%')}, "
+            f"medi {_fmt(cm_v,'.0f','%')}, alti {_fmt(ch_v,'.0f','%')}."
+        )
+
     # ── Precipitazioni e Rischio Convettivo Nascosto ──────────────────────
     scp = float(params.get("SCP", 0) or 0)
     stp = float(params.get("STP", 0) or 0)
@@ -758,6 +765,9 @@ def render_hourly_meteo_table_html(hourly: List[Dict], max_rows: int = 24) -> st
              '<th style="padding:4px;border:1px solid #999">Temp</th>'
              '<th style="padding:4px;border:1px solid #999">Umidità</th>'
              '<th style="padding:4px;border:1px solid #999">Vento</th>'
+             '<th style="padding:4px;border:1px solid #999">Nuv Bassa</th>'
+             '<th style="padding:4px;border:1px solid #999">Nuv Media</th>'
+             '<th style="padding:4px;border:1px solid #999">Nuv Alta</th>'
              '<th style="padding:4px;border:1px solid #999">Pioggia</th></tr>')
     for h in hourly[:max_rows]:
         t = h.get("time", "")
@@ -765,12 +775,18 @@ def render_hourly_meteo_table_html(hourly: List[Dict], max_rows: int = 24) -> st
         rh = _fmt(h.get("RH"), ".0f", "%")
         wind = _fmt(h.get("wind_gust", h.get("wind", 0)), ".0f", " km/h")
         prec = _fmt(h.get("precip", 0), ".1f", " mm")
+        nlow = _ftm(h.get("cloud_low"), ".0f", "%")
+        nmed = _ftm(h.get("cloud_mid"), ".0f", "%")
+        nhig = _ftm(h.get("cloud_high"), ".0f", "%")
         dir_txt = _wind_dir_16(h.get("wind_dir"))
         html += (f'<tr><td style="padding:4px;border:1px solid #ccc">{t}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{temp}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{rh}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{wind}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{dir_txt}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{nlow}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{nmed}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{nhig}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{prec}</td></tr>')
     html += '</table>'
     return html
