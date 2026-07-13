@@ -174,6 +174,42 @@ def render_phenomena_risks_html(risks: Dict[str, str]) -> str:
         + rows + '</table></div>'
     )
 
+def render_fenomeni_html(
+    reali: List[str],
+    potenziali: List[str],
+    mode: str,
+    is_intense: bool,
+    prob_pct: int,
+    ffg_result: Optional[Dict] = None,
+    hw_result: Optional[Dict] = None,
+    rain_evo_txt: str = "",
+    wind_evo_txt: str = "",
+) -> str:
+    """Sezione Fenomeni in HTML: mostra SOLO le voci rilevanti, stessa
+    struttura/ordine del messaggio Telegram normale."""
+    parts = []
+    if is_intense:
+        parts.append(f"<p>🌪️ <b>Modalità:</b> {mode}</p>")
+    if reali:
+        items = "".join(f"<li>{h}</li>" for h in reali)
+        parts.append(f"<p>⚠️ <b>Fenomeni in atto/certi:</b></p><ul>{items}</ul>")
+    if potenziali:
+        items = "".join(f"<li>{h}</li>" for h in potenziali)
+        parts.append(f"<p>⏳ <b>Fenomeni potenziali (richiedono innesco):</b></p><ul>{items}</ul>")
+    if rain_evo_txt:
+        parts.append(f"<p>🌧️ {rain_evo_txt}</p>")
+    if wind_evo_txt:
+        parts.append(f"<p>💨 {wind_evo_txt}</p>")
+    if ffg_result:
+        parts.append(f"<p>🌊 FFG {ffg_result['score']:.2f}/1.0 – {ffg_result['desc']}</p>")
+    if hw_result and hw_result.get("severity") not in ("nessuna", None, ""):
+        parts.append(f"<p>🌡️ Calore: {hw_result.get('desc', '')}</p>")
+    if is_intense or potenziali:
+        parts.append(f"<p>🎲 <b>Probabilità fenomeni convettivi intensi:</b> {prob_pct}%</p>")
+    if not reali and not is_intense and not potenziali:
+        parts.append("<p>🟢 Nessun fenomeno severo rilevato</p>")
+    return "\n".join(parts)
+
 def render_section1_simple(
     obs: Dict,
     params: Dict,
@@ -712,27 +748,55 @@ Modalità convettiva: {mode.capitalize()}
 
     return msg.strip()
 
-def render_hourly_table_html(hourly: List[Dict], max_rows: int = 24) -> str:
+def render_hourly_meteo_table_html(hourly: List[Dict], max_rows: int = 24) -> str:
     if not hourly:
         return "<p>Dati orari non disponibili.</p>"
     html = '<table style="border-collapse:collapse;width:100%;font-size:13px">'
     html += ('<tr style="background:#e0e0e0">'
              '<th style="padding:4px;border:1px solid #999">Ora</th>'
              '<th style="padding:4px;border:1px solid #999">Temp</th>'
+             '<th style="padding:4px;border:1px solid #999">Umidità</th>'
              '<th style="padding:4px;border:1px solid #999">Vento</th>'
-             '<th style="padding:4px;border:1px solid #999">Pioggia</th>'
-             '<th style="padding:4px;border:1px solid #999">CAPE</th></tr>')
+             '<th style="padding:4px;border:1px solid #999">Pioggia</th></tr>')
     for h in hourly[:max_rows]:
         t = h.get("time", "")
         temp = _fmt(h.get("T"), ".1f", "°C")
+        rh = _fmt(h.get("RH"), ".0f", "%")
         wind = _fmt(h.get("wind_gust", h.get("wind", 0)), ".0f", " km/h")
         prec = _fmt(h.get("precip", 0), ".1f", " mm")
-        cape = _fmt(h.get("CAPE", 0), ".0f")
         html += (f'<tr><td style="padding:4px;border:1px solid #ccc">{t}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{temp}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{rh}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{wind}</td>'
-                 f'<td style="padding:4px;border:1px solid #ccc">{prec}</td>'
-                 f'<td style="padding:4px;border:1px solid #ccc">{cape}</td></tr>')
+                 f'<td style="padding:4px;border:1px solid #ccc">{prec}</td></tr>')
+    html += '</table>'
+    return html
+
+
+def render_hourly_tech_table_html(hourly: List[Dict], max_rows: int = 24) -> str:
+    if not hourly:
+        return "<p>Dati tecnici orari non disponibili.</p>"
+    html = '<table style="border-collapse:collapse;width:100%;font-size:13px">'
+    html += ('<tr style="background:#e0e0e0">'
+             '<th style="padding:4px;border:1px solid #999">Ora</th>'
+             '<th style="padding:4px;border:1px solid #999">CAPE</th>'
+             '<th style="padding:4px;border:1px solid #999">CIN</th>'
+             '<th style="padding:4px;border:1px solid #999">LI</th>'
+             '<th style="padding:4px;border:1px solid #999">Shear06</th>'
+             '<th style="padding:4px;border:1px solid #999">SRH03</th></tr>')
+    for h in hourly[:max_rows]:
+        t = h.get("time", "")
+        cape = _fmt(h.get("CAPE", 0), ".0f")
+        cin  = _fmt(h.get("CIN", 0), ".0f")
+        li   = _fmt(h.get("LI"), ".1f")
+        shear = _fmt(h.get("shear"), ".0f", " kt")
+        srh  = _fmt(h.get("SRH"), ".0f")
+        html += (f'<tr><td style="padding:4px;border:1px solid #ccc">{t}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{cape}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{cin}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{li}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{shear}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{srh}</td></tr>')
     html += '</table>'
     return html
 
