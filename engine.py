@@ -121,10 +121,19 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
                 params["MLCAPE"] = model_mlcape
                 params["CIN"] = model_cin
                 params["SBCIN"] = model_cin
-                if model_li is not None:
+               
+            if model_li is not None:
+                # Controllo di consistenza: LI molto negativo con CAPE basso
+                # è fisicamente impossibile (LI < -8 richiede tipicamente CAPE > 1000)
+                cape_check = max(model_cape, model_mucape)
+                if cape_check < 200 and model_li < -8:
+                    params["LI"] = None  # inattendibile, scarta
+                elif cape_check < 500 and model_li < -12:
+                    params["LI"] = None
+                else:
                     params["LI"] = model_li
-                elif "LI" not in params or params.get("LI") is None:
-                    params["LI"] = thermo.get("LI")
+            else:
+                params["LI"] = None  # niente fallback al thermo low-res
 
             # — PWAT nativo (integrazione discreta)
             params["PWAT"] = pwat_from_profile(pres, temp, dewp)
