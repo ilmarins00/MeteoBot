@@ -76,12 +76,21 @@ def render_tech_table_html(params: Dict) -> str:
     html += '</table>'
     return html
 
+_RISK_DESCRIPTIONS = {
+    "Trascurabile": "assenza o quasi di fenomeni intensi",
+    "Marginale": "bassa probabilità di fenomeni intensi isolati",
+    "Moderato": "probabilità significativa di fenomeni localmente intensi",
+    "Elevato": "fenomeni intensi estesi e diffusi",
+    "Estremo": "fenomeni molto intensi, persistenti e generalizzati",
+}
+
 def render_phenomena_risks(risks: Dict[str, str]) -> str:
     """Renderizza la tabella dei rischi per fenomeno."""
     lines = ["📋 RISCHIO FENOMENI INTENSI"]
     for phen, level in risks.items():
         emoji = _RISK_EMOJI.get(level, "⚪")
-        lines.append(f"  {emoji} {phen:<12} {level}")
+        desc = _RISK_DESCRIPTIONS.get(level, "")
+        lines.append(f"  {emoji} {phen:<12} {level} — {desc}")
     return "\n".join(lines)
 
 def render_section1_simple(
