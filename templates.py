@@ -181,40 +181,34 @@ def render_phenomena_risks_html(risks: Dict[str, str]) -> str:
         + rows + '</table></div>'
     )
 
-def render_fenomeni_html(
-    reali: List[str],
-    potenziali: List[str],
-    mode: str,
-    is_intense: bool,
-    prob_pct: int,
-    ffg_result: Optional[Dict] = None,
-    hw_result: Optional[Dict] = None,
-    rain_evo_txt: str = "",
-    wind_evo_txt: str = "",
-) -> str:
-    """Sezione Fenomeni in HTML: mostra SOLO le voci rilevanti, stessa
-    struttura/ordine del messaggio Telegram normale."""
+def render_fenomeni_html(reali, potenziali, mode, is_intense, prob_pct,
+                          ffg_result=None, hw_result=None,
+                          rain_evo_txt="", wind_evo_txt=""):
     parts = []
-    if is_intense:
-        parts.append(f"<p>🌪️ <b>Modalità:</b> {mode}</p>")
-    if reali:
-        items = "".join(f"<li>{h}</li>" for h in reali)
-        parts.append(f"<p>⚠️ <b>Fenomeni in atto/certi:</b></p><ul>{items}</ul>")
-    if potenziali:
-        items = "".join(f"<li>{h}</li>" for h in potenziali)
-        parts.append(f"<p>⏳ <b>Fenomeni potenziali (richiedono innesco):</b></p><ul>{items}</ul>")
-    if rain_evo_txt:
-        parts.append(f"<p>🌧️ {rain_evo_txt}</p>")
-    if wind_evo_txt:
-        parts.append(f"<p>💨 {wind_evo_txt}</p>")
+
+    possibili = list(reali)
+    if is_intense and mode:
+        possibili.append(f"Modalità convettiva: {mode}")
+    if rain_evo_txt: possibili.append(rain_evo_txt)
+    if wind_evo_txt: possibili.append(wind_evo_txt)
     if ffg_result:
-        parts.append(f"<p>🌊 FFG {ffg_result['score']:.2f}/1.0 – {ffg_result['desc']}</p>")
+        possibili.append(f"FFG {ffg_result['score']:.2f}/1.0 – {ffg_result['desc']}")
     if hw_result and hw_result.get("severity") not in ("nessuna", None, ""):
-        parts.append(f"<p>🌡️ Calore: {hw_result.get('desc', '')}</p>")
+        possibili.append(f"Calore: {hw_result.get('desc', '')}")
+    if possibili:
+        items = "".join(f"<li>{h}</li>" for h in possibili)
+        parts.append(f"<div><b>Possibili</b><ul>{items}</ul></div>")
+
+    potenz = list(potenziali)
     if is_intense or potenziali:
-        parts.append(f"<p>🎲 <b>Probabilità fenomeni convettivi intensi:</b> {prob_pct}%</p>")
-    if not reali and not is_intense and not potenziali:
-        parts.append("<p>🟢 Nessun fenomeno severo rilevato</p>")
+        potenz.append(f"Probabilità fenomeni convettivi intensi: {prob_pct}%")
+    if potenz:
+        items = "".join(f"<li>{h}</li>" for h in potenz)
+        parts.append(f"<div><b>Potenziali (richiedono innesco attualmente non disponibile)</b><ul>{items}</ul></div>")
+
+    if not possibili and not potenz:
+        parts.append("<p>Nessun fenomeno severo rilevato</p>")
+
     return "\n".join(parts)
 
 def render_section1_simple(
