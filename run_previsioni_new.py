@@ -573,7 +573,7 @@ def build_day_message(
                 alert_level=livello,
                 score=m_score,
                 sintesi_text=semplice,
-                tech_table_html=render_tech_table_html(params),
+                tech_table_html=render_tech_table_html(params, hourly),
                 hourly_table_html=render_hourly_table_html(hourly),
                 hazards_reali=reali_filtrati,
                 hazards_potenziali=potenziali_filtrati,
