@@ -37,12 +37,12 @@ from logic import (
     maltempo_score, livello_attenzione, flash_flood_guidance, heatwave_analysis,
     instability_evolution, format_evolution_text,
     rain_evolution, wind_evolution, format_rain_evolution, format_wind_evolution,
-    upper_level_temperature_anomaly, is_intense_storm_mode, hazard_probability,
+    upper_level_temperature_anomaly, is_intense_storm_mode, hazard_probability, assess_phenomena_risks
 )
 from templates import (
     render_analisi_semplice,
     render_section2_detailed,
-    build_gemini_prompt_tecnico,
+    build_gemini_prompt_tecnico, render_phenomena_risks
 )
 
 TZ_ROME       = ZoneInfo(TIMEZONE)
@@ -399,7 +399,9 @@ def build_day_message(
         f"{icona_giorno} LA SPEZIA — {day_label.upper()}",
         f"{_format_date(day_date)}",
         "",
-        f"{emoji_liv} {livello} · Score {m_score:.1f}/5",
+        risks = assess_phenomena_risks(params, obs, hourly)
+        lines.append(render_phenomena_risks(risks))
+        lines.append("")
         f"📡 Modello: {model_label}{sounding_tag}",
         "",
     ]
@@ -661,6 +663,24 @@ def main():
     export_json({"messages": messages, "generated": now.isoformat()}, "previsioni_output.json")
     print(f"\n✅ Completato. Output in previsioni_output.json")
 
+def send_telegram_document(html_content: str, filename: str = "bollettino.html"):
+    """Invia un file HTML come documento Telegram."""
+    import tempfile, os
+    if not TELEGRAM_TOKEN or not LISTA_CHAT:
+        print(" [TG] Telegram non configurato, skip")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
+        f.write(html_content)
+        f_path = f.name
+    try:
+        for chat_id in LISTA_CHAT:
+            with open(f_path, 'rb') as doc:
+                r = requests.post(url, data={"chat_id": chat_id}, files={"document": (filename, doc)}, timeout=30)
+                print(f" [TG] Document: {r.json().get('ok', False)} chat {chat_id}")
+            time.sleep(1.2)
+    finally:
+        os.unlink(f_path)
 
 if __name__ == "__main__":
     main()
