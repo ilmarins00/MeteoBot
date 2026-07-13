@@ -704,6 +704,9 @@ else:
     print("  ⚠ Nessun blocco HTML generato, invio saltato.")
 
     # ── 5. Salva JSON ──────────────────────────────────────────────────────
+if 'messages' not in locals() and 'messages' not in globals():
+    messages = []
+  
     export_json({"messages": messages, "generated": now.isoformat()}, "previsioni_output.json")
     print(f"\n✅ Completato. Output in previsioni_output.json")
 
