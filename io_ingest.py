@@ -558,8 +558,6 @@ def build_day_obs(
     li = None
     if cape_peak_idx is not None and cape_peak_idx < len(li_vals_raw):
         li = li_vals_raw[cape_peak_idx]
-    if li is None:
-        li = _agg("lifted_index", "min")  # fallback se l'ora di picco CAPE non ha LI
 
     cin = None
     if cape_peak_idx is not None and cape_peak_idx < len(cin_vals_raw):
