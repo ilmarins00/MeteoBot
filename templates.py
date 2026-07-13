@@ -16,6 +16,8 @@ def _ftm(val, fmt_str=".0f", unit=""):
     except Exception:
         return f"{val}{unit}"
 
+_fmt = _ftm
+
 _COMPASS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
                "S","SSO","SO","OSO","O","ONO","NO","NNO"]
 
