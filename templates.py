@@ -630,3 +630,67 @@ Modalità convettiva: {mode.capitalize()}
 {rischi_str}"""
 
     return msg.strip()
+
+def render_hourly_table_html(hourly: List[Dict], max_rows: int = 24) -> str:
+    if not hourly:
+        return "<p>Dati orari non disponibili.</p>"
+    html = '<table style="border-collapse:collapse;width:100%;font-size:13px">'
+    html += ('<tr style="background:#e0e0e0">'
+             '<th style="padding:4px;border:1px solid #999">Ora</th>'
+             '<th style="padding:4px;border:1px solid #999">Temp</th>'
+             '<th style="padding:4px;border:1px solid #999">Vento</th>'
+             '<th style="padding:4px;border:1px solid #999">Pioggia</th>'
+             '<th style="padding:4px;border:1px solid #999">CAPE</th></tr>')
+    for h in hourly[:max_rows]:
+        t = h.get("time", "")
+        temp = _fmt(h.get("T"), ".1f", "°C")
+        wind = _fmt(h.get("wind_gust", h.get("wind", 0)), ".0f", " km/h")
+        prec = _fmt(h.get("precip", 0), ".1f", " mm")
+        cape = _fmt(h.get("CAPE", 0), ".0f")
+        html += (f'<tr><td style="padding:4px;border:1px solid #ccc">{t}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{temp}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{wind}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{prec}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{cape}</td></tr>')
+    html += '</table>'
+    return html
+
+
+def render_day_html_block(day_label, date_str, alert_emoji, alert_level, score,
+                           sintesi_text, tech_table_html, hourly_table_html,
+                           hazards_reali, hazards_potenziali, narrativa, model_label) -> str:
+    reali_html = "".join(f"<li>{h}</li>" for h in hazards_reali) or "<li>Nessuno</li>"
+    potenziali_html = "".join(f"<li>{h}</li>" for h in hazards_potenziali) or "<li>Nessuno</li>"
+    return f"""
+<section style="margin-bottom:32px;border-bottom:2px solid #ccc;padding-bottom:16px">
+  <h2>{alert_emoji} {day_label.upper()} — {date_str}</h2>
+  <p><b>Livello: {alert_level.upper()}</b> · Score {score}/5 · Modello: {model_label}</p>
+  <div style="white-space:pre-line;background:#f7f7f7;padding:8px;border-radius:6px">{sintesi_text}</div>
+  <h3>Dati tecnici</h3>
+  {tech_table_html}
+  <h3>Evoluzione oraria</h3>
+  {hourly_table_html}
+  <h3>Fenomeni</h3>
+  <p><b>Reali/certi:</b></p><ul>{reali_html}</ul>
+  <p><b>Potenziali:</b></p><ul>{potenziali_html}</ul>
+  <h3>Analisi AI</h3>
+  <p>{narrativa}</p>
+</section>
+"""
+
+
+def render_bulletin_html(day_blocks: List[str], header_info: str) -> str:
+    blocks = "\n".join(day_blocks)
+    return f"""<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bollettino MeteoBot</title>
+<style>
+body {{ font-family: -apple-system, Arial, sans-serif; margin:12px; color:#222; }}
+table {{ margin-bottom:8px; }}
+h2 {{ margin-bottom:4px; }}
+</style></head>
+<body>
+<p>{header_info}</p>
+{blocks}
+</body></html>"""
