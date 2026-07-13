@@ -692,6 +692,10 @@ def main():
     # ── 4. Invia su Telegram ──────────────────────────────────────────────
     print("\n📤 Invio via Telegram (solo bollettino HTML)...")
 from templates import render_bulletin_html
+
+if 'html_blocks' not in locals() and 'html_blocks' not in globals():
+    html_blocks = []
+
 if html_blocks:
     html_doc = render_bulletin_html(html_blocks, header.replace("\n", "<br>"))
     nome_file = f"BOLLETTINO METEO DEL {today.strftime('%d-%m-%Y')}.html"
