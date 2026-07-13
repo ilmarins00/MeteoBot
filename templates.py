@@ -34,45 +34,108 @@ _RISK_EMOJI = {
     "Estremo": "🟥",
 }
 
-_TECH_DESCRIPTIONS = {
-    "SBCAPE": "Energia convettiva disponibile per temporali (particella da superficie)",
-    "MUCAPE": "Energia dalla particella più instabile del profilo",
-    "CIN": "Inibizione: energia necessaria per innescare la convezione",
-    "LI": "Indice di sollevamento: negativo = instabile, positivo = stabile",
-    "Shear06": "Shear 0-6 km: organizzazione e durata delle celle temporalesche",
-    "SRH03": "Elicità 0-3 km: potenziale di rotazione delle celle",
-    "PWAT": "Acqua precipitabile totale nella colonna atmosferica",
-    "SCP": "Parametro composito supercella (CAPE × shear × SRH)",
-    "K-Index": "Indice K: potenziale per pioggia convettiva",
-    "Totals-Totals": "Indice di instabilità a media quota (850+500 hPa)",
-    "DCAPE": "Energia per downburst: potenziale raffiche discendenti",
-}
+def _intensity_label(name: str, val) -> str:
+    """Restituisce l'intensità del parametro invece della sua definizione."""
+    if val is None:
+        return "N/D"
+    v = float(val)
+    t = thresholds
 
-def render_tech_table_html(params: Dict) -> str:
-    """Tabella HTML a 3 colonne: parametro | valore | descrizione."""
+    if name in ("SBCAPE", "MUCAPE"):
+        if v < t.SBCAPE_WEAK: return "Trascurabile"
+        if v < t.SBCAPE_MODERATE: return "Debole"
+        if v < t.SBCAPE_STRONG: return "Moderato"
+        if v < t.SBCAPE_EXTREME: return "Forte"
+        return "Estremo"
+    if name == "CIN":
+        av = abs(v)
+        if av < abs(t.CIN_WEAK): return "Assente/Debole"
+        if av < abs(t.CIN_MODERATE): return "Moderata"
+        if av < abs(t.CIN_STRONG): return "Forte"
+        return "Molto forte (blocca convezione)"
+    if name == "LI":
+        if v <= t.LI_EXTREME: return "Estremo"
+        if v <= t.LI_VERY_UNSTABLE: return "Molto instabile"
+        if v <= t.LI_UNSTABLE: return "Instabile"
+        if v < 0: return "Debolmente instabile"
+        return "Stabile"
+    if name == "Shear06":
+        if v < t.SHEAR_06_WEAK: return "Debole"
+        if v < t.SHEAR_06_ORGANIZED: return "Moderato"
+        if v < t.SHEAR_06_SUPERCELL: return "Organizzato"
+        if v < t.SHEAR_06_EXTREME: return "Forte (supercella)"
+        return "Estremo"
+    if name == "SRH03":
+        if v < t.SRH_03_LOW: return "Basso"
+        if v < t.SRH_03_MODERATE: return "Moderato"
+        if v < t.SRH_03_HIGH: return "Alto"
+        return "Molto alto"
+    if name == "PWAT":
+        if v < t.PWAT_DRY: return "Secco"
+        if v < t.PWAT_NORMAL: return "Normale"
+        if v < t.PWAT_HUMID: return "Umido"
+        if v < t.PWAT_EXTREME: return "Molto umido"
+        return "Estremo (tropicale)"
+    if name == "SCP":
+        if v < t.SCP_MODERATE: return "Basso"
+        if v < t.SCP_HIGH: return "Moderato (favorevole a supercelle)"
+        return "Elevato"
+    if name == "K-Index":
+        if v < t.KI_MODERATE: return "Basso"
+        if v < t.KI_STRONG: return "Moderato"
+        if v < t.KI_EXTREME: return "Alto"
+        return "Molto alto (certi)"
+    if name == "Totals-Totals":
+        if v < t.TT_MODERATE: return "Basso"
+        if v < t.TT_STRONG: return "Moderato"
+        if v < t.TT_EXTREME: return "Alto"
+        return "Molto alto (rischio tornado)"
+    if name == "DCAPE":
+        if v < t.DCAPE_LOW: return "Basso"
+        if v < t.DCAPE_MODERATE: return "Moderato"
+        if v < t.DCAPE_HIGH: return "Alto"
+        return "Molto alto (raffiche severe)"
+    return ""
+
+
+def render_tech_table_html(params: Dict, hourly: Optional[List[Dict]] = None) -> str:
+    """
+    Tabella HTML a 3 colonne: parametro | valore | intensità.
+    Se `hourly` è fornito, CAPE/CIN/LI/Shear06/SRH03/Raffica vengono presi
+    dall'ora di picco SBCAPE/MUCAPE (stessa ora), per coerenza interna.
+    """
+    peak = {}
+    if hourly:
+        peak = max(hourly, key=lambda h: float(h.get("CAPE") or 0), default={}) or {}
+
+    def pv(params_key, hourly_key=None, default=None):
+        if peak and hourly_key and peak.get(hourly_key) is not None:
+            return peak.get(hourly_key)
+        return params.get(params_key, default)
+
     rows = [
-        ("SBCAPE", params.get("SBCAPE"), "J/kg"),
-        ("MUCAPE", params.get("MUCAPE"), "J/kg"),
-        ("CIN", params.get("CIN"), "J/kg"),
-        ("LI", params.get("LI"), ""),
-        ("Shear06", params.get("shear_0_6"), "kt"),
-        ("SRH03", params.get("srh_0_3"), "m²/s²"),
-        ("PWAT", params.get("PWAT"), "mm"),
-        ("SCP", params.get("SCP"), ""),
-        ("K-Index", params.get("KI"), ""),
+        ("SBCAPE",  pv("SBCAPE", "CAPE"),  "J/kg"),
+        ("MUCAPE",  pv("MUCAPE", "CAPE"),  "J/kg"),
+        ("CIN",     pv("CIN", "CIN"),      "J/kg"),
+        ("LI",      pv("LI", "LI"),        ""),
+        ("Shear06", pv("shear_0_6", "shear"), "kt"),
+        ("SRH03",   pv("srh_0_3", "SRH"),  "m²/s²"),
+        ("PWAT",    params.get("PWAT"),    "mm"),
+        ("SCP",     params.get("SCP"),     ""),
+        ("K-Index", params.get("KI"),      ""),
         ("Totals-Totals", params.get("TT"), ""),
-        ("DCAPE", params.get("DCAPE"), "J/kg"),
+        ("DCAPE",   params.get("DCAPE"),   "J/kg"),
     ]
     html = '<table style="border-collapse:collapse;width:100%;font-size:14px">'
     html += '<tr style="background:#e0e0e0"><th style="padding:6px;border:1px solid #999;text-align:left">Parametro</th>'
     html += '<th style="padding:6px;border:1px solid #999;text-align:left">Valore</th>'
-    html += '<th style="padding:6px;border:1px solid #999;text-align:left">Descrizione</th></tr>'
+    html += '<th style="padding:6px;border:1px solid #999;text-align:left">Intensità</th></tr>'
     for name, val, unit in rows:
         vstr = _fmt(val, '.1f', f' {unit}') if val is not None else "N/D"
-        desc = _TECH_DESCRIPTIONS.get(name, "")
+        intensity = _intensity_label(name, val)
         html += f'<tr><td style="padding:6px;border:1px solid #ccc">{name}</td>'
         html += f'<td style="padding:6px;border:1px solid #ccc">{vstr}</td>'
-        html += f'<td style="padding:6px;border:1px solid #ccc;color:#555">{desc}</td></tr>'
+        html += f'<td style="padding:6px;border:1px solid #ccc;color:#555">{intensity}</td></tr>'
     html += '</table>'
     return html
 
@@ -92,6 +155,24 @@ def render_phenomena_risks(risks: Dict[str, str]) -> str:
         desc = _RISK_DESCRIPTIONS.get(level, "")
         lines.append(f"  {emoji} {phen:<12} {level} — {desc}")
     return "\n".join(lines)
+
+def render_phenomena_risks_html(risks: Dict[str, str]) -> str:
+    """Versione HTML della tabella rischi fenomeni (stessa struttura del testo Telegram)."""
+    rows = ""
+    for phen, level in risks.items():
+        emoji = _RISK_EMOJI.get(level, "⚪")
+        desc = _RISK_DESCRIPTIONS.get(level, "")
+        rows += (
+            f'<tr><td style="padding:4px 8px">{emoji}</td>'
+            f'<td style="padding:4px 8px"><b>{phen}</b></td>'
+            f'<td style="padding:4px 8px">{level}</td>'
+            f'<td style="padding:4px 8px;color:#555">{desc}</td></tr>'
+        )
+    return (
+        '<div style="margin:8px 0"><b>📋 RISCHIO FENOMENI INTENSI</b>'
+        '<table style="border-collapse:collapse;width:100%;font-size:14px;margin-top:4px">'
+        + rows + '</table></div>'
+    )
 
 def render_section1_simple(
     obs: Dict,
@@ -656,23 +737,25 @@ def render_hourly_table_html(hourly: List[Dict], max_rows: int = 24) -> str:
     return html
 
 
-def render_day_html_block(day_label, date_str, alert_emoji, alert_level, score,
-                           sintesi_text, tech_table_html, hourly_table_html,
-                           hazards_reali, hazards_potenziali, narrativa, model_label) -> str:
-    reali_html = "".join(f"<li>{h}</li>" for h in hazards_reali) or "<li>Nessuno</li>"
-    potenziali_html = "".join(f"<li>{h}</li>" for h in hazards_potenziali) or "<li>Nessuno</li>"
+def render_day_html_block(day_label, date_str, alert_emoji, model_label,
+                           risks_html, sintesi_text, tech_table_html,
+                           hourly_meteo_html, hourly_tech_html,
+                           fenomeni_html, narrativa) -> str:
     return f"""
 <section style="margin-bottom:32px;border-bottom:2px solid #ccc;padding-bottom:16px">
   <h2>{alert_emoji} {day_label.upper()} — {date_str}</h2>
-  <p><b>Livello: {alert_level.upper()}</b> · Score {score}/5 · Modello: {model_label}</p>
+  <p>Modello: {model_label}</p>
+  {risks_html}
   <div style="white-space:pre-line;background:#f7f7f7;padding:8px;border-radius:6px">{sintesi_text}</div>
-  <h3>Dati tecnici</h3>
+  <h3>Dati tecnici — I DATI PRESENTI SONO STATI PRESI IN CONCOMITANZA COL PICCO CAPE</h3>
   {tech_table_html}
   <h3>Evoluzione oraria</h3>
-  {hourly_table_html}
+  <h4>Meteo (temperatura, umidità, vento, pioggia)</h4>
+  {hourly_meteo_html}
+  <h4>Dati tecnici</h4>
+  {hourly_tech_html}
   <h3>Fenomeni</h3>
-  <p><b>Reali/certi:</b></p><ul>{reali_html}</ul>
-  <p><b>Potenziali:</b></p><ul>{potenziali_html}</ul>
+  {fenomeni_html}
   <h3>Analisi AI</h3>
   <p>{narrativa}</p>
 </section>
