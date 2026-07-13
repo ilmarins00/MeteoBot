@@ -873,41 +873,40 @@ def build_day_hourly_list(
             cape_h  = float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0
             if wp["shear_0_6"] is not None and wp["srh_0_3"] is not None:
                 scp_h = round(supercell_composite(cape_h, wp["srh_0_3"], wp["shear_0_6"]), 2)
-        
-                result.append({
-                    "time":       t_key,
-                    "T":          temps[i]  if i < len(temps)  else None,
-                    "RH":         rhs[i]    if i < len(rhs)    else None,
-                    "wind":       float(winds[i]) if i < len(winds) and winds[i] is not None else None,
-                    "wind_dir":   dirs[i]   if i < len(dirs)   else None,
-                    "wind_gust":  float(gusts[i]) if i < len(gusts) and gusts[i] is not None else 0.0,
-                    "cloud":      clouds[i] if i < len(clouds) and clouds[i] is not None else None,
-                    "cloud_low":  clouds_low[i]  if i < len(clouds_low)  and clouds_low[i]  is not None else None,
-                    "cloud_mid":  clouds_mid[i]  if i < len(clouds_mid)  and clouds_mid[i]  is not None else None,
-                    "cloud_high": clouds_high[i] if i < len(clouds_high) and clouds_high[i] is not None else None,
-                    "precip":     p,
-                    "precip_cum": round(cum, 1),
-                    "CAPE":       float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0,
-                    "CIN":        cins[i]   if i < len(cins)  else 0,
-                    "shear":      wp["shear_0_6"],   # 0-6km kt (etichetta usata a valle)
-                    "SRH":        wp["srh_0_3"],     # 0-3km m²/s² (etichetta usata a valle)
-                    "shear_0_1":  wp["shear_0_1"],
-                    "shear_0_3":  wp["shear_0_3"],
-                    "PWAT": pwat_h if pwat_h is not None else 0,
-                    "KI": ki_h,
-                    "TT": tt_h, 
-                    "DCAPE": dcape_h, 
-                    "SCP": scp_h,
-                    "srh_0_1":    wp["srh_0_1"],
-                    "wmo_code":   wmos[i]   if i < len(wmos)  else None,
-                    "alert":      alert,
-                    "LI":         lifted[i] if i < len(lifted) and lifted[i] is not None else None,
-                    # Valori modello secondario per spread
-                    f"CAPE_{secondary_label}":  cape2_v,
-                    f"gust_{secondary_label}":  gust2_v,
-                    f"precip_{secondary_label}": prec2_v,
-                })
-            return result
+
+        result.append({
+            "time":       t_key,
+            "T":          temps[i]  if i < len(temps)  else None,
+            "RH":         rhs[i]    if i < len(rhs)    else None,
+            "wind":       float(winds[i]) if i < len(winds) and winds[i] is not None else None,
+            "wind_dir":   dirs[i]   if i < len(dirs)   else None,
+            "wind_gust":  float(gusts[i]) if i < len(gusts) and gusts[i] is not None else 0.0,
+            "cloud":      clouds[i] if i < len(clouds) and clouds[i] is not None else None,
+            "cloud_low":  clouds_low[i]  if i < len(clouds_low)  and clouds_low[i]  is not None else None,
+            "cloud_mid":  clouds_mid[i]  if i < len(clouds_mid)  and clouds_mid[i]  is not None else None,
+            "cloud_high": clouds_high[i] if i < len(clouds_high) and clouds_high[i] is not None else None,
+            "precip":     p,
+            "precip_cum": round(cum, 1),
+            "CAPE":       float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0,
+            "CIN":        cins[i]   if i < len(cins)  else 0,
+            "shear":      wp["shear_0_6"],
+            "SRH":        wp["srh_0_3"],
+            "shear_0_1":  wp["shear_0_1"],
+            "shear_0_3":  wp["shear_0_3"],
+            "PWAT": pwat_h if pwat_h is not None else 0,
+            "KI": ki_h,
+            "TT": tt_h,
+            "DCAPE": dcape_h,
+            "SCP": scp_h,
+            "srh_0_1":    wp["srh_0_1"],
+            "wmo_code":   wmos[i]   if i < len(wmos)  else None,
+            "alert":      alert,
+            "LI":         lifted[i] if i < len(lifted) and lifted[i] is not None else None,
+            f"CAPE_{secondary_label}":  cape2_v,
+            f"gust_{secondary_label}":  gust2_v,
+            f"precip_{secondary_label}": prec2_v,
+        })
+    return result
 
 
 def fetch_forecast_3days(
