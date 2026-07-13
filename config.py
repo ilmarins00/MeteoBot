@@ -49,7 +49,7 @@ TELEGRAM_CHAT_IDS = get_chat_ids()
 GEMINI_API_KEY    = get_env_optional("GEMINI_API_KEY")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Posizione – Stazione La Spezia / Foce (WGS84)
+# Posizione – Stazione La Spezia / Foce (WGS84) gg
 # ─────────────────────────────────────────────────────────────────────────────
 
 LATITUDE  = 44.12514
