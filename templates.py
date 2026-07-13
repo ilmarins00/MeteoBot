@@ -7,12 +7,14 @@ from typing import Dict, List, Optional, Tuple, Any
 from config import ALERT_EMOJI, thresholds
 import math
 
-def _fmt(val: Any, fmt: str = ".1f", suffix: str = "") -> str:
-    if val is None: return "N/D"
+# --- INIZIO FUNZIONE DI SOCCORSO CORREZIONE _FTM ---
+def _ftm(val, fmt_str=".0f", unit=""):
+    if val is None:
+        return "-"
     try:
-        return f"{float(val):{fmt}}{suffix}"
-    except (ValueError, TypeError):
-        return str(val)
+        return f"{float(val):{fmt_str}}{unit}"
+    except Exception:
+        return f"{val}{unit}"
 
 _COMPASS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
                "S","SSO","SO","OSO","O","ONO","NO","NNO"]
