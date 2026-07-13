@@ -276,6 +276,11 @@ def build_day_message(
         secondary_label="icon",
     )
 
+    if day_offset == 0:
+        now_local = datetime.datetime.now(TZ_ROME)
+        current_hour_str = f"{now_local.hour:02d}:00"
+        hourly = [h for h in hourly if h.get("time", "00:00") >= current_hour_str]
+
     if not obs:
         return f"\n{'─'*50}\n{day_label.upper()}\n(dati insufficienti)\n"
 
