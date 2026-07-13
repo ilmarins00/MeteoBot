@@ -19,7 +19,7 @@ import datetime
 import requests
 from typing import Dict, Any, Optional, List, Tuple
 
-from config import LATITUDE, LONGITUDE, ELEVATION, OPEN_METEO_BASE, TIMEZONE
+from config import LATITUDE, LONGITUDE, ELEVATION, OPEN_METEO_BASE, TIMEZONE, thresholds
 from indices import compute_shear_profile, compute_srh
 
 # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -76,9 +76,6 @@ _CURRENT_VARS = [
 
 # Modelli meteorologici disponibili su Open-Meteo (selezionato automaticamente)
 _MODELS = "best_match"  # Open-Meteo seleziona il migliore disponibile
-ICON2I_MODEL   = "italia_meteo_arpae_icon_2i"
-ICON2I_DISPLAY = "ARPAE ICON 2I"
-
 
 def fetch_openmeteo_current(
     lat: float = LATITUDE,
@@ -549,8 +546,38 @@ def build_day_obs(
     precip_sum  = _agg("precipitation", "sum") or 0.0
     precip_max  = _agg("precipitation", "max", restrict_afternoon=False) or 0.0
     cape        = _agg("cape", "max", restrict_afternoon=False) or 0.0
-    li          = _agg("lifted_index",  "min")
-    cin         = _agg("convective_inhibition", "min")
+    cape_vals_raw = day_hourly.get("cape", [])
+    li_vals_raw   = day_hourly.get("lifted_index", [])
+    cin_vals_raw  = day_hourly.get("convective_inhibition", [])
+    cape_peak_idx = None
+    if cape_vals_raw:
+        valid_idx = [i for i, v in enumerate(cape_vals_raw) if v is not None]
+        if valid_idx:
+            cape_peak_idx = max(valid_idx, key=lambda i: cape_vals_raw[i])
+
+    li = None
+    if cape_peak_idx is not None and cape_peak_idx < len(li_vals_raw):
+        li = li_vals_raw[cape_peak_idx]
+    if li is None:
+        li = _agg("lifted_index", "min")  # fallback se l'ora di picco CAPE non ha LI
+
+    cin = None
+    if cape_peak_idx is not None and cape_peak_idx < len(cin_vals_raw):
+        cin = cin_vals_raw[cape_peak_idx]
+    if cin is None:
+        cin = _agg("convective_inhibition", "min")
+
+    # Controllo di plausibilità: SOLO log in console, non tocca il dato
+    # mostrato nel bollettino. LI più negativo di -12 è già un valore estremo
+    # (giornate da outbreak severo); se compare con CAPE modesto è quasi
+    # certamente rumore del modello su quell'ora specifica, non un bug di
+    # questo codice — ma vale la pena saperlo per giudicare l'affidabilità
+    # del dato Open-Meteo in quel momento.
+    if li is not None and li <= -12.0 and cape < thresholds.SBCAPE_STRONG:
+        print(f"  ⚠ [plausibilità] LI={li:.1f} con CAPE={cape:.0f} J/kg è una combinazione "
+              f"fisicamente sospetta (LI molto estremo, energia modesta) — dato grezzo del "
+              f"modello all'indice orario {cape_peak_idx}, non modificato da questo codice.")
+
     cloud       = _agg("cloud_cover")
     cloud_low   = _agg("cloud_cover_low")
     cloud_high  = _agg("cloud_cover_high")
@@ -862,49 +889,20 @@ def fetch_forecast_3days(
             print(f"  [io] {model}: {len(d['hourly']['time'])} ore")
             break
     if arome_data is None:
-        print("  [io] AROME non disponibile")
+        print("  [io] AROME non disponibile, solo ICON-EU")
 
-    print("  [io] Scarico ItaliaMeteo ARPAE ICON 2I (3 giorni)...")
-    icon2i_data = _fetch_one_model(ICON2I_MODEL, start_s, end_d2, lat, lon, timeout)
-    if icon2i_data is not None:
-        print(f"  [io] {ICON2I_DISPLAY}: {len(icon2i_data['hourly']['time'])} ore")
-    else:
-        print(f"  [io] {ICON2I_DISPLAY} non disponibile")
-
-    merged_01, stats_01 = _merge_hourly(arome_data, icon_data)
-    if stats_01:
-        print(f"  [io] Variabili colmate da ICON-EU (giorno 0-1): {stats_01}")
-
-    merged_day2, stats_day2 = _merge_hourly(icon2i_data, icon_data)
-    if stats_day2:
-        print(f"  [io] TENDENZA – variabili colmate da ICON-EU: {stats_day2}")
-
-    if arome_data and icon2i_data:
-        model_primary_label = "AROME (riferimento) + ARPAE ICON 2I (confronto)"
-    elif arome_data:
-        model_primary_label = "AROME+ICON-EU"
-    else:
-        model_primary_label = "ICON-EU"
-
-    model_tendency_label = "ARPAE ICON 2I+ICON-EU" if icon2i_data else "ICON-EU"
-
+    merged, fallback_stats = _merge_hourly(arome_data, icon_data)
+    if fallback_stats:
+        print(f"  [io] Variabili colmate da ICON-EU: {fallback_stats}")
     return {
-        "day0": extract_day_hourly(merged_01,   0),
-        "day1": extract_day_hourly(merged_01,   1),
-        "day2": extract_day_hourly(merged_day2, 2),
-        # Dati grezzi per singolo modello — SOLO per la colonna di confronto
-        # nella tabella tecnica di OGGI/DOMANI. Mai usati per punteggio,
-        # modalità o evoluzione: quelli derivano sempre e solo da "day0"/"day1"
-        # (il dataset ufficiale sopra).
-        "day0_arome":  extract_day_hourly(arome_data,  0) if arome_data  else {},
-        "day1_arome":  extract_day_hourly(arome_data,  1) if arome_data  else {},
-        "day0_icon2i": extract_day_hourly(icon2i_data, 0) if icon2i_data else {},
-        "day1_icon2i": extract_day_hourly(icon2i_data, 1) if icon2i_data else {},
-        "day0_icon":   extract_day_hourly(icon_data,   0),
-        "day1_icon":   extract_day_hourly(icon_data,   1),
-        "model_primary":   model_primary_label,
-        "model_tendency":  model_tendency_label,
-        "model_fallback":  "ICON-EU",
+        "day0":         extract_day_hourly(merged,     0),
+        "day1":         extract_day_hourly(merged,     1),
+        "day2":         extract_day_hourly(icon_data,  2),
+        # Raw ICON-EU per giorno (usato per calcolo spread)
+        "day0_icon":    extract_day_hourly(icon_data,  0),
+        "day1_icon":    extract_day_hourly(icon_data,  1),
+        "model_primary":  "AROME+ICON-EU" if arome_data else "ICON-EU",
+        "model_fallback": "ICON-EU",
     }
 
 # ─────────────────────────────────────────────────────────────────────────────
