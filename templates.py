@@ -14,6 +14,13 @@ def _fmt(val: Any, fmt: str = ".1f", suffix: str = "") -> str:
     except (ValueError, TypeError):
         return str(val)
 
+_COMPASS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
+               "S","SSO","SO","OSO","O","ONO","NO","NNO"]
+
+def _wind_dir_16(deg):
+    if deg is None: return "N/D"
+    return _COMPASS_16[int((float(deg)+11.25)%360/22.5)]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Sezione 1: Analisi Semplice (per l'utente comune)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -120,11 +127,11 @@ def render_tech_table_html(params: Dict, hourly: Optional[List[Dict]] = None) ->
         ("LI",      pv("LI", "LI"),        ""),
         ("Shear06", pv("shear_0_6", "shear"), "kt"),
         ("SRH03",   pv("srh_0_3", "SRH"),  "m²/s²"),
-        ("PWAT",    params.get("PWAT"),    "mm"),
-        ("SCP",     params.get("SCP"),     ""),
-        ("K-Index", params.get("KI"),      ""),
-        ("Totals-Totals", params.get("TT"), ""),
-        ("DCAPE",   params.get("DCAPE"),   "J/kg"),
+        ("PWAT",    pv("PWAT", "PWAT"),    "mm"),
+        ("SCP",     pv("SCP", "SCP"),      ""),
+        ("K-Index", pv("KI", "KI"),        ""),
+        ("Totals-Totals", pv("TT", "TT"),  ""),
+        ("DCAPE",   pv("DCAPE", "DCAPE"),  "J/kg"),
     ]
     html = '<table style="border-collapse:collapse;width:100%;font-size:14px">'
     html += '<tr style="background:#e0e0e0"><th style="padding:6px;border:1px solid #999;text-align:left">Parametro</th>'
@@ -764,10 +771,12 @@ def render_hourly_meteo_table_html(hourly: List[Dict], max_rows: int = 24) -> st
         rh = _fmt(h.get("RH"), ".0f", "%")
         wind = _fmt(h.get("wind_gust", h.get("wind", 0)), ".0f", " km/h")
         prec = _fmt(h.get("precip", 0), ".1f", " mm")
+        dir_txt = _wind_dir_16(h.get("wind_dir"))
         html += (f'<tr><td style="padding:4px;border:1px solid #ccc">{t}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{temp}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{rh}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{wind}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{dir_txt}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{prec}</td></tr>')
     html += '</table>'
     return html
@@ -791,11 +800,21 @@ def render_hourly_tech_table_html(hourly: List[Dict], max_rows: int = 24) -> str
         li   = _fmt(h.get("LI"), ".1f")
         shear = _fmt(h.get("shear"), ".0f", " kt")
         srh  = _fmt(h.get("SRH"), ".0f")
+        pwat = _fmt(h.get("PWAT"), ".0f", " mm")
+        scp = _ftm(h.get("SCP"), ".0f")
+        k_index = _ftm(h.get("KI"), ".0f")
+        totals_totals = _ftm(h.get("TT"), ".0f")
+        dcape = _ftm(h.get("DCAPE"), ".0f")
         html += (f'<tr><td style="padding:4px;border:1px solid #ccc">{t}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{cape}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{cin}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{li}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{shear}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{pwat}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{scp}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{k_index}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{totals_totals}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc">{dcape}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc">{srh}</td></tr>')
     html += '</table>'
     return html
