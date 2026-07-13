@@ -962,20 +962,29 @@ def fetch_forecast_3days(
     if fallback_stats:
         print(f"  [io] Variabili colmate da ICON-EU: {fallback_stats}")
 
-    # Sovrascrivi il Lifted Index con quello di ICON-2I ovunque disponibile
     if ecmwf_data is not None:
-        li_map = dict(zip(
-        ecmwf_data["hourly"].get("time", []),
-        ecmwf_data["hourly"].get("lifted_index", []),
-    ))
-    for dataset in (merged, icon_data):
-        h = dataset.get("hourly", {})
-        times = h.get("time", [])
-        old_li = h.get("lifted_index", [None]*len(times))
-        h["lifted_index"] = [
-            li_map.get(t, old_li[i] if i < len(old_li) else None)
-            for i, t in enumerate(times)
-        ]
+        ecmwf_h = ecmwf_data.get("hourly", {})
+        ecmwf_times = ecmwf_h.get("time", [])
+        ecmwf_li = ecmwf_h.get("lifted_index", [])
+        li_map = {
+            str(t)[-5:]: ecmwf_li[i]
+            for i, t in enumerate(ecmwf_times)
+            if i < len(ecmwf_li) and ecmwf_li[i] is not None
+        }
+        if li_map:
+            for dataset in (merged, icon_data):
+                h = dataset.get("hourly", {})
+                times = h.get("time", [])
+                old_li = h.get("lifted_index", [None] * len(times))
+                h["lifted_index"] = [
+                    li_map.get(str(t)[-5:], old_li[i] if i < len(old_li) else None)
+                    for i, t in enumerate(times)
+                ]
+            print(f"  [io] Lifted Index sovrascritto da ECMWF su {len(li_map)} ore")
+        else:
+            print("  [io] ECMWF non ha restituito valori di lifted_index utilizzabili")
+    else:
+        print("  [io] ECMWF non disponibile, Lifted Index resta quello di AROME/ICON-EU (se presente)")
 
     # Giorno 2 (TENDENZA): usa ICON-2I se copre a sufficienza, altrimenti ICON-EU
     day2_icon2i = extract_day_hourly(icon2i_data, 2) if icon2i_data is not None else {}
