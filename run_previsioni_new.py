@@ -257,8 +257,9 @@ def build_day_message(
     day_hourly_icon:  dict = None,   # dati ICON-EU raw per spread
     day_offset:       int  = 0,
     temp_history:     list = None,   # storia T per heatwave
-    uwyo_sounding:    dict = None,   # sounding UWYO se disponibile
-) -> str:
+    uwyo_sounding:    dict = None,   # sounding UWYO se disponibile\n    
+    html_blocks:      list = None,   # se fornito, accumula qui il blocco HTML del giorno\n) 
+  -> str:
     """
     Costruisce il testo completo per un giorno:
     intestazione + ANALISI SEMPLICE + ANALISI TECNICA (dati + Gemini).
@@ -563,6 +564,23 @@ def build_day_message(
     else:
         lines.append("(analisi AI non disponibile)")
 
+    if html_blocks is not None:
+            from templates import render_tech_table_html, render_hourly_table_html, render_day_html_block
+            html_blocks.append(render_day_html_block(
+                day_label=day_label,
+                date_str=_format_date(day_date),
+                alert_emoji=icona_giorno,
+                alert_level=livello,
+                score=m_score,
+                sintesi_text=semplice,
+                tech_table_html=render_tech_table_html(params),
+                hourly_table_html=render_hourly_table_html(hourly),
+                hazards_reali=reali_filtrati,
+                hazards_potenziali=potenziali_filtrati,
+                narrativa=narrativa if (api_key and GEMINI_API_KEY) else "(analisi AI non disponibile)",
+                model_label=model_label,
+            ))
+    
     return "\n".join(lines)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -632,6 +650,7 @@ def main():
     ]
 
     messages = []
+    html_blocks = []
     for day_date, label, day_hourly, icon_raw, mdl, is_tend, day_off in day_configs:
         print(f"\n⚙️  Elaborazione {label} ({_format_date(day_date)})...")
         # Il sounding UWYO è usato solo per oggi/domani (se fresco)
@@ -647,12 +666,17 @@ def main():
             day_offset      = day_off,
             temp_history    = temp_history,
             uwyo_sounding   = uwyo_for_day,
+            html_blocks     = html_blocks,
         )
         messages.append(msg)
         print(f"  ✓ {label}: {len(msg)} chars")
 
     # ── 4. Invia su Telegram ──────────────────────────────────────────────
     print("\n📤 Invio via Telegram...")
+    from templates import render_bulletin_html
+    if html_blocks:
+        html_doc = render_bulletin_html(html_blocks, header.replace("\n", "<br>"))
+        send_telegram_document(html_doc, filename=f"bollettino_{today.strftime('%Y%m%d')}.html")
     # Prima: header + giorno 0 nello stesso messaggio
     send_telegram(header + messages[0])
     # Poi: giorni 1 e 2 separati
