@@ -695,8 +695,9 @@ def main():
     from templates import render_bulletin_html
 
     if html_blocks:
-        html_doc = render_bulletin_html(html_blocks, header.replace("\n", "<br>"))
-        nome_file = f"BOLLETTINO METEO DEL {today.strftime('%d-%m-%Y')}.html"
+        titolo_html = f"Bollettino MeteoBot – {today.strftime('%d/%m/%Y')} {now.strftime('%H:%M')}"
+        html_doc = render_bulletin_html(html_blocks, header.replace("\n", "<br>"), title=titolo_html)
+        nome_file = f"BOLLETTINO METEO DEL {today.strftime('%d-%m-%Y')} {now.strftime('%H-%M')}.html"
         send_telegram_document(html_doc, filename=nome_file)
     else:
         print("  ⚠ Nessun blocco HTML generato, invio saltato.")
