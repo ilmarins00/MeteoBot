@@ -283,12 +283,31 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
         return "attività convettiva assente o molto debole"
 
     if not ha_innesco:
-        cin_debole = cin < abs(thresholds.CIN_MODERATE)
+        cin_debole = cin < abs(thresholds.CIN_MODERATE)  # CIN quasi assente
         organizzato = shear >= thresholds.SHEAR_06_ORGANIZED
         if organizzato and cin_debole and cape >= thresholds.SBCAPE_STRONG:
-            return ("ambiente dinamicamente favorevole a temporali organizzati (shear "
+            prob = hazard_probability(params)
+            if prob >= 30:
+                return (
+                    f"ambiente dinamicamente favorevole a temporali organizzati (shear "
+                    f"ed energia elevati): nessun innesco confermato nei dati orari, ma il "
+                    f"segnale combinato (~{prob}%) non è trascurabile — da monitorare nel "
+                    f"corso della giornata, specie in caso di un trigger locale non ancora "
+                    f"previsto dal modello"
+                )
+            elif prob >= 15:
+                return (
+                    f"ambiente dinamicamente favorevole a temporali organizzati (shear "
+                    f"ed energia elevati) ma senza un innesco previsto nei dati orari — "
+                    f"rischio basso ma non nullo (~{prob}%), non un evento atteso con "
+                    f"certezza per la giornata"
+                )
+            else:
+                return (
+                    "ambiente dinamicamente favorevole a temporali organizzati (shear "
                     "ed energia elevati) ma privo di un innesco previsto nei dati orari — "
-                    "il rischio resta teorico, non un evento atteso per la giornata")
+                    "il rischio pratico resta contenuto per la giornata"
+                )
         if cin_debole and cape >= thresholds.SBCAPE_STRONG:
             return ("energia convettiva elevata e priva di inibizione (CIN quasi nullo) — "
                     "non si può escludere l'innesco di celle isolate da riscaldamento diurno, "
