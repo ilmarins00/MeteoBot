@@ -546,6 +546,7 @@ def build_day_message(
             analisi_tecnica    = analisi_tecnica_str,
             params             = params,
             maltempo_score_val = m_score,
+            hazard_probability_pct = prob,
             giorno_label       = f"{day_label} {_format_date(day_date)}",
             is_tendency        = is_tendency,
             hourly_table       = hourly_table,
