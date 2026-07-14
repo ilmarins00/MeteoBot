@@ -542,8 +542,8 @@ def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
     if snow_level <= thresholds.SNOW_LEVEL_COASTAL_M and params.get("temp_c", 10) <= 3:
         reali.append("Neve a quote collinari/costiere")
 
-    if wind >= thresholds.ARPAL_WIND_ARANCIONE:
-        reali.append(f"Vento burrascoso (> {thresholds.ARPAL_WIND_ARANCIONE} km/h)")
+    if wind >= thresholds.ARPAL_WIND_COAST_ARANCIONE:
+        reali.append(f"Vento burrascoso (> {thresholds.ARPAL_WIND_COAST_ARANCIONE:.0f} km/h)")
 
     if params.get("wave_height_m", 0) >= thresholds.WAVE_HEIGHT_ARANCIONE:
         reali.append("Mareggiata significativa")
