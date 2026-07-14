@@ -248,15 +248,24 @@ def render_section1_simple(
     nome_v = directions[int((wd + 22.5) % 360 / 45)]
 
     # ── Temperatura e Comfort ─────────────────────────────────────────────
-    if t_max >= 35:
+    if t_max >= thresholds.ARPAL_HEAT_ROSSO:
         lines.append(f"{giorno_label} sarà una giornata di caldo estremo: massime fino a {t_max:.0f}°C.")
-    elif t_max >= 30:
-        lines.append(f"{giorno_label} si presenta molto caldo: massime attorno a {t_max:.0f}°C, minime di {t_min:.0f}°C.")
+    elif t_max >= thresholds.ARPAL_HEAT_ARANCIONE:
+        lines.append(f"{giorno_label} si presenta molto caldo: massime fino a {t_max:.0f}°C, minime di {t_min:.0f}°C.")
+    elif t_max >= thresholds.ARPAL_HEAT_GIALLO:
+        lines.append(f"{giorno_label} sarà caldo: massime attorno a {t_max:.0f}°C, minime di {t_min:.0f}°C.")
     else:
         lines.append(f"{giorno_label} temperature gradevoli: massime sui {t_max:.0f}°C, minime di {t_min:.0f}°C.")
 
-    if rh >= 70 and t_max >= 28:
-        lines.append("L'alto tasso di umidità accentuerà il disagio fisico (afa intensa).")
+    hi_val = obs.get("heat_index", params.get("heat_index"))
+    if hi_val is None:
+        hi_val = t_max
+    if hi_val >= thresholds.HEAT_INDEX_EXTREME:
+        lines.append(f"Afa molto intensa (temperatura percepita {hi_val:.0f}°C): disagio fisico marcato per l'intera giornata.")
+    elif hi_val >= thresholds.HEAT_INDEX_DANGER:
+        lines.append(f"Afa intensa (temperatura percepita {hi_val:.0f}°C): disagio fisico significativo nelle ore centrali.")
+    elif rh >= 70 and t_max >= 28:
+        lines.append("L'umidità elevata accentuerà un disagio fisico moderato (afa).")
     elif rh <= 35:
         lines.append(f"Aria secca (umidità relativa intorno al {rh:.0f}%): scarsa nuvolosità, buona visibilità e nessun disagio da afa.")
 
@@ -390,14 +399,14 @@ def render_section1_simple(
         lines.append("Nessuna precipitazione significativa prevista.")
 
     # ── Vento ─────────────────────────────────────────────────────────────
-    if g_max >= 90:
+    if g_max >= thresholds.ARPAL_WIND_COAST_ROSSO:
         lines.append(
             f"VENTO TEMPESTOSO: raffiche di {nome_v} fino a {g_max:.0f} km/h. "
             "Possibili danni a strutture, alberi e reti di distribuzione."
         )
-    elif g_max >= 60:
+    elif g_max >= thresholds.ARPAL_WIND_COAST_ARANCIONE:
         lines.append(f"Vento forte di {nome_v} con raffiche fino a {g_max:.0f} km/h.")
-    elif g_max >= 40:
+    elif g_max >= thresholds.ARPAL_WIND_COAST_GIALLO:
         lines.append(f"Vento moderato da {nome_v} con raffiche fino a {g_max:.0f} km/h.")
     else:
         lines.append(f"Vento debole da {nome_v}, media {w_max:.0f} km/h, raffiche fino a {g_max:.0f} km/h.")
