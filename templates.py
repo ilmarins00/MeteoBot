@@ -191,7 +191,7 @@ def render_fenomeni_html(reali, potenziali, mode, is_intense, prob_pct,
     parts = []
 
     possibili = list(reali)
-    mode_teorico = bool(mode) and ("resta teorico" in mode or "rischio pratico basso" in mode)
+    mode_teorico = bool(mode) and "dinamicamente favorevole a temporali organizzati" in mode
     if is_intense and mode and not mode_teorico:
         possibili.append(f"Modalità convettiva: {mode}")
     if rain_evo_txt: possibili.append(rain_evo_txt)
