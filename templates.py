@@ -288,11 +288,27 @@ def render_section1_simple(
             "dimensioni e raffiche violente."
         )
     elif (stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH) and not is_capped and shear_organizzato and not ha_innesco:
-        lines.append(
-            "L'ambiente è dinamicamente favorevole a temporali organizzati (energia e shear "
-            "elevati), ma senza un innesco previsto nei dati orari il rischio resta teorico, "
-            "non un evento atteso per la giornata."
-        )
+        from logic import hazard_probability
+        prob = hazard_probability(params)
+        if prob >= 30:
+            lines.append(
+                f"L'ambiente è dinamicamente favorevole a temporali organizzati (energia e "
+                f"shear elevati). Nessun innesco confermato nei dati orari, ma il segnale "
+                f"combinato non è trascurabile (~{prob}%): da monitorare nel corso della "
+                f"giornata."
+            )
+        elif prob >= 15:
+            lines.append(
+                f"L'ambiente è dinamicamente favorevole a temporali organizzati (energia e "
+                f"shear elevati), ma senza un innesco previsto nei dati orari — rischio basso "
+                f"ma non nullo (~{prob}%), non un evento atteso con certezza per la giornata."
+            )
+        else:
+            lines.append(
+                "L'ambiente è dinamicamente favorevole a temporali organizzati (energia e "
+                "shear elevati), ma senza un innesco previsto nei dati orari il rischio "
+                "pratico resta contenuto per la giornata."
+            )
     elif (scp >= thresholds.SCP_MODERATE and shear_organizzato and wmo_dom >= 80) and not is_capped:
         lines.append(
             "ATTENZIONE: energia disponibile e organizzazione del vento favoriscono lo "
@@ -494,6 +510,7 @@ def build_gemini_prompt_tecnico(
     analisi_tecnica: str,
     params: Dict,
     maltempo_score_val: float,
+    hazard_probability_pct: int = 0,
     giorno_label: str = "oggi",
     is_tendency: bool = False,
     hourly_table: Optional[str] = None,
@@ -517,6 +534,9 @@ Il tuo compito è scrivere un'analisi narrativa professionale ed ELEGANTE basata
 
 GIORNO: {giorno_label}
 LIVELLO ATTENZIONE: {emoji} {livello} (Score: {maltempo_score_val}/5)
+PROBABILITÀ FENOMENI CONVETTIVI INTENSI: {hazard_probability_pct}% (usa ESATTAMENTE questo
+numero per calibrare il linguaggio secondo le istruzioni sotto — non arrotondare il
+messaggio verso "improbabile" se questo valore è 20% o più)
 
 DATI TECNICI:
 {analisi_tecnica}
@@ -628,8 +648,15 @@ REGOLA CRITICA: Usa ESCLUSIVAMENTE i valori numerici forniti nei dati tecnici.
    accadessero certamente, se i dati orari non mostrano già pioggia prevista.
 2. NIENTE CONTRADDIZIONI: non scrivere mai nella stessa risposta sia "cielo sereno tutto
    il giorno" sia "rischio di downburst/nubifragi/trombe marine" per lo stesso giorno.
-   Se l'innesco manca, di' semplicemente che il rischio resta teorico e improbabile,
-   senza elencare i fenomeni come se fossero attesi.
+   Se l'innesco manca, NON descrivere i fenomeni come attesi con certezza, ma calibra la
+   sicurezza del linguaggio sulla percentuale di probabilità fornita più sotto — non usare
+   MAI la formula fissa "rischio teorico e improbabile" a prescindere dal numero:
+     - probabilità < 15%: puoi dire che il rischio è trascurabile/improbabile.
+     - probabilità 15-30%: di' che il rischio è basso ma non nullo, non liquidarlo come
+       "improbabile" — usa "non un evento atteso con certezza" invece di "improbabile".
+     - probabilità >= 30%: di' esplicitamente che il segnale non è trascurabile e che la
+       situazione merita attenzione/monitoraggio, pur restando non confermata da un
+       innesco nei dati orari. Non usare mai "improbabile" o "nullo" in questo caso.
 3. SOLO SE C'È INNESCO REALE (pioggia/temporali nei dati): specifica quando (fascia oraria)
    e quali fenomeni concreti sono plausibili (grandine, raffiche, allagamenti).
 4. STILE: italiano semplice e diretto, tono da meteorologo che parla al pubblico, non
