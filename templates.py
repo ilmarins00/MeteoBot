@@ -188,32 +188,32 @@ def render_phenomena_risks_html(risks: Dict[str, str]) -> str:
 def render_fenomeni_html(reali, potenziali, mode, is_intense, prob_pct,
                           ffg_result=None, hw_result=None,
                           rain_evo_txt="", wind_evo_txt=""):
+    """
+    Sezione "Fenomeni": SOLO hazard concreti con innesco confermato nei dati
+    (reali). Niente più:
+      - frase di "Modalità convettiva" (ha già la sua riga dedicata 🌪 altrove
+        nel bollettino, qui era solo un doppione discorsivo);
+      - righe di evoluzione vento/pioggia (ridondanti con la sezione
+        "Evoluzione oraria", che mostra già gli stessi dati in tabella);
+      - sezione "Potenziali" (hazard senza innesco confermato: energia
+        presente ma non un evento atteso — tenerli qui creava l'impressione
+        di un elenco di rischi concreti quando in realtà erano solo teorici).
+
+    ffg_result e hw_result (rischio alluvione lampo, ondata di calore) restano:
+    sono fenomeni con dati di innesco/soglia già superati, non energia teorica.
+    """
     parts = []
 
     possibili = list(reali)
-    mode_teorico = bool(mode) and "dinamicamente favorevole a temporali organizzati" in mode
-    if is_intense and mode and not mode_teorico:
-        possibili.append(f"Modalità convettiva: {mode}")
-    if rain_evo_txt: possibili.append(rain_evo_txt)
-    if wind_evo_txt: possibili.append(wind_evo_txt)
     if ffg_result:
         possibili.append(f"FFG {ffg_result['score']:.2f}/1.0 – {ffg_result['desc']}")
     if hw_result and hw_result.get("severity") not in ("nessuna", None, ""):
         possibili.append(f"Calore: {hw_result.get('desc', '')}")
+
     if possibili:
         items = "".join(f"<li>{h}</li>" for h in possibili)
         parts.append(f"<div><b>Possibili</b><ul>{items}</ul></div>")
-
-    potenz = list(potenziali)
-    if is_intense and mode and mode_teorico:
-        potenz.append(f"Modalità convettiva: {mode}")
-    if is_intense or potenziali:
-        potenz.append(f"Probabilità fenomeni convettivi intensi: {prob_pct}%")
-    if potenz:
-        items = "".join(f"<li>{h}</li>" for h in potenz)
-        parts.append(f"<div><b>Potenziali (richiedono innesco attualmente non disponibile)</b><ul>{items}</ul></div>")
-
-    if not possibili and not potenz:
+    else:
         parts.append("<p>Nessun fenomeno severo rilevato</p>")
 
     return "\n".join(parts)
