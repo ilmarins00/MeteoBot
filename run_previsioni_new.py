@@ -654,6 +654,16 @@ def main():
         print(f"  ✗ Errore fetch: {e}")
         sys.exit(1)
 
+  # ── Verifica freschezza dei dati NWP appena scaricati ─────────────────
+    freshness = forecast.get("freshness", {})
+    freshness_warnings = [info["msg"] for info in freshness.values() if not info.get("ok", True)]
+    if freshness_warnings:
+        print("\n⚠️  ATTENZIONE FRESCHEZZA DATI:")
+        for w in freshness_warnings:
+            print(f"  - {w}")
+    else:
+        print("\n✓ Run NWP aggiornate.")
+
     # ── 2. Radiosondaggio UWYO (solo per oggi/domani, stazione Milano Linate) ─
     print("\n🌡 Tentativo fetch sounding UWYO (Milano Linate 16080)...")
     uwyo_sounding = None
@@ -680,8 +690,10 @@ def main():
         f"Previsioni Meteo La Spezia\n"
         f"Emissione: {now.strftime('%d/%m/%Y %H:%M')}\n"
         f"Modelli: {model_primary}\n"
-        f"{'=' * 50}\n"
     )
+    if freshness_warnings:
+        header += "⚠️ " + " | ".join(freshness_warnings) + "\n"
+    header += f"{'=' * 50}\n"
 
     # ── 5. Costruisci messaggi per i 3 giorni ─────────────────────────────
     messages = []
