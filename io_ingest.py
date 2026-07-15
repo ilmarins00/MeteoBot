@@ -1029,7 +1029,8 @@ _MINUTELY15_AROME_VARS = [
     "temperature_2m", "relative_humidity_2m", "dew_point_2m",
     "apparent_temperature", "precipitation", "rain", "snowfall",
     "cape", "wind_speed_10m", "wind_speed_80m",
-    "wind_direction_10m", "wind_direction_80m", "visibility",
+    "wind_direction_10m", "wind_direction_80m", "wind_gusts_10m",
+    "visibility",
 ]
 
 
@@ -1132,7 +1133,7 @@ def build_nowcast_quarter_hourly(
             "RH":         g("relative_humidity_2m", i, parent.get("RH")),
             "wind":       g("wind_speed_10m", i, parent.get("wind")),
             "wind_dir":   g("wind_direction_10m", i, parent.get("wind_dir")),
-            "wind_gust":  parent.get("wind_gust"),        # AROME-PI non lo fornisce
+            "wind_gust":  g("wind_gusts_10m", i, parent.get("wind_gust")),  # ora disponibile da AROME-PI
             "cloud":      parent.get("cloud"),
             "cloud_low":  parent.get("cloud_low"),
             "cloud_mid":  parent.get("cloud_mid"),
