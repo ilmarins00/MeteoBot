@@ -27,6 +27,7 @@ from io_ingest import (
     fetch_forecast_3days,
     build_day_obs,
     build_day_hourly_list,
+    build_nowcast_quarter_hourly,
     fetch_uwyo_sounding,
     compute_model_spread,
     fetch_temperature_history,
@@ -258,7 +259,8 @@ def build_day_message(
     day_offset:       int  = 0,
     temp_history:     list = None,   # storia T per heatwave
     uwyo_sounding:    dict = None,   # sounding UWYO se disponibile
-    html_blocks:      list = None    # se fornito, accumula qui il blocco HTML del giorno
+    html_blocks:      list = None,   # se fornito, accumula qui il blocco HTML del giorno
+    arome_pi_data:    dict = None,   # nowcast AROME-PI, solo per OGGI
 ) -> str:
     """
     Costruisce il testo completo per un giorno:
@@ -280,6 +282,8 @@ def build_day_message(
         now_local = datetime.datetime.now(TZ_ROME)
         current_hour_str = f"{now_local.hour:02d}:00"
         hourly = [h for h in hourly if h.get("time", "00:00") >= current_hour_str]
+        if arome_pi_data:
+            hourly = build_nowcast_quarter_hourly(arome_pi_data, hourly, day_date)
 
     if not obs:
         return f"\n{'─'*50}\n{day_label.upper()}\n(dati insufficienti)\n"
@@ -687,6 +691,7 @@ def main():
             temp_history    = temp_history,
             uwyo_sounding   = uwyo_for_day,
             html_blocks     = html_blocks,
+            arome_pi_data   = forecast.get("arome_pi") if day_off == 0 else None,
         )
         messages.append(msg)
         print(f"  ✓ {label}: {len(msg)} chars")
