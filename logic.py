@@ -18,6 +18,31 @@ Soglie calibrate su:
 from typing import Dict, List, Tuple, Optional, Any
 from config import THRESHOLDS, ALERT_LEVELS, ALERT_EMOJI, thresholds
 
+def _duration_hours_from_times(vals: List[Tuple[str, float]]) -> float:
+    """
+    Calcola la durata REALE in ore di una finestra a partire dagli orari
+    (non dal numero di righe): con il nowcast AROME-PI la tabella può
+    contenere righe da 15 minuti invece che da un'ora intera, quindi
+    contare le righe come se fossero sempre "ore" sovrastimerebbe la
+    durata fino a 4 volte in quella finestra.
+    """
+    if not vals:
+        return 0.0
+    if len(vals) == 1:
+        return 1.0
+    try:
+        def to_minutes(hhmm):
+            h, mnt = hhmm.split(":")
+            return int(h) * 60 + int(mnt)
+        t0 = to_minutes(vals[0][0])
+        t1 = to_minutes(vals[-1][0])
+        step = to_minutes(vals[1][0]) - t0
+        if step <= 0:
+            step = 60
+        return round(((t1 - t0) + step) / 60.0, 2)
+    except Exception:
+        return float(len(vals))
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Score convettivo multi-parametro
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1059,7 +1084,7 @@ def instability_evolution(hourly: List[Dict[str, Any]]) -> Dict[str, Any]:
         result["windows"].append({
             "start": vals[0][0],
             "end": vals[-1][0],
-            "duration_h": len(vals),
+            "duration_h": _duration_hours_from_times(vals),
             "cape_avg": round(sum(cape_vals) / len(cape_vals), 0),
             "trend": trend,
             "peak_hour": peak_hour,
@@ -1152,7 +1177,7 @@ def _format_param_windows(
     """
     lines = []
     for vals in windows:
-        duration = len(vals)
+        duration = _duration_hours_from_times(vals)
         start_t, end_t = vals[0][0], vals[-1][0]
         peak_t, peak_v = max(vals, key=lambda x: x[1])
         if duration <= 3:
