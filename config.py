@@ -376,6 +376,17 @@ OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_HISTORICAL = "https://archive-api.open-meteo.com/v1/archive"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Orizzonti nominali dei modelli NWP (ore) — servono per capire quanto è
+# "vecchia" la run scaricata (vedi io_ingest.check_model_freshness)
+# ─────────────────────────────────────────────────────────────────────────────
+MODEL_HORIZONS_HOURS: Dict[str, int] = {
+    "meteofrance_arome_france_hd": 51,
+    "meteofrance_arome_france":    48,
+    "icon_eu":                     120,
+}
+MAX_RUN_AGE_H: int = 12   # oltre questa età (ore) la run è considerata obsoleta
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Livelli allerta (per logic.py e templates.py)
 # ─────────────────────────────────────────────────────────────────────────────
 
