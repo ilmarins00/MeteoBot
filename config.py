@@ -59,8 +59,8 @@ TIMEZONE  = "Europe/Rome"
 
 # Parametri orografici specifici per il territorio spezzino
 # (Appennino Ligure, golfo del Tigullio, Valle del Magra, Riviera di Levante)
-ORO_ENHANCEMENT_FACTOR = 1.40   # moltiplicatore orografico per precipitazioni
-                                 # Appennino Ligure orientale vs pianura
+ORO_ENHANCEMENT_FACTOR = 1.40
+AROME_PI_FORECAST_QUARTERS = 24
 COASTAL_SEA_BREEZE_SPEED = 15.0 # km/h – brezza tipica pomeridiana
 COASTAL_CONVERGENCE_ZONE = True # zona di convergenza brezza/flusso sinottico
 VALLE_MAGRA_FUNNELING  = 1.25   # amplificazione vento in valle per canalizzazione
