@@ -256,20 +256,30 @@ def build_day_message(
     is_tendency:      bool = False,
     api_key:          str  = "",
     day_hourly_icon:  dict = None,   # dati ICON-EU raw per spread
-    day_offset:       int  = 0,
+    day_offset:       int = 0,
     temp_history:     list = None,   # storia T per heatwave
     uwyo_sounding:    dict = None,   # sounding UWYO se disponibile
     html_blocks:      list = None,   # se fornito, accumula qui il blocco HTML del giorno
     arome_pi_data:    dict = None,   # nowcast AROME-PI, solo per OGGI
-) -> str:
+    next_day_hourly_list: list = None,  # tabella oraria di DOMANI (già costruita),
+                                         # serve solo a OGGI per completare i quarti dopo mezzanotte
+    injected_quarters: list = None,     # quarti d'ora oltre mezzanotte calcolati da OGGI,
+                                         # da inserire qui se questa chiamata è per DOMANI
+) -> tuple:
+    """
+    Ritorna (testo_messaggio, quarti_per_domani).
+    quarti_per_domani è None per tutti i giorni tranne OGGI: contiene le
+    righe da 15 minuti che cadono dopo la mezzanotte, da passare alla
+    chiamata di build_day_message per DOMANI.
+    """
+    tomorrow_quarters = None
     """
     Costruisce il testo completo per un giorno:
     intestazione + ANALISI SEMPLICE + ANALISI TECNICA (dati + Gemini).
     """
     if not day_hourly:
-        return f"\n{'─'*50}\n{day_label.upper()}\n(dati non disponibili per questo giorno)\n"
+        return f"\n{'─'*50}\n{day_label.upper()}\n(dati non disponibili per questo giorno)\n", None
 
-    # Hourly list con confronto modello secondario
     obs    = build_day_obs(day_hourly, model_label)
     hourly = build_day_hourly_list(
         day_hourly,
@@ -277,16 +287,23 @@ def build_day_message(
         primary_label="arome",
         secondary_label="icon",
     )
+    if day_offset == 1 and injected_quarters:
+        ore_coperte = {r["time"][:2] + ":00" for r in injected_quarters}
+        hourly = [h for h in hourly if h.get("time", "")[:2] + ":00" not in ore_coperte]
+        hourly = injected_quarters + hourly
 
     if day_offset == 0:
         now_local = datetime.datetime.now(TZ_ROME)
         current_hour_str = f"{now_local.hour:02d}:00"
         hourly = [h for h in hourly if h.get("time", "00:00") >= current_hour_str]
         if arome_pi_data:
-            hourly = build_nowcast_quarter_hourly(arome_pi_data, hourly, day_date)
+            hourly, tomorrow_quarters = build_nowcast_quarter_hourly(
+                arome_pi_data, hourly, day_date,
+                next_day_hourly_list=next_day_hourly_list,
+            )
 
     if not obs:
-        return f"\n{'─'*50}\n{day_label.upper()}\n(dati insufficienti)\n"
+        return f"\n{'─'*50}\n{day_label.upper()}\n(dati insufficienti)\n", None
 
     # Se c'è un sounding UWYO valido, sostituisce il sounding da modello
     if uwyo_sounding and len(uwyo_sounding.get("pressure_pa", [])) >= 6:
@@ -603,8 +620,8 @@ def build_day_message(
                 ),
                 narrativa=narrativa if (api_key and GEMINI_API_KEY) else "(analisi AI non disponibile)",
             ))
-    
-    return "\n".join(lines)
+  
+    return "\n".join(lines), tomorrow_quarters
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
@@ -667,34 +684,71 @@ def main():
     )
 
     # ── 5. Costruisci messaggi per i 3 giorni ─────────────────────────────
-    day_configs = [
-        (today,                        "OGGI",     forecast["day0"], forecast.get("day0_icon"), model_primary, False, 0),
-        (today + timedelta(1),"DOMANI",   forecast["day1"], forecast.get("day1_icon"), model_primary, False, 1),
-        (today + timedelta(2),"DOPODOMANI", forecast["day2"], forecast.get("day2_icon"), model_primary, False, 2),
-    ]
-
     messages = []
     html_blocks = []
-    for day_date, label, day_hourly, icon_raw, mdl, is_tend, day_off in day_configs:
-        print(f"\n⚙️  Elaborazione {label} ({_format_date(day_date)})...")
-        # Il sounding UWYO è usato solo per oggi/domani (se fresco)
-        uwyo_for_day = uwyo_sounding if (not is_tend and uwyo_sounding) else None
-        msg = build_day_message(
-            day_date        = day_date,
-            day_hourly      = day_hourly,
-            day_label       = label,
-            model_label     = mdl,
-            is_tendency     = is_tend,
-            api_key         = GEMINI_API_KEY,
-            day_hourly_icon = icon_raw,
-            day_offset      = day_off,
-            temp_history    = temp_history,
-            uwyo_sounding   = uwyo_for_day,
-            html_blocks     = html_blocks,
-            arome_pi_data   = forecast.get("arome_pi") if day_off == 0 else None,
-        )
-        messages.append(msg)
-        print(f"  ✓ {label}: {len(msg)} chars")
+
+    day1_hourly_preview = build_day_hourly_list(
+        forecast["day1"],
+        day_hourly_secondary=forecast.get("day1_icon"),
+        primary_label="arome",
+        secondary_label="icon",
+    ) if forecast.get("day1") else []
+
+    print(f"\n⚙️  Elaborazione OGGI ({_format_date(today)})...")
+    msg0, quarti_per_domani = build_day_message(
+        day_date        = today,
+        day_hourly      = forecast["day0"],
+        day_label       = "OGGI",
+        model_label     = model_primary,
+        is_tendency     = False,
+        api_key         = GEMINI_API_KEY,
+        day_hourly_icon = forecast.get("day0_icon"),
+        day_offset      = 0,
+        temp_history    = temp_history,
+        uwyo_sounding   = uwyo_sounding,
+        html_blocks     = html_blocks,
+        arome_pi_data   = forecast.get("arome_pi"),
+        next_day_hourly_list = day1_hourly_preview,
+    )
+    messages.append(msg0)
+    print(f"  ✓ OGGI: {len(msg0)} chars")
+
+    print(f"\n⚙️  Elaborazione DOMANI ({_format_date(today + timedelta(1))})...")
+    msg1, _ = build_day_message(
+        day_date        = today + timedelta(1),
+        day_hourly      = forecast["day1"],
+        day_label       = "DOMANI",
+        model_label     = model_primary,
+        is_tendency     = False,
+        api_key         = GEMINI_API_KEY,
+        day_hourly_icon = forecast.get("day1_icon"),
+        day_offset      = 1,
+        temp_history    = temp_history,
+        uwyo_sounding   = uwyo_sounding,
+        html_blocks     = html_blocks,
+        arome_pi_data   = None,
+        injected_quarters = quarti_per_domani,
+    )
+    messages.append(msg1)
+    print(f"  ✓ DOMANI: {len(msg1)} chars")
+
+    print(f"\n⚙️  Elaborazione DOPODOMANI ({_format_date(today + timedelta(2))})...")
+    msg2, _ = build_day_message(
+        day_date        = today + timedelta(2),
+        day_hourly      = forecast["day2"],
+        day_label       = "DOPODOMANI",
+        model_label     = model_primary,
+        is_tendency     = False,
+        api_key         = GEMINI_API_KEY,
+        day_hourly_icon = None,
+        day_offset      = 2,
+        temp_history    = temp_history,
+        uwyo_sounding   = uwyo_sounding,
+        html_blocks     = html_blocks,
+        arome_pi_data   = None,
+    )
+    messages.append(msg2)
+    print(f"  ✓ DOPODOMANI: {len(msg2)} chars")
 
     # ── 4. Invia su Telegram ──────────────────────────────────────────────
     print("\n📤 Invio via Telegram (solo bollettino HTML)...")
