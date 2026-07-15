@@ -911,6 +911,59 @@ def build_day_hourly_list(
         })
     return result
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Freschezza dei dati NWP — verifica l'età reale della run AROME/ICON-EU
+# ─────────────────────────────────────────────────────────────────────────────
+
+def check_model_freshness(
+    data: Optional[Dict[str, Any]],
+    model_api_name: str,
+    model_display: str,
+    now: "datetime.datetime",
+) -> Tuple[bool, str]:
+    """
+    Inferisce l'orario di inizializzazione della run NWP dall'ultimo timestamp
+    non-null di temperature_2m e verifica che la run non sia troppo vecchia.
+    Ritorna (ok: bool, messaggio: str).
+    """
+    from config import MODEL_HORIZONS_HOURS, MAX_RUN_AGE_H
+    from zoneinfo import ZoneInfo as _ZI
+
+    if data is None:
+        return False, f"{model_display}: dati non disponibili"
+
+    hourly = data.get("hourly", {})
+    times = hourly.get("time", [])
+    temps = hourly.get("temperature_2m", [])
+    if not times or not temps:
+        return False, f"{model_display}: dati orari non disponibili per verifica freshness"
+
+    last_valid_idx = None
+    for i in range(len(temps) - 1, -1, -1):
+        if temps[i] is not None:
+            last_valid_idx = i
+            break
+    if last_valid_idx is None:
+        return False, f"{model_display}: temperature_2m interamente null"
+
+    try:
+        last_valid_dt = datetime.datetime.fromisoformat(times[last_valid_idx]).replace(tzinfo=_ZI(TIMEZONE))
+    except ValueError:
+        return False, f"{model_display}: formato timestamp non riconosciuto"
+
+    horizon_h = MODEL_HORIZONS_HOURS.get(model_api_name)
+    if horizon_h is None:
+        return True, f"{model_display}: orizzonte nominale non noto, età non verificabile"
+
+    run_dt = last_valid_dt - datetime.timedelta(hours=horizon_h)
+    age_h = (now - run_dt).total_seconds() / 3600
+
+    if age_h > MAX_RUN_AGE_H:
+        return False, (
+            f"{model_display}: run obsoleta, inizializzata ~{run_dt.strftime('%d/%m %H:%M')} "
+            f"({age_h:.0f}h fa, soglia {MAX_RUN_AGE_H}h)"
+        )
+    return True, f"{model_display}: run aggiornata (~{age_h:.0f}h fa)"
 
 def fetch_forecast_3days(
     lat: float = LATITUDE,
@@ -934,11 +987,13 @@ def fetch_forecast_3days(
     print(f"  [io] ICON-EU: {len(icon_data['hourly']['time'])} ore")
 
     arome_data = None
+    arome_model_name = None
     for model in ["meteofrance_arome_france", "meteofrance_arome_france_hd"]:
         print(f"  [io] Provo {model}...")
         d = _fetch_one_model(model, start_s, end_d1, lat, lon, timeout)
         if d is not None:
             arome_data = d
+            arome_model_name = model
             print(f"  [io] {model}: {len(d['hourly']['time'])} ore")
             break
     if arome_data is None:
@@ -961,6 +1016,22 @@ def fetch_forecast_3days(
     else:
         print("  [io] best_match non disponibile")
 
+# ── Verifica freschezza delle run NWP appena scaricate ─────────────────
+    from zoneinfo import ZoneInfo as _ZI_fresh
+    now_check = datetime.datetime.now(_ZI_fresh(TIMEZONE))
+    freshness: Dict[str, Any] = {}
+
+    ok_icon, msg_icon = check_model_freshness(icon_data, "icon_eu", "ICON-EU", now_check)
+    freshness["icon_eu"] = {"ok": ok_icon, "msg": msg_icon}
+    print(f"  [freshness] {msg_icon}")
+
+    if arome_data is not None:
+        ok_arome, msg_arome = check_model_freshness(arome_data, arome_model_name, "AROME", now_check)
+        freshness["arome"] = {"ok": ok_arome, "msg": msg_arome}
+        print(f"  [freshness] {msg_arome}")
+    else:
+        freshness["arome"] = {"ok": False, "msg": "AROME: non disponibile"}
+  
     merged, fallback_stats = _merge_hourly(arome_data, icon_data)
     if fallback_stats:
         print(f"  [io] Variabili colmate da ICON-EU: {fallback_stats}")
@@ -1019,6 +1090,7 @@ def fetch_forecast_3days(
         "model_primary":  "AROME+ICON-EU" if arome_data else "ICON-EU",
         "model_fallback": model_fallback_label,
         "arome_pi":       arome_pi_data,
+        "freshness":      freshness,
     }
 
 # ─────────────────────────────────────────────────────────────────────────────
