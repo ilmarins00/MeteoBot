@@ -799,7 +799,7 @@ Modalità convettiva: {mode.capitalize()}
 
     return msg.strip()
 
-def render_hourly_meteo_table_html(hourly: List[Dict], max_rows: int = 24) -> str:
+def render_hourly_meteo_table_html(hourly: List[Dict], max_rows: int = 48) -> str:
     if not hourly:
         return "<p>Dati orari non disponibili.</p>"
     html = '<table style="border-collapse:collapse;width:100%;font-size:13px">'
@@ -836,7 +836,7 @@ def render_hourly_meteo_table_html(hourly: List[Dict], max_rows: int = 24) -> st
     return html
 
 
-def render_hourly_tech_table_html(hourly: List[Dict], max_rows: int = 24) -> str:
+def render_hourly_tech_table_html(hourly: List[Dict], max_rows: int = 48) -> str:
     if not hourly:
         return "<p>Dati tecnici orari non disponibili.</p>"
     html = '<table style="border-collapse:collapse;width:100%;font-size:13px">'
