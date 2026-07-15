@@ -1078,20 +1078,23 @@ def build_nowcast_quarter_hourly(
     pi_data: Optional[Dict[str, Any]],
     hourly_list: List[Dict[str, Any]],
     day_date,
+    window_hours: float = 2.0,
 ) -> List[Dict[str, Any]]:
     """
-    Sostituisce le prime ore della tabella oraria con passi da 15 minuti:
+    Sostituisce le ore correnti della tabella oraria con passi da 15 minuti,
+    per una finestra di `window_hours` ore a partire da ADESSO (non dalla
+    mezzanotte del giorno corrente): se sono le 23:00 e window_hours=2, la
+    finestra copre 23:00-01:00, includendo quindi anche i quarti d'ora del
+    giorno successivo invece di scartarli.
+
     - campi che AROME-PI fornisce davvero (T, RH, vento, precip, CAPE,
       visibilità) → valore reale a 15 minuti.
     - campi che AROME-PI NON fornisce (raffiche, weather_code, nuvolosità,
       CIN, LI, shear/SRH/PWAT/K-Index/TT/DCAPE/SCP — richiedono il profilo
       verticale completo) → valore AROME orario, ripetuto identico sui
-      4 quarti di quell'ora (x:00, x:15, x:30, x:45), come richiesto.
+      4 quarti di quell'ora (x:00, x:15, x:30, x:45).
 
     Se pi_data è None, ritorna hourly_list invariata (nessun rischio).
-    Le righe che cadono oltre la mezzanotte di day_date vengono scartate
-    per evitare di "sconfinare" nel giorno successivo (caso raro: nowcast
-    lanciato dopo le 18:00 circa).
     """
     if not pi_data:
         return hourly_list
@@ -1101,7 +1104,10 @@ def build_nowcast_quarter_hourly(
     if not times:
         return hourly_list
 
-    target_prefix = day_date.strftime("%Y-%m-%d")
+    from zoneinfo import ZoneInfo as _ZI
+    now_local = datetime.datetime.now(_ZI(TIMEZONE)).replace(tzinfo=None, second=0, microsecond=0)
+    window_end = now_local + datetime.timedelta(hours=window_hours)
+
     hourly_by_hour = {h["time"][:2] + ":00": h for h in hourly_list if h.get("time")}
 
     def g(key, i, default=None):
@@ -1112,8 +1118,12 @@ def build_nowcast_quarter_hourly(
     result: List[Dict[str, Any]] = []
     cum_precip = 0.0
     for i, t in enumerate(times):
-        if not str(t).startswith(target_prefix):
-            continue  # fuori dalla giornata corrente, scartato
+        try:
+            t_dt = datetime.datetime.strptime(str(t), "%Y-%m-%dT%H:%M")
+        except ValueError:
+            continue
+        if t_dt < now_local or t_dt >= window_end:
+            continue  # fuori dalla finestra delle prossime `window_hours` ore, scartato
 
         hhmm = str(t)[-5:]
         hh_key = hhmm[:2] + ":00"
@@ -1133,7 +1143,7 @@ def build_nowcast_quarter_hourly(
             "RH":         g("relative_humidity_2m", i, parent.get("RH")),
             "wind":       g("wind_speed_10m", i, parent.get("wind")),
             "wind_dir":   g("wind_direction_10m", i, parent.get("wind_dir")),
-            "wind_gust":  g("wind_gusts_10m", i, parent.get("wind_gust")),  # ora disponibile da AROME-PI
+            "wind_gust":  g("wind_gusts_10m", i, parent.get("wind_gust")),
             "cloud":      parent.get("cloud"),
             "cloud_low":  parent.get("cloud_low"),
             "cloud_mid":  parent.get("cloud_mid"),
@@ -1141,7 +1151,7 @@ def build_nowcast_quarter_hourly(
             "precip":     precip_rate_h,
             "precip_cum": round(cum_precip, 1),
             "CAPE":       g("cape", i, parent.get("CAPE")),
-            "CIN":        parent.get("CIN"),              # richiede profilo verticale
+            "CIN":        parent.get("CIN"),
             "shear":      parent.get("shear"),
             "shear_0_1":  parent.get("shear_0_1"),
             "shear_0_3":  parent.get("shear_0_3"),
@@ -1161,8 +1171,17 @@ def build_nowcast_quarter_hourly(
     if not result:
         return hourly_list
 
-    ultima_ora_coperta = result[-1]["time"][:2]
-    resto = [h for h in hourly_list if h.get("time", "00:00")[:2] > ultima_ora_coperta]
+    resto = []
+    for h in hourly_list:
+        t_h = h.get("time", "00:00")
+        try:
+            h_dt = datetime.datetime.combine(
+                day_date, datetime.datetime.strptime(t_h, "%H:%M").time()
+            )
+        except ValueError:
+            continue
+        if h_dt >= window_end:
+            resto.append(h)
 
     return result + resto
 
