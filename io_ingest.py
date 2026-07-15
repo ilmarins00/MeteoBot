@@ -1079,51 +1079,66 @@ def build_nowcast_quarter_hourly(
     hourly_list: List[Dict[str, Any]],
     day_date,
     window_hours: float = 2.0,
-) -> List[Dict[str, Any]]:
+    next_day_hourly_list: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Sostituisce le ore correnti della tabella oraria con passi da 15 minuti,
-    per una finestra di `window_hours` ore a partire da ADESSO (non dalla
-    mezzanotte del giorno corrente): se sono le 23:00 e window_hours=2, la
-    finestra copre 23:00-01:00, includendo quindi anche i quarti d'ora del
-    giorno successivo invece di scartarli.
+    per una finestra di `window_hours` ore a partire da ADESSO.
 
-    - campi che AROME-PI fornisce davvero (T, RH, vento, precip, CAPE,
-      visibilità) → valore reale a 15 minuti.
-    - campi che AROME-PI NON fornisce (raffiche, weather_code, nuvolosità,
-      CIN, LI, shear/SRH/PWAT/K-Index/TT/DCAPE/SCP — richiedono il profilo
-      verticale completo) → valore AROME orario, ripetuto identico sui
-      4 quarti di quell'ora (x:00, x:15, x:30, x:45).
+    Ritorna una TUPLA (righe_di_oggi, righe_di_domani):
+      - righe_di_oggi: quarti d'ora + ore rimanenti che appartengono alla
+        giornata `day_date` → vanno mostrate nella sezione "OGGI".
+      - righe_di_domani: quarti d'ora che cadono DOPO la mezzanotte, quindi
+        appartengono già al giorno dopo (lista vuota se la finestra non
+        supera la mezzanotte). Il chiamante deve inserirli nella sezione
+        "DOMANI" al posto delle sue prime ore, per evitare che compaiano
+        due volte.
 
-    Se pi_data è None, ritorna hourly_list invariata (nessun rischio).
+    `next_day_hourly_list` (opzionale): la tabella oraria di DOMANI, già
+    costruita con build_day_hourly_list. Serve SOLO per recuperare i dati
+    che AROME-PI non fornisce (CIN, LI, shear, SRH, PWAT, K-Index, TT,
+    DCAPE, SCP, nuvolosità, weather_code) quando un quarto d'ora cade dopo
+    la mezzanotte: senza, quei campi restavano vuoti perché la tabella
+    oraria di "oggi" non arriva mai oltre le 23:00.
     """
     if not pi_data:
-        return hourly_list
+        return hourly_list, []
 
     m = pi_data.get("minutely_15", {})
     times = m.get("time", [])
     if not times:
-        return hourly_list
+        return hourly_list, []
 
     from zoneinfo import ZoneInfo as _ZI
     now_local = datetime.datetime.now(_ZI(TIMEZONE)).replace(tzinfo=None, second=0, microsecond=0)
     window_end = now_local + datetime.timedelta(hours=window_hours)
 
+    # Tabella oraria di "oggi" + (se fornita) di "domani": permette di
+    # recuperare i dati AROME anche per i quarti d'ora dopo mezzanotte.
     hourly_by_hour = {h["time"][:2] + ":00": h for h in hourly_list if h.get("time")}
+    if next_day_hourly_list:
+        for h in next_day_hourly_list:
+            if not h.get("time"):
+                continue
+            key = h["time"][:2] + ":00"
+            hourly_by_hour.setdefault(key, h)
 
     def g(key, i, default=None):
         vals = m.get(key, [])
         v = vals[i] if i < len(vals) else None
         return v if v is not None else default
 
-    result: List[Dict[str, Any]] = []
+    righe_oggi: List[Dict[str, Any]] = []
+    righe_domani: List[Dict[str, Any]] = []
     cum_precip = 0.0
+
     for i, t in enumerate(times):
         try:
             t_dt = datetime.datetime.strptime(str(t), "%Y-%m-%dT%H:%M")
         except ValueError:
             continue
         if t_dt < now_local or t_dt >= window_end:
-            continue  # fuori dalla finestra delle prossime `window_hours` ore, scartato
+            continue  # fuori dalla finestra delle prossime `window_hours` ore
 
         hhmm = str(t)[-5:]
         hh_key = hhmm[:2] + ":00"
@@ -1137,7 +1152,7 @@ def build_nowcast_quarter_hourly(
                  else "🟠" if precip_rate_h >= thresholds.ARPAL_RAIN_1H_ARANCIONE
                  else "🟡" if precip_rate_h >= thresholds.ARPAL_RAIN_1H_GIALLO else "🟢")
 
-        result.append({
+        riga = {
             "time":       hhmm,
             "T":          g("temperature_2m", i, parent.get("T")),
             "RH":         g("relative_humidity_2m", i, parent.get("RH")),
@@ -1166,11 +1181,17 @@ def build_nowcast_quarter_hourly(
             "alert":      alert,
             "LI":         parent.get("LI"),
             "source":     "AROME-PI" if g("temperature_2m", i) is not None else "AROME (fallback orario)",
-        })
+        }
 
-    if not result:
-        return hourly_list
+        if t_dt.date() == day_date:
+            righe_oggi.append(riga)
+        else:
+            righe_domani.append(riga)
 
+    if not righe_oggi and not righe_domani:
+        return hourly_list, []
+
+    # Ore rimanenti di OGGI dopo la finestra dei 15 minuti (risoluzione oraria)
     resto = []
     for h in hourly_list:
         t_h = h.get("time", "00:00")
@@ -1183,7 +1204,7 @@ def build_nowcast_quarter_hourly(
         if h_dt >= window_end:
             resto.append(h)
 
-    return result + resto
+    return righe_oggi + resto, righe_domani
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stub GRIB / NetCDF / Sounding / Radar (pronti per implementazione)
