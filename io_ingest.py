@@ -19,7 +19,10 @@ import datetime
 import requests
 from typing import Dict, Any, Optional, List, Tuple
 
-from config import LATITUDE, LONGITUDE, ELEVATION, OPEN_METEO_BASE, TIMEZONE, thresholds
+from config import (
+    LATITUDE, LONGITUDE, ELEVATION, OPEN_METEO_BASE, TIMEZONE, thresholds,
+    AROME_PI_FORECAST_QUARTERS,
+)
 from indices import compute_shear_profile, compute_srh
 
 # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -1004,6 +1007,9 @@ def fetch_forecast_3days(
         day2_final = extract_day_hourly(icon_data, 2)
         model_fallback_label = "ICON-EU"
 
+    print("  [io] Provo AROME-PI (nowcast 15 minuti)...")
+    arome_pi_data = fetch_arome_pi_nowcast(lat, lon, timeout)
+
     return {
         "day0":         extract_day_hourly(merged,     0),
         "day1":         extract_day_hourly(merged,     1),
@@ -1012,7 +1018,152 @@ def fetch_forecast_3days(
         "day1_icon":    extract_day_hourly(icon_data,  1),
         "model_primary":  "AROME+ICON-EU" if arome_data else "ICON-EU",
         "model_fallback": model_fallback_label,
+        "arome_pi":       arome_pi_data,
     }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AROME-PI (Prévision Immédiate) – nowcast a 15 minuti
+# ─────────────────────────────────────────────────────────────────────────────
+
+_MINUTELY15_AROME_VARS = [
+    "temperature_2m", "relative_humidity_2m", "dew_point_2m",
+    "apparent_temperature", "precipitation", "rain", "snowfall",
+    "cape", "wind_speed_10m", "wind_speed_80m",
+    "wind_direction_10m", "wind_direction_80m", "visibility",
+]
+
+
+def fetch_arome_pi_nowcast(
+    lat: float = LATITUDE,
+    lon: float = LONGITUDE,
+    timeout: int = 20,
+) -> Optional[Dict[str, Any]]:
+    """
+    Scarica il nowcast AROME-PI tramite &minutely_15= di Open-Meteo.
+    AROME-PI copre realmente solo le prime 6 ore (24 step da 15 min);
+    oltre, Open-Meteo interpolerebbe solo l'orario, quindi non lo chiediamo.
+
+    NOTA: Open-Meteo non espone "AROME-PI" come modello a sé (&models=...).
+    I dati AROME-PI popolano automaticamente &minutely_15= quando si
+    interroga meteofrance_seamless su un punto dentro il dominio AROME.
+    Se il punto fosse fuori dominio, la risposta arriva comunque ma i
+    valori sarebbero di fatto interpolazione dell'orario: non c'è un flag
+    esplicito nel JSON per distinguerlo.
+    """
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "minutely_15": ",".join(_MINUTELY15_AROME_VARS),
+        "models": "meteofrance_seamless",
+        "forecast_minutely_15": AROME_PI_FORECAST_QUARTERS,
+        "timezone": TIMEZONE,
+    }
+    try:
+        resp = requests.get(OPEN_METEO_BASE, params=params, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        n = len(data.get("minutely_15", {}).get("time", []))
+        if n == 0:
+            print("  [AROME-PI] Nessun dato minutely_15 restituito, nowcast non disponibile.")
+            return None
+        print(f"  [AROME-PI] OK: {n} step da 15 minuti ricevuti.")
+        return data
+    except Exception as e:
+        print(f"  [AROME-PI] Non disponibile ({e}), proseguo solo con AROME orario.")
+        return None
+
+
+def build_nowcast_quarter_hourly(
+    pi_data: Optional[Dict[str, Any]],
+    hourly_list: List[Dict[str, Any]],
+    day_date,
+) -> List[Dict[str, Any]]:
+    """
+    Sostituisce le prime ore della tabella oraria con passi da 15 minuti:
+    - campi che AROME-PI fornisce davvero (T, RH, vento, precip, CAPE,
+      visibilità) → valore reale a 15 minuti.
+    - campi che AROME-PI NON fornisce (raffiche, weather_code, nuvolosità,
+      CIN, LI, shear/SRH/PWAT/K-Index/TT/DCAPE/SCP — richiedono il profilo
+      verticale completo) → valore AROME orario, ripetuto identico sui
+      4 quarti di quell'ora (x:00, x:15, x:30, x:45), come richiesto.
+
+    Se pi_data è None, ritorna hourly_list invariata (nessun rischio).
+    Le righe che cadono oltre la mezzanotte di day_date vengono scartate
+    per evitare di "sconfinare" nel giorno successivo (caso raro: nowcast
+    lanciato dopo le 18:00 circa).
+    """
+    if not pi_data:
+        return hourly_list
+
+    m = pi_data.get("minutely_15", {})
+    times = m.get("time", [])
+    if not times:
+        return hourly_list
+
+    target_prefix = day_date.strftime("%Y-%m-%d")
+    hourly_by_hour = {h["time"][:2] + ":00": h for h in hourly_list if h.get("time")}
+
+    def g(key, i, default=None):
+        vals = m.get(key, [])
+        v = vals[i] if i < len(vals) else None
+        return v if v is not None else default
+
+    result: List[Dict[str, Any]] = []
+    cum_precip = 0.0
+    for i, t in enumerate(times):
+        if not str(t).startswith(target_prefix):
+            continue  # fuori dalla giornata corrente, scartato
+
+        hhmm = str(t)[-5:]
+        hh_key = hhmm[:2] + ":00"
+        parent = hourly_by_hour.get(hh_key, {})
+
+        precip_15 = float(g("precipitation", i, 0.0) or 0.0)
+        cum_precip += precip_15
+        precip_rate_h = round(precip_15 * 4.0, 2)  # equivalente mm/h per le soglie ARPAL
+
+        alert = ("🔴" if precip_rate_h >= thresholds.ARPAL_RAIN_1H_ROSSO
+                 else "🟠" if precip_rate_h >= thresholds.ARPAL_RAIN_1H_ARANCIONE
+                 else "🟡" if precip_rate_h >= thresholds.ARPAL_RAIN_1H_GIALLO else "🟢")
+
+        result.append({
+            "time":       hhmm,
+            "T":          g("temperature_2m", i, parent.get("T")),
+            "RH":         g("relative_humidity_2m", i, parent.get("RH")),
+            "wind":       g("wind_speed_10m", i, parent.get("wind")),
+            "wind_dir":   g("wind_direction_10m", i, parent.get("wind_dir")),
+            "wind_gust":  parent.get("wind_gust"),        # AROME-PI non lo fornisce
+            "cloud":      parent.get("cloud"),
+            "cloud_low":  parent.get("cloud_low"),
+            "cloud_mid":  parent.get("cloud_mid"),
+            "cloud_high": parent.get("cloud_high"),
+            "precip":     precip_rate_h,
+            "precip_cum": round(cum_precip, 1),
+            "CAPE":       g("cape", i, parent.get("CAPE")),
+            "CIN":        parent.get("CIN"),              # richiede profilo verticale
+            "shear":      parent.get("shear"),
+            "shear_0_1":  parent.get("shear_0_1"),
+            "shear_0_3":  parent.get("shear_0_3"),
+            "PWAT":       parent.get("PWAT"),
+            "KI":         parent.get("KI"),
+            "TT":         parent.get("TT"),
+            "DCAPE":      parent.get("DCAPE"),
+            "SCP":        parent.get("SCP"),
+            "srh_0_1":    parent.get("srh_0_1"),
+            "SRH":        parent.get("SRH"),
+            "wmo_code":   parent.get("wmo_code"),
+            "alert":      alert,
+            "LI":         parent.get("LI"),
+            "source":     "AROME-PI" if g("temperature_2m", i) is not None else "AROME (fallback orario)",
+        })
+
+    if not result:
+        return hourly_list
+
+    ultima_ora_coperta = result[-1]["time"][:2]
+    resto = [h for h in hourly_list if h.get("time", "00:00")[:2] > ultima_ora_coperta]
+
+    return result + resto
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stub GRIB / NetCDF / Sounding / Radar (pronti per implementazione)
