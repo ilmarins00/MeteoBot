@@ -236,6 +236,8 @@ def render_section1_simple(
     wmo_dom = int(obs.get("wmo_code", 0) or 0)
     cape = float(params.get("SBCAPE", params.get("CAPE", 0)) or 0)
     r_tot = float(obs.get("rain_24h_mm", 0) or 0)
+    precip_peak_rate = float(obs.get("precip_rate_mm_h", 0) or 0)
+    precip_peak_h = obs.get("precip_peak_h")
     vis_m = float(obs.get("visibility_m", 10000) or 10000)
     snow_lvl = float(obs.get("snow_level_m", 2000) or 2000)
     g_max = float(obs.get("wind_gust_kmh", 0) or 0)
@@ -289,8 +291,24 @@ def render_section1_simple(
 
     wmo_con_pioggia = wmo_dom in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99)
     ha_innesco = precip_now > 1.0 or wmo_con_pioggia
+    pioggia_violenta = precip_now >= thresholds.ARPAL_RAIN_1H_ROSSO
+    pioggia_intensa  = precip_now >= thresholds.ARPAL_RAIN_1H_ARANCIONE
 
-    if (stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH) and not is_capped and shear_organizzato and ha_innesco:
+    if pioggia_violenta:
+        lines.append(
+            f"PIOGGIA VIOLENTA: è previsto un picco di intensità molto elevata, fino a "
+            f"{precip_now:.0f} mm/h (soglia ARPAL Rossa: {thresholds.ARPAL_RAIN_1H_ROSSO:.0f} mm/h). "
+            "Rischio concreto di allagamenti lampo nella finestra oraria interessata, "
+            "indipendentemente dal fatto che il resto della giornata resti più tranquillo."
+        )
+    elif pioggia_intensa:
+        lines.append(
+            f"PIOGGIA INTENSA: è prevista una fase di pioggia forte, con punte fino a "
+            f"{precip_now:.0f} mm/h (soglia ARPAL Arancione: {thresholds.ARPAL_RAIN_1H_ARANCIONE:.0f} mm/h). "
+            "Possibili criticità localizzate (allagamenti, disagi alla viabilità) nella "
+            "finestra oraria interessata."
+        )
+    elif (stp >= thresholds.STP_MODERATE or scp >= thresholds.SCP_HIGH) and not is_capped and shear_organizzato and ha_innesco:
         lines.append(
             "ALLERTA CONVETTIVA: l'atmosfera è molto instabile e lo shear del vento è "
             "sufficiente a organizzare temporali forti, con possibili grandinate di grosse "
@@ -318,12 +336,12 @@ def render_section1_simple(
                 "shear elevati), ma senza un innesco previsto nei dati orari il rischio "
                 "pratico resta contenuto per la giornata."
             )
-    elif (scp >= thresholds.SCP_MODERATE and shear_organizzato and wmo_dom >= 80) and not is_capped:
+    elif (scp >= thresholds.SCP_MODERATE and shear_organizzato and ha_innesco) and not is_capped:
         lines.append(
             "ATTENZIONE: energia disponibile e organizzazione del vento favoriscono lo "
             "sviluppo di temporali anche intensi nelle ore centrali/pomeridiane."
         )
-    elif cape >= thresholds.SBCAPE_STRONG and not shear_organizzato and wmo_dom < 80:
+    elif cape >= thresholds.SBCAPE_STRONG and not shear_organizzato and not ha_innesco:
         lines.append(
             "L'atmosfera dispone di molta energia convettiva, ma la debole organizzazione del vento "
             "limita lo sviluppo di temporali strutturati. Nelle ore più calde resta possibile qualche "
@@ -391,12 +409,60 @@ def render_section1_simple(
             f"visibilità localmente {'inferiore ai 200 m' if vis_m < 200 else 'ridotta'}."
         )
     elif r_tot > 0:
-        lines.append(
-            f"Precipitazioni deboli o intermittenti con accumulo di circa {r_tot:.0f} mm. "
-            "Nessuna criticità prevista."
-        )
+        if precip_peak_rate >= thresholds.ARPAL_RAIN_1H_ROSSO:
+            lines.append(
+                f"Pioggia fortissima attesa in una fase della giornata"
+                f"{f' (verso le {precip_peak_h})' if precip_peak_h else ''}, con punte fino a "
+                f"{precip_peak_rate:.0f} mm/h (accumulo totale ~{r_tot:.0f} mm): rischio concreto "
+                "di allagamenti lampo nella finestra interessata, nonostante il resto della "
+                "giornata resti perlopiù asciutto."
+            )
+        elif precip_peak_rate >= thresholds.ARPAL_RAIN_1H_ARANCIONE:
+            lines.append(
+                f"Prevista una fase di pioggia intensa"
+                f"{f' (verso le {precip_peak_h})' if precip_peak_h else ''}, con punte fino a "
+                f"{precip_peak_rate:.0f} mm/h (accumulo totale ~{r_tot:.0f} mm): possibili "
+                "criticità localizzate, pur restando il resto della giornata asciutto."
+            )
+        elif precip_peak_rate >= thresholds.ARPAL_RAIN_1H_GIALLO:
+            lines.append(
+                f"Precipitazioni concentrate in una finestra della giornata, con punte moderate "
+                f"fino a {precip_peak_rate:.0f} mm/h (accumulo totale ~{r_tot:.0f} mm)."
+            )
+        else:
+            lines.append(
+                f"Precipitazioni deboli o intermittenti con accumulo di circa {r_tot:.0f} mm. "
+                "Nessuna criticità prevista."
+            )
     else:
         lines.append("Nessuna precipitazione significativa prevista.")
+
+    # ── Vento ─────────────────────────────────────────────────────────────
+    if ha_innesco:
+        dcape_val = float(params.get("DCAPE", 0) or 0)
+        if dcape_val >= thresholds.DCAPE_HIGH:
+            from thermo import dcape_gust_kmh as _dcape_gust_kmh
+            v_est = _dcape_gust_kmh(dcape_val)
+            lines.append(
+                f"⚠️ Possibili raffiche da downburst fino a {v_est:.0f} km/h in caso di "
+                "temporale: attenzione a oggetti non fissati ed elementi instabili."
+            )
+        elif dcape_val >= thresholds.DCAPE_MODERATE:
+            from thermo import dcape_gust_kmh as _dcape_gust_kmh
+            v_est = _dcape_gust_kmh(dcape_val)
+            lines.append(
+                f"⚠️ In caso di temporale non è escluso qualche raffica discendente "
+                f"(downburst), stimata fino a {v_est:.0f} km/h."
+            )
+
+        lr03_val = float(params.get("lr_0_3km", 0) or 0)
+        if cape >= thresholds.SBCAPE_STRONG and shear_organizzato:
+            dim = (
+                "di grandi dimensioni (>2 cm)"
+                if lr03_val >= 8.0 and cape >= thresholds.SBCAPE_EXTREME
+                else "di 1-2 cm"
+            )
+            lines.append(f"⚠️ Non è esclusa grandine {dim} nelle celle più forti.")
 
     # ── Vento ─────────────────────────────────────────────────────────────
     if g_max >= thresholds.ARPAL_WIND_COAST_ROSSO:
