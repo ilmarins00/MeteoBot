@@ -587,7 +587,7 @@ def build_day_obs(
     snow_lvl    = _agg("snowfall_height",  "min") or 2000.0
     vis_m       = _agg("visibility",       "min") or 10000.0
     wmo_vals    = [int(v) for v in (day_hourly.get("weather_code") or []) if v is not None]
-    wmo_dom     = max(set(wmo_vals), key=wmo_vals.count) if wmo_vals else 0
+    wmo_dom     = max(wmo_vals) if wmo_vals else 0
 
     import math as _math
 
