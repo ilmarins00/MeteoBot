@@ -54,7 +54,7 @@ GEMINI_API_KEY    = get_env_optional("GEMINI_API_KEY")
 
 LATITUDE  = 44.12514
 LONGITUDE = 9.79706
-ELEVATION = 0        # m s.l.m. – zona costiera Foce
+ELEVATION = 95        # m s.l.m. – zona costiera Foce
 TIMEZONE  = "Europe/Rome"
 
 # Parametri orografici specifici per il territorio spezzino
