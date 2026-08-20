@@ -44,7 +44,16 @@ from templates import (
 
 def build_gemini_prompt(section1, section2, score, params, alert_level=""):
     """Alias legacy per compatibilità."""
-    return build_gemini_prompt_tecnico(section2, params, score, "oggi", False, "")
+    from logic import hazard_probability
+    prob = hazard_probability(params)
+    return build_gemini_prompt_tecnico(
+        analisi_tecnica=section2,
+        params=params,
+        maltempo_score_val=score,
+        hazard_probability_pct=prob,
+        giorno_label="oggi",
+        is_tendency=False,
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Costruzione parametri da obs
