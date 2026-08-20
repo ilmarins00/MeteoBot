@@ -1360,8 +1360,8 @@ def convection_probability(params):
         params.get("MLCAPE", 0)
     )
 
-    shear = params.get("Shear06", 0)
-    cin = abs(params.get("CIN", 0))
+    shear = params.get("shear_0_6", 0) or 0
+    cin = abs(params.get("CIN", 0) or 0)
     pwat = params.get("PWAT", 0)
 
     prob = 0.0
