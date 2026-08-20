@@ -28,7 +28,11 @@ def github_request(method: str, path: str) -> tuple[int, dict | None]:
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
     try:
         with urllib.request.urlopen(req) as resp:
-            body = json.loads(resp.read()) if resp.length != 0 else None
+            raw = resp.read()
+            try:
+                body = json.loads(raw) if raw else None
+            except json.JSONDecodeError:
+                body = None
             return resp.status, body
     except urllib.error.HTTPError as e:
         return e.code, None
