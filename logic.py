@@ -473,11 +473,16 @@ def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
     wind = params.get("wind_gust_kmh", 0)
     dcape = float(params.get("DCAPE", 0) or 0)
     lr03 = params.get("lr_0_3km", 0) or 0
-    lr75 = params.get("lr_700_500", 0) or 0
+    lr75_val = params.get("lr_700_500")  # None se non disponibile: NON forzare a 0
     oro = params.get("orographic_factor", 0.0) or 0.0
     wmo_haz = int(params.get("wmo_code", 0) or 0)
 
-    is_capped = cin >= abs(thresholds.CIN_STRONG) or lcl >= thresholds.LCL_HIGH or rh <= 40 or lr75 < 5.5
+    is_capped = (
+        cin >= abs(thresholds.CIN_STRONG)
+        or lcl >= thresholds.LCL_HIGH
+        or rh <= 40
+        or (lr75_val is not None and lr75_val < 5.5)
+    )
 
     # ── INNESCO REALE: richiede pioggia/temporale nei dati orari OPPURE shear organizzato.
     # Senza shear organizzato (>= SHEAR_06_ORGANIZED = 20 kt), l'energia CAPE anche enorme
