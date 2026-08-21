@@ -56,6 +56,17 @@ def build_location(lat, lon, label=None, note=None, arpal_alert=None):
     return result
 
 
+def _load_previous(path="docs/site_data.json"):
+    """Ultimo site_data.json pubblicato, usato come rete di sicurezza se un
+    fetch fallisce (es. timeout Open-Meteo su una singola zona): meglio dati
+    di 10-15 minuti fa che un sito rotto o senza quella sezione."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
 def main():
     print("[arpal] Verifico lo stato di allerta ufficiale...")
     arpal_alert = fetch_arpal_alert()
@@ -64,11 +75,31 @@ def main():
     else:
         print(f"[arpal] Non disponibile: {arpal_alert.get('error')}")
 
-    general = build_location(LATITUDE, LONGITUDE, arpal_alert=arpal_alert)
+    previous = _load_previous()
+
+    try:
+        general = build_location(LATITUDE, LONGITUDE, arpal_alert=arpal_alert)
+    except Exception as e:
+        print(f"[generale] Fetch fallito ({e}), riuso l'ultima versione pubblicata")
+        general = previous.get("forecast") if previous else None
+    if general is None:
+        print("[generale] Nessun dato disponibile (nuovo/nè fresco nè precedente): esco senza scrivere nulla")
+        sys.exit(1)
+
+    prev_zones = (previous or {}).get("areas", {}).get("zones", {})
     zones = {}
     for zone_id, zone in CITY_ZONES.items():
         print(f"[zone] {zone['label']}")
-        zones[zone_id] = build_location(zone["lat"], zone["lon"], zone["label"], zone["note"], arpal_alert=arpal_alert)
+        try:
+            zones[zone_id] = build_location(zone["lat"], zone["lon"], zone["label"], zone["note"], arpal_alert=arpal_alert)
+        except Exception as e:
+            print(f"[zone] {zone['label']}: fetch fallito ({e})")
+            if zone_id in prev_zones:
+                print(f"[zone] {zone['label']}: riuso l'ultima versione pubblicata")
+                zones[zone_id] = prev_zones[zone_id]
+            else:
+                print(f"[zone] {zone['label']}: nessun dato precedente, zona omessa in questo aggiornamento")
+
     scores = [zone["current"].get("score", 0) for zone in zones.values()]
     zone_payload = {
         "zones": zones,

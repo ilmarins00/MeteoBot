@@ -17,6 +17,7 @@ Uso principale:
 
 import datetime
 import requests
+import time
 from typing import Dict, Any, Optional, List, Tuple
 
 from config import (
@@ -377,7 +378,12 @@ def _fetch_one_model(
     lon: float,
     timeout: int = 35,
 ) -> Optional[Dict[str, Any]]:
-    """Fetch da un singolo modello Open-Meteo. Ritorna None in caso di errore."""
+    """
+    Fetch da un singolo modello Open-Meteo. Ritorna None in caso di errore.
+    Un timeout/errore di rete è spesso transitorio (Open-Meteo sotto carico):
+    un solo nuovo tentativo, dopo una breve pausa, evita di perdere un'intera
+    zona per un singolo timeout isolato.
+    """
     all_vars = _SURF_VARS_MULTIDAY + _PLEVEL_VARS_MULTIDAY
     params: Dict[str, Any] = {
         "latitude":   lat,
@@ -388,17 +394,22 @@ def _fetch_one_model(
         "end_date":   end_date,
         "timezone":   TIMEZONE,
     }
-    try:
-        resp = requests.get(OPEN_METEO_BASE, params=params, timeout=timeout)
-        resp.raise_for_status()
-        data = resp.json()
-        n = len(data.get("hourly", {}).get("time", []))
-        if n < 12:
-            return None
-        return data
-    except Exception as e:
-        print(f"  [io] {model}: errore fetch: {e}")
-        return None
+    last_error: Optional[Exception] = None
+    for attempt in range(2):
+        try:
+            resp = requests.get(OPEN_METEO_BASE, params=params, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            n = len(data.get("hourly", {}).get("time", []))
+            if n < 12:
+                return None
+            return data
+        except Exception as e:
+            last_error = e
+            if attempt == 0:
+                time.sleep(3)
+    print(f"  [io] {model}: errore fetch: {last_error}")
+    return None
 
 
 _AROME_PRIORITY_FIELDS = {
