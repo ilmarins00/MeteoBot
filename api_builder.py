@@ -155,7 +155,15 @@ def build_bulletin_json(
         for h in (hourly or [])[:24]
     ]
 
-    first_hour = next((h for h in hourly_light if h.get("T") is not None), {})
+    # Per "oggi" la scheda "situazione attuale" deve mostrare l'ora corrente,
+    # non la prima riga della tabella oraria (che è sempre 00:00): altrimenti
+    # a mezzogiorno mostrerebbe ancora la temperatura di mezzanotte.
+    first_hour = {}
+    if day_label.strip().upper() == "OGGI":
+        now_hour_key = datetime.now(_ROME).strftime("%H:00")
+        first_hour = next((h for h in hourly_light if h.get("time") == now_hour_key and h.get("T") is not None), {})
+    if not first_hour:
+        first_hour = next((h for h in hourly_light if h.get("T") is not None), {})
     current_temp = first_hour.get("T", obs.get("temp_c"))
     current_wind = first_hour.get("wind", obs.get("wind_speed_kmh"))
     current_gust = first_hour.get("wind_gust", obs.get("wind_gust_kmh"))

@@ -49,6 +49,7 @@ h3 { font-size: 1rem; }
 .temperature-block { min-width: 0; }
 .weather-symbol { color: var(--accent); font-size: 4.8rem; line-height: 1; margin: 10px 0 2px; }
 .temp-big { margin: 0; font: 600 clamp(3.6rem, 8vw, 6.5rem)/.9 'Space Grotesk', sans-serif; }
+.temp-big.long-temp { font-size: clamp(2.7rem, 6.2vw, 4.9rem); }
 .condition-name { color: var(--muted); text-transform: capitalize; }
 .current-details { color: var(--muted); line-height: 1.7; }
 .current-details strong { color: var(--ink); }
