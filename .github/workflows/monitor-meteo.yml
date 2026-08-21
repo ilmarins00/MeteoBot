@@ -58,6 +58,7 @@ jobs:
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             cp state.json /tmp/local_state.json 2>/dev/null || true
+            cp docs/lightning_data.json /tmp/local_lightning.json 2>/dev/null || true
             git reset --hard origin/main
             python3 << 'PYEOF'
           import json, os
@@ -69,7 +70,9 @@ jobs:
               if s in local: remote[s] = local[s]
           with open('state.json', 'w') as f: json.dump(remote, f, indent=4, ensure_ascii=False)
           PYEOF
-            git add state.json || true
+            mkdir -p docs
+            cp /tmp/local_lightning.json docs/lightning_data.json 2>/dev/null || true
+            git add state.json docs/lightning_data.json || true
             if git diff --cached --quiet; then
               echo "Nessuna modifica da committare"
               exit 0

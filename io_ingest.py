@@ -492,6 +492,7 @@ def build_day_obs(
         return {}
 
     times = day_hourly.get("time", [])
+    temps = day_hourly.get("temperature_2m", [])
 
     def _agg(key: str, mode: str = "mean", restrict_afternoon: bool = True) -> Optional[float]:
         vals = day_hourly.get(key, [])
@@ -629,7 +630,24 @@ def build_day_obs(
                 s_u.append(0.0)
                 s_v.append(0.0)
 
+    # Temperatura rappresentativa: il valore dell'ora corrente, non la massima
+    # giornaliera. La massima resta disponibile separatamente in temp_max_c.
     t_rep = temp_max
+    try:
+        from zoneinfo import ZoneInfo
+        now_rome = datetime.datetime.now(ZoneInfo("Europe/Rome"))
+        today_prefix = now_rome.strftime("%Y-%m-%d")
+        current_candidates = [
+            (i, float(v)) for i, (t, v) in enumerate(zip(times, temps))
+            if v is not None and str(t).startswith(today_prefix)
+        ]
+        if current_candidates:
+            current_index, t_rep = min(
+                current_candidates,
+                key=lambda item: abs(item[0] - now_rome.hour),
+            )
+    except (ImportError, TypeError, ValueError):
+        current_index = None
     if t_rep is not None:
         p_pa = (p_hpa * 100) if p_hpa else 101300.0
         s_p.insert(0, p_pa); s_T.insert(0, t_rep + 273.15)
@@ -658,7 +676,9 @@ def build_day_obs(
         p_peak_h  = None
 
     obs: Dict[str, Any] = {
-        "time_generated": datetime.datetime.now().isoformat() + "Z",
+        "time_generated": datetime.datetime.now(
+            __import__("zoneinfo", fromlist=["ZoneInfo"]).ZoneInfo("Europe/Rome")
+        ).isoformat(),
         "location":    f"La Spezia ({LATITUDE}N, {LONGITUDE}E)",
         "source":      model_name,
         "wmo_code":    wmo_dom,
@@ -798,6 +818,30 @@ def _hourly_full_profile(day_hourly, idx, surf_t_c, surf_td_c, surf_p_hpa):
             p.append(pa); T.append(Tk); Td.append(Tdk); h.append(zm)
     return p, T, Td, h
 
+_WMO_RAIN_CODES = (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82)
+
+
+def _upgrade_wmo_for_storm(wmo, cape, shear, precip, thr) -> int:
+    """
+    Se in quell'ora piove (weather_code "pioggia/rovesci") e l'energia/
+    organizzazione convettiva locale sono già sufficienti per un temporale
+    (stesse soglie SBCAPE/shear usate in logic.severe_hazards), il codice
+    WMO generico di pioggia viene promosso a temporale. Evita l'incoerenza
+    per cui il bollettino segnala rischio temporali ma l'ora oraria mostra
+    solo "pioggia".
+    """
+    wmo = int(wmo or 0)
+    if wmo not in _WMO_RAIN_CODES or (precip or 0) <= 0:
+        return wmo
+    cape = float(cape or 0)
+    shear = float(shear or 0)
+    if cape >= thr.SBCAPE_STRONG and shear >= thr.SHEAR_06_ORGANIZED:
+        return 96  # temporale con grandine
+    if cape >= thr.SBCAPE_MODERATE:
+        return 95  # temporale
+    return wmo
+
+
 def build_day_hourly_list(
     day_hourly: Dict[str, Any],
     day_hourly_secondary: Optional[Dict[str, Any]] = None,
@@ -861,6 +905,10 @@ def build_day_hourly_list(
 
         p_prof, T_prof, Td_prof, h_prof = _hourly_full_profile(day_hourly, i, surf_t, surf_td, surf_p)
 
+        cape_i = float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0
+        wmo_i = wmos[i] if i < len(wmos) else None
+        wmo_i = _upgrade_wmo_for_storm(wmo_i, cape_i, wp["shear_0_6"], p, thr)
+
         pwat_h = ki_h = tt_h = dcape_h = scp_h = None
         if len(p_prof) >= 4:
             from indices import pwat_from_profile, k_index, totals_totals, supercell_composite
@@ -902,7 +950,7 @@ def build_day_hourly_list(
             "DCAPE": dcape_h,
             "SCP": scp_h,
             "srh_0_1":    wp["srh_0_1"],
-            "wmo_code":   wmos[i]   if i < len(wmos)  else None,
+            "wmo_code":   wmo_i,
             "alert":      alert,
             "LI":         lifted[i] if i < len(lifted) and lifted[i] is not None else None,
             f"CAPE_{secondary_label}":  cape2_v,
@@ -975,16 +1023,18 @@ def fetch_forecast_3days(
     e le unisce.
     """
     import datetime as _dt
-    today   = _dt.date.today()
+    from zoneinfo import ZoneInfo as _ZI
+    today   = _dt.datetime.now(_ZI(TIMEZONE)).date()
     start_s = today.strftime("%Y-%m-%d")
     end_d2  = (today + _dt.timedelta(days=3)).strftime("%Y-%m-%d")
     end_d1  = (today + _dt.timedelta(days=2)).strftime("%Y-%m-%d")
 
     print("  [io] Scarico ICON-EU (3 giorni)...")
     icon_data = _fetch_one_model("icon_eu", start_s, end_d2, lat, lon, timeout)
-    if icon_data is None:
-        raise RuntimeError("ICON-EU non disponibile")
-    print(f"  [io] ICON-EU: {len(icon_data['hourly']['time'])} ore")
+    if icon_data is not None:
+        print(f"  [io] ICON-EU: {len(icon_data['hourly']['time'])} ore")
+    else:
+        print("  ⚠ ICON-EU non disponibile: continuo con AROME se disponibile")
 
     arome_data = None
     arome_model_name = None
@@ -998,6 +1048,12 @@ def fetch_forecast_3days(
             break
     if arome_data is None:
         print("  [io] AROME non disponibile, solo ICON-EU")
+
+    if icon_data is None and arome_data is not None:
+        icon_data = arome_data
+        print("  ⚠ Fallback modello: AROME usato anche come base di continuità")
+    if icon_data is None:
+        raise RuntimeError("Nessun modello meteorologico disponibile")
 
     # ICON-2I (ItaliaMeteo-ARPAE, 2km): usato per il Lifted Index (AROME non lo
     # fornisce in modo affidabile su quest'area) e come base per la TENDENZA
@@ -1550,6 +1606,47 @@ def fetch_temperature_history(
     except Exception as e:
         print(f"  [io] Errore fetch temperature history: {e}")
         return []
+
+
+_ARPAL_ALERT_URL = "https://allertaliguria.regione.liguria.it/allerta_protezione_civile.php"
+_ARPAL_LEVEL_MAP = {"green": "verde", "yellow": "gialla", "orange": "arancione", "red": "rossa"}
+
+
+def fetch_arpal_alert(timeout: int = 15) -> Dict[str, Any]:
+    """
+    Legge automaticamente lo stato di allerta ufficiale di Protezione Civile
+    Liguria/ARPAL dalla pagina pubblica (allerta_protezione_civile.php), senza
+    bisogno di un controllo manuale. La pagina mostra un riquadro colorato
+    (classe CSS "al-msgbar-green/yellow/orange/red") con titolo e tipo di
+    rischio: qui viene solo letto, non interpretato/inventato.
+    Ritorna {"ok": False, ...} se il sito non è raggiungibile o la pagina ha
+    cambiato formato: il chiamante deve trattare l'allerta come "non
+    disponibile", mai assumere un livello di default.
+    """
+    try:
+        from bs4 import BeautifulSoup
+        resp = requests.get(_ARPAL_ALERT_URL, timeout=timeout, headers={"User-Agent": "MeteoBot/1.0"})
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        bar = soup.find(class_=lambda c: c and c.startswith("al-msgbar-"))
+        if bar is None:
+            return {"ok": False, "error": "formato pagina ARPAL non riconosciuto"}
+        color = next((c.replace("al-msgbar-", "") for c in bar.get("class", [])
+                      if c.startswith("al-msgbar-")), None)
+        level = _ARPAL_LEVEL_MAP.get(color)
+        if level is None:
+            return {"ok": False, "error": f"colore allerta non riconosciuto: {color}"}
+        headings = [h.get_text(strip=True) for h in bar.find_all(["h1", "h2"])]
+        return {
+            "ok": True,
+            "level": level,
+            "message_datetime": headings[0] if len(headings) > 0 else None,
+            "title": headings[1] if len(headings) > 1 else None,
+            "risk_types": headings[2] if len(headings) > 2 else None,
+            "source_url": _ARPAL_ALERT_URL,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def read_radar(radar_source: str) -> Dict[str, Any]:

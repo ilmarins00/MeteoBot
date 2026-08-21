@@ -1,38 +1,40 @@
-name: MeteoBot - Previsioni Meteo AI (nuovo motore)
+name: MeteoBot - Aggiorna dati sito (senza AI/notifiche)
 
-# Genera previsioni meteo usando il nuovo motore MeteoBot:
-# Open-Meteo → engine.py (CAPE/SRH/SCP/STP/ARPAL) → Gemini → Telegram.
-# Trigger manuale via API (cronjob.org).
+# Rigenera docs/site_data.json usando scripts/rebuild_site_data.py (nessuna
+# chiamata Gemini, nessun messaggio Telegram: solo dati per il sito pubblico
+# su GitHub Pages). Il bollettino completo con analisi AI resta gestito da
+# previsioni.yml, che sovrascrive comunque lo stesso file quando gira.
 #
 # ── Configurazione cronjob.org ─────────────────────────────────────────────
 # Method : POST
-# URL    : https://api.github.com/repos/ilmarins00/MeteoBot/actions/workflows/previsioni.yml/dispatches
+# URL    : https://api.github.com/repos/ilmarins00/MeteoBot/actions/workflows/rebuild-site.yml/dispatches
 # Headers:
 #   Accept        : application/vnd.github+json
 #   Authorization : Bearer <GITHUB_PAT>
 #   X-GitHub-Api-Version: 2022-11-28
 # Body (JSON):
 #   {"ref": "main"}
+# Interval: ogni 10-15 minuti
 # ──────────────────────────────────────────────────────────────────────────
 
 on:
   workflow_dispatch:
 
 concurrency:
-  group: previsioni-meteo
+  group: rebuild-site-data
   cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  previsioni:
+  rebuild:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -41,41 +43,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Genera e invia previsioni (nuovo motore)
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python run_previsioni_new.py
+      - name: Rigenera docs/site_data.json
+        run: python scripts/rebuild_site_data.py
 
-      - name: Commit dati sito e stato aggiornato
-        if: always()
+      - name: Commit ed effettua il push dei dati aggiornati
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           for attempt in 1 2 3 4 5; do
             git fetch origin main
-            cp state.json /tmp/local_state.json 2>/dev/null || true
-            cp docs/site_data.json /tmp/local_site.json 2>/dev/null || true
+            cp docs/site_data.json /tmp/local_site.json
             git reset --hard origin/main
-            python3 << 'PYEOF'
-          import json, os
-          with open('/tmp/local_state.json') as f: local = json.load(f)
-          remote = {}
-          if os.path.exists('state.json'):
-              with open('state.json') as f: remote = json.load(f)
-          for s in ['storico_previsioni']:
-              if s in local: remote[s] = local[s]
-          with open('state.json', 'w') as f: json.dump(remote, f, indent=4, ensure_ascii=False)
-          PYEOF
             mkdir -p docs
-            cp /tmp/local_site.json docs/site_data.json 2>/dev/null || true
-            git add state.json docs/site_data.json || true
+            cp /tmp/local_site.json docs/site_data.json
+            git add docs/site_data.json
             if git diff --cached --quiet; then
               echo "Nessuna modifica da committare"
               exit 0
             fi
-            git commit -m "Aggiorna dati sito e storico previsioni [skip ci]"
+            git commit -m "Aggiorna dati sito (automatico) [skip ci]"
             if git push; then
               echo "Push riuscito (tentativo $attempt)"
               exit 0

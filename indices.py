@@ -415,6 +415,7 @@ def orographic_enhancement(
     wind_dir_deg: float,
     wind_speed_ms: float,
     instability_factor: float = 1.0,
+    elevation_m: float = 95.0,
 ) -> float:
     """
     Fattore di amplificazione orografica delle precipitazioni per il
@@ -422,6 +423,14 @@ def orographic_enhancement(
 
     Massima amplificazione con flusso da S-SSO (200-220°) e venti forti.
     Modulato da fattore instabilità (es. CAPE normalizzato).
+
+    elevation_m: quota del punto di osservazione (m s.l.m.). Zone più elevate
+    e più interne sono più esposte al sollevamento orografico del flusso
+    umido rispetto a zone costiere basse. Il coefficiente sotto è una stima
+    EMPIRICA (non calibrata su osservazioni reali): se in futuro hai dati
+    storici delle diverse zone, ricalibralo confrontando accumuli osservati.
+    Default 95.0 m = quota storica della stazione di riferimento (Foce),
+    così il comportamento resta identico a prima per chi non passa il parametro.
     """
     angle_diff = abs(wind_dir_deg - _OROGRAPHIC_OPTIMAL_DIR) % 360
     if angle_diff > 180:
@@ -429,7 +438,10 @@ def orographic_enhancement(
     # Campana gaussiana centrata sul flusso ottimale
     gauss = math.exp(-0.5 * (angle_diff / _OROGRAPHIC_HALF_WIDTH) ** 2)
     speed_factor = min(wind_speed_ms / 15.0, 1.0)  # satura a 15 m/s
-    return gauss * speed_factor * instability_factor
+    # Fattore quota: +1 punto ogni 500m sopra i 95m di riferimento, cap 1.3/0.85
+    elevation_factor = min(1.0 + (elevation_m - 95.0) / 500.0, 1.3)
+    elevation_factor = max(elevation_factor, 0.85)
+    return gauss * speed_factor * instability_factor * elevation_factor
 
 def sea_breeze_convergence_score(
     surface_wind_dir: float,

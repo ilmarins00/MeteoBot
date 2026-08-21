@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meteo La Spezia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="sereno">
+  <div class="weather-backdrop" aria-hidden="true"></div>
+  <div id="zone-gate">
+    <div class="gate-copy"><span class="eyebrow">METEOBOT / LA SPEZIA</span><h1>Che tempo fa<br><em>da te?</em></h1><p>Fai clic su una delle quattro zone della mappa.</p></div>
+    <div class="gate-tools"><div id="zone-map" aria-label="Mappa interattiva delle quattro zone"></div></div>
+    <p id="gate-error" class="warn" hidden>Dati non ancora disponibili, riprova tra poco.</p>
+  </div>
+
+  <main id="site-content" hidden>
+    <header id="site-header">
+      <div><span class="eyebrow">METEOBOT / PREVISIONE LOCALE</span><h1 id="zone-title">Meteo La Spezia</h1><p id="scene-label" class="scene-label">Cielo sereno</p></div>
+      <div class="header-meta"><div class="live-clock"><span class="live-dot"></span><span id="local-clock">--:--:--</span><small>ora locale</small></div><p id="data-update">Dati ricevuti --</p></div>
+    </header>
+
+    <div class="dashboard-grid">
+      <section id="current-conditions" class="card current-card"></section>
+      <section id="risk-panel" class="card"></section>
+      <section id="radar-panel" class="card wide-card">
+        <div class="section-kicker">Radar e fulmini in tempo reale</div>
+        <div class="section-heading"><h2>Cosa sta succedendo adesso</h2><span class="muted" id="radar-updated">Aggiornamento in corso...</span></div>
+        <div id="radar-map" aria-label="Radar precipitazioni (RainViewer) e fulmini rilevati (Blitzortung)"></div>
+        <p class="muted radar-legend"><span id="radar-legend-count">In attesa dei primi dati fulmini...</span> · 🔴 &lt; 5 min · 🟠 5-15 min · 🟡 15-30 min · Radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Fulmini: <a href="https://www.blitzortung.org/" target="_blank" rel="noopener">Blitzortung.org</a></p>
+      </section>
+      <section id="hourly-forecast" class="card wide-card"></section>
+      <section id="charts-panel" class="card wide-card"></section>
+      <section id="ai-analysis" class="card wide-card"></section>
+      <section id="hazards-panel" class="card"></section>
+    </div>
+
+    <section id="technical-toggle" class="technical-section"><button onclick="toggleTechnical()">Mostra analisi tecnica</button><div id="technical-data" hidden></div></section>
+    <footer><p class="disclaimer">Previsione automatica generata da modello. Non è un'allerta ufficiale.</p></footer>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

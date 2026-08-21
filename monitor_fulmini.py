@@ -312,6 +312,33 @@ def collect_strikes_openmeteo(radius_km: float = 20.0) -> List[Dict[str, Any]]:
         return []
 
 
+def export_public_lightning_json(strikes: List[Dict[str, Any]], path: str = "docs/lightning_data.json") -> None:
+    """
+    Scrive un JSON pubblico e minimale (lat/lon/orario/distanza) per la mappa
+    del sito, indipendentemente dal fatto che sia stata inviata una notifica.
+    """
+    import tempfile
+    payload = {
+        "generated_at": datetime.now(TZ_ROME).isoformat(),
+        "window_minutes": thresholds.LIGHTNING_WINDOW_MINUTES,
+        "radius_km": thresholds.LIGHTNING_RADIUS_KM,
+        "strikes": [
+            {"lat": s["lat"], "lon": s["lon"], "time": s["time"], "distance_km": s["distance_km"]}
+            for s in strikes
+        ],
+    }
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(prefix=".lightning_", suffix=".json", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(temp_path, path)
+    except Exception:
+        os.unlink(temp_path)
+        raise
+
+
 def collect_strikes_from_state() -> List[Dict[str, Any]]:
     """Legge le scariche recenti dallo stato salvato."""
     state = load_state()
@@ -620,6 +647,11 @@ def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dic
     state["last_check_ts"] = datetime.now(TZ_ROME).isoformat()
     state["recent_strikes"] = window_valid[-200:]
     state["total_in_window"] = len(window_valid)
+
+    try:
+        export_public_lightning_json(window_valid)
+    except Exception as e:
+        print(f"Errore scrittura lightning_data.json: {e}")
 
     n = len(strikes_for_alert)
     print(

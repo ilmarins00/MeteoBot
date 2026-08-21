@@ -190,7 +190,7 @@ def convective_score(params: Dict[str, float]) -> int:
 
     return max(score, 0)
 
-def assess_phenomena_risks(params: Dict, obs: Dict, hourly: list) -> Dict[str, str]:
+def assess_phenomena_risks(params: Dict, obs: Dict, hourly: list, hazard_prob_pct: int = 0) -> Dict[str, str]:
     """
     Valuta il rischio per ciascun fenomeno atmosferico.
     Scala: Trascurabile | Marginale | Moderato | Elevato | Estremo
@@ -231,6 +231,14 @@ def assess_phenomena_risks(params: Dict, obs: Dict, hourly: list) -> Dict[str, s
         r["Pioggia"] = "Elevato"
     else:
         r["Pioggia"] = "Estremo"
+
+    # Coerenza con la probabilità complessiva calcolata su AROME (logic.hazard_probability):
+    # se il segnale combinato è forte, "Temporali" non può restare "Moderato" o sotto.
+    _scala = ["Trascurabile", "Marginale", "Moderato", "Elevato", "Estremo"]
+    if hazard_prob_pct >= 60 and _scala.index(r["Temporali"]) < _scala.index("Elevato"):
+        r["Temporali"] = "Elevato"
+    elif hazard_prob_pct >= 30 and _scala.index(r["Temporali"]) < _scala.index("Moderato"):
+        r["Temporali"] = "Moderato"
 
     # --- VENTO ---
     gust = obs.get("wind_gust_kmh", 0) or 0
@@ -308,6 +316,8 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
         return "attività convettiva assente o molto debole"
 
     if not ha_innesco:
+        if stp >= thresholds.STP_HIGH or (scp >= thresholds.SCP_HIGH and srh >= thresholds.SRH_03_HIGH):
+            return "ambiente da supercella probabile, ma senza innesco confermato nei dati orari"
         cin_debole = cin < abs(thresholds.CIN_MODERATE)  # CIN quasi assente
         organizzato = shear >= thresholds.SHEAR_06_ORGANIZED
         if organizzato and cin_debole and cape >= thresholds.SBCAPE_STRONG:
@@ -441,6 +451,13 @@ def hazard_probability(params: Dict[str, float]) -> int:
 # Hazard mapping completo
 # ─────────────────────────────────────────────────────────────────────────────
 
+class _HazardResult(dict):
+    """Risultato strutturato con iterazione retrocompatibile sui messaggi."""
+
+    def __iter__(self):
+        return iter(self.get("reali", []) + self.get("potenziali", []))
+
+
 def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
     """
     Determina i fenomeni severi separando i RISCHI REALI (innescati, con pioggia/temporale
@@ -461,16 +478,16 @@ def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
     reali: List[str] = []
     potenziali: List[str] = []
 
-    cape = max(params.get("SBCAPE", params.get("CAPE", 0)), params.get("MUCAPE", 0))
-    shear = params.get("shear_0_6", 0)
-    srh1 = params.get("srh_0_1", 0)
-    srh3 = params.get("srh_0_3", 0)
-    pwat = params.get("PWAT", 0)
+    cape = max(params.get("SBCAPE", params.get("CAPE", 0)) or 0, params.get("MUCAPE", 0) or 0)
+    shear = params.get("shear_0_6", 0) or 0
+    srh1 = params.get("srh_0_1", 0) or 0
+    srh3 = params.get("srh_0_3", 0) or 0
+    pwat = params.get("PWAT", 0) or 0
     cin = abs(params.get("CIN", params.get("SBCIN", 0)) or 0)
-    lcl = params.get("LCL", 1500)
-    rh = params.get("humidity_pct", 50)
-    precip = params.get("precip_rate_mm_h", 0)
-    wind = params.get("wind_gust_kmh", 0)
+    lcl = params.get("LCL", 1500) or 1500
+    rh = params.get("humidity_pct", 50) or 50
+    precip = params.get("precip_rate_mm_h", 0) or 0
+    wind = params.get("wind_gust_kmh", 0) or 0
     dcape = float(params.get("DCAPE", 0) or 0)
     lr03 = params.get("lr_0_3km", 0) or 0
     lr75_val = params.get("lr_700_500")  # None se non disponibile: NON forzare a 0
@@ -524,7 +541,7 @@ def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
 
     # -- TORNADO / TROMBE MARINE --
     # Richiede STP/SRH elevati E supporto dinamico reale, altrimenti resta ipotesi teorica
-    tornado_risk = params.get("STP", 0) >= thresholds.STP_MODERATE or (srh1 >= thresholds.SRH_01_HIGH and shear >= thresholds.SHEAR_01_TORNADO)
+    tornado_risk = (params.get("STP", 0) or 0) >= thresholds.STP_MODERATE or (srh1 >= thresholds.SRH_01_HIGH and shear >= thresholds.SHEAR_01_TORNADO)
     if tornado_risk and has_dynamic_support:
         add_hazard("Trombe d'aria/marine (STP/SRH elevati)", has_trigger and not is_capped)
 
@@ -578,7 +595,7 @@ def severe_hazards(params: Dict[str, float]) -> Dict[str, List[str]]:
     if params.get("wave_height_m", 0) >= thresholds.WAVE_HEIGHT_ARANCIONE:
         reali.append("Mareggiata significativa")
 
-    return {"reali": reali, "potenziali": potenziali}
+    return _HazardResult(reali=reali, potenziali=potenziali)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -712,7 +729,7 @@ def full_alert(params: Dict[str, float], score: float, rain_obs: Dict[str, float
 
 def map_score_to_alert(score: float) -> str:
     """Mappa lo score 0-5 in livelli allerta."""
-    if score >= 4.0: return "rossa"
+    if score >= 7.0: return "rossa"
     if score >= 2.5: return "arancione"
     if score >= 1.0: return "gialla"
     return "verde"

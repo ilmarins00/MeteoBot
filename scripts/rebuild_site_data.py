@@ -1,0 +1,84 @@
+"""Rigenera il payload web senza inviare notifiche o messaggi esterni."""
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from api_builder import build_bulletin_json, build_full_site_json
+from config import CITY_ZONES, LATITUDE, LONGITUDE
+from engine import run_pipeline
+from io_ingest import build_day_hourly_list, build_day_obs, fetch_arpal_alert, fetch_forecast_3days
+from logic import assess_phenomena_risks, hazard_probability, livello_attenzione, maltempo_score
+
+
+def build_day(forecast, day_key, label, arpal_alert=None):
+    day_data = forecast[day_key]
+    obs = build_day_obs(day_data, forecast["model_primary"])
+    hourly = build_day_hourly_list(
+        day_data,
+        day_hourly_secondary=forecast.get(f"{day_key}_icon"),
+        primary_label="arome",
+        secondary_label="icon",
+    )
+    result = run_pipeline(obs, hourly)
+    rain = {"1h": float(obs.get("precip_rate_mm_h", 0) or 0), "24h": float(obs.get("rain_24h_mm", 0) or 0)}
+    score = maltempo_score(result["params"], rain)
+    level, emoji = livello_attenzione(score)
+    probability = hazard_probability(result["params"])
+    risks = assess_phenomena_risks(result["params"], obs, hourly, hazard_prob_pct=probability)
+    hazards = result.get("hazards_dict", {"reali": [], "potenziali": []})
+    return build_bulletin_json(
+        result=result, obs=obs, hourly=hourly, risks=risks, m_score=score,
+        livello=level, emoji_liv=emoji, prob_pct=probability,
+        hazards_reali=hazards.get("reali", []),
+        hazards_potenziali=hazards.get("potenziali", []), narrativa=None,
+        day_label=label, date_str="", model_label=forecast["model_primary"],
+        arpal_alert=arpal_alert,
+    )
+
+
+def build_location(lat, lon, label=None, note=None, arpal_alert=None):
+    forecast = fetch_forecast_3days(lat=lat, lon=lon)
+    days = {
+        "oggi": build_day(forecast, "day0", "OGGI", arpal_alert),
+        "domani": build_day(forecast, "day1", "DOMANI", arpal_alert),
+        "dopodomani": build_day(forecast, "day2", "DOPODOMANI", arpal_alert),
+    }
+    result = dict(days["oggi"])
+    result["days"] = days
+    if label:
+        result["label"] = label
+        result["note_locale"] = note
+        for day in days.values():
+            day["label"] = label
+            day["note_locale"] = note
+    return result
+
+
+def main():
+    print("[arpal] Verifico lo stato di allerta ufficiale...")
+    arpal_alert = fetch_arpal_alert()
+    if arpal_alert.get("ok"):
+        print(f"[arpal] Livello rilevato: {arpal_alert['level']} — {arpal_alert.get('title')}")
+    else:
+        print(f"[arpal] Non disponibile: {arpal_alert.get('error')}")
+
+    general = build_location(LATITUDE, LONGITUDE, arpal_alert=arpal_alert)
+    zones = {}
+    for zone_id, zone in CITY_ZONES.items():
+        print(f"[zone] {zone['label']}")
+        zones[zone_id] = build_location(zone["lat"], zone["lon"], zone["label"], zone["note"], arpal_alert=arpal_alert)
+    scores = [zone["current"].get("score", 0) for zone in zones.values()]
+    zone_payload = {
+        "zones": zones,
+        "differenze_significative": max(scores) - min(scores) >= 1 if scores else False,
+        "score_spread": round(max(scores) - min(scores), 1) if scores else 0,
+        "nota": "Previsioni calcolate sulle coordinate delle singole zone.",
+    }
+    build_full_site_json(general, zone_payload, None, "docs/site_data.json")
+    print("docs/site_data.json rigenerato")
+
+
+if __name__ == "__main__":
+    main()

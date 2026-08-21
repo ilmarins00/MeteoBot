@@ -22,6 +22,7 @@ from config import (
     TELEGRAM_CHAT_IDS as LISTA_CHAT,
     GEMINI_API_KEY,
     LATITUDE, LONGITUDE, TIMEZONE,
+    load_state_section, save_state_section,
 )
 from io_ingest import (
     fetch_forecast_3days,
@@ -32,6 +33,7 @@ from io_ingest import (
     compute_model_spread,
     fetch_temperature_history,
     extract_day_hourly,
+    fetch_arpal_alert,
 )
 from engine import run_pipeline, export_json
 from logic import (
@@ -62,6 +64,55 @@ MESI_IT   = ["gennaio","febbraio","marzo","aprile","maggio","giugno",
 
 def _format_date(d: datetime.date) -> str:
     return f"{GIORNI_IT[d.weekday()]} {d.day} {MESI_IT[d.month-1]} {d.year}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Confronto con l'emissione precedente (Fase 2 — "cosa è cambiato")
+# ─────────────────────────────────────────────────────────────────────────────
+
+def confronta_con_precedente(day_key: str, current_snapshot: dict) -> list | None:
+    """
+    Confronta lo snapshot di oggi con quello salvato dall'esecuzione precedente
+    (in state.json, sezione 'storico_previsioni'). Aggiorna sempre lo stato
+    con lo snapshot corrente, indipendentemente dall'esito del confronto.
+
+    Ritorna una lista di frasi descrittive, o None se non ci sono variazioni
+    significative (o se non esiste ancora uno storico da confrontare).
+    """
+    sezione = load_state_section("storico_previsioni")
+    prev = sezione.get(day_key)
+
+    sezione[day_key] = current_snapshot
+    save_state_section("storico_previsioni", sezione)
+
+    if not prev:
+        return None
+
+    diffs = []
+
+    d_score = current_snapshot.get("score", 0) - prev.get("score", 0)
+    if abs(d_score) >= 0.5:
+        verso = "aumentato" if d_score > 0 else "diminuito"
+        diffs.append(
+            f"Il livello di rischio è {verso} rispetto alla precedente elaborazione "
+            f"({prev.get('score', 0):.1f} → {current_snapshot.get('score', 0):.1f})"
+        )
+
+    d_wind = current_snapshot.get("wind_gust_kmh", 0) - prev.get("wind_gust_kmh", 0)
+    if abs(d_wind) >= 15:
+        diffs.append(
+            f"Raffiche massime previste passate da {prev.get('wind_gust_kmh', 0):.0f} "
+            f"a {current_snapshot.get('wind_gust_kmh', 0):.0f} km/h"
+        )
+
+    d_rain = current_snapshot.get("rain_peak", 0) - prev.get("rain_peak", 0)
+    if abs(d_rain) >= 10:
+        verso = "aumentato" if d_rain > 0 else "diminuito"
+        diffs.append(
+            f"Il picco di pioggia oraria è {verso} rispetto alla precedente elaborazione "
+            f"({prev.get('rain_peak', 0):.0f} → {current_snapshot.get('rain_peak', 0):.0f} mm/h)"
+        )
+
+    return diffs if diffs else None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -260,7 +311,9 @@ def build_day_message(
     temp_history:     list = None,   # storia T per heatwave
     uwyo_sounding:    dict = None,   # sounding UWYO se disponibile
     html_blocks:      list = None,   # se fornito, accumula qui il blocco HTML del giorno
+    site_data:        dict = None,   # se fornito (solo per OGGI), accumula qui il JSON per il sito
     arome_pi_data:    dict = None,   # nowcast AROME-PI, solo per OGGI
+    arpal_alert:      dict = None,   # stato allerta ufficiale letto automaticamente da ARPAL
     next_day_hourly_list: list = None,  # tabella oraria di DOMANI (già costruita),
                                          # serve solo a OGGI per completare i quarti dopo mezzanotte
     injected_quarters: list = None,     # quarti d'ora oltre mezzanotte calcolati da OGGI,
@@ -421,7 +474,8 @@ def build_day_message(
     else:
         icona_giorno = "🌤️"
 
-    risks = assess_phenomena_risks(params, obs, hourly)
+    prob = hazard_probability(params)
+    risks = assess_phenomena_risks(params, obs, hourly, hazard_prob_pct=prob)
     lines = [
         "",
         f"{icona_giorno} LA SPEZIA — {day_label.upper()}",
@@ -541,7 +595,6 @@ def build_day_message(
     if reali_filtrati:
         lines.append("⚠️ Fenomeni in atto/certi: " + " | ".join(reali_filtrati[:5]))
 
-    prob = hazard_probability(params)
     if is_intense or potenziali_filtrati:
         lines.append(f"🎲 Probabilità fenomeni convettivi intensi: {prob}%")
 
@@ -590,6 +643,36 @@ def build_day_message(
         lines.append(f"[{gem_model}]")
     else:
         lines.append("(analisi AI non disponibile)")
+
+    if site_data is not None:
+        from api_builder import build_bulletin_json
+        bulletin = build_bulletin_json(
+            result=result,
+            obs=obs,
+            hourly=hourly,
+            risks=risks,
+            m_score=m_score,
+            livello=livello,
+            emoji_liv=emoji_liv,
+            prob_pct=prob,
+            hazards_reali=reali_filtrati,
+            hazards_potenziali=potenziali_filtrati,
+            narrativa=narrativa if (api_key and GEMINI_API_KEY) else None,
+            day_label=day_label,
+            date_str=_format_date(day_date),
+            model_label=model_label,
+            arpal_alert=arpal_alert,
+            ffg_result=ffg_result,
+            heatwave_result=hw_result,
+            model_spread=spread,
+            uwyo_summary=uwyo_summary,
+            rain_evolution_text=rain_evo_txt,
+            wind_evolution_text=wind_evo_txt,
+            temp_anomaly=temp_anomaly,
+        )
+        site_data.setdefault("days", {})[day_label.lower()] = bulletin
+        if day_label == "OGGI":
+            site_data.update(bulletin)
 
     if html_blocks is not None:
             from templates import (
@@ -644,6 +727,14 @@ def main():
     now   = datetime.datetime.now(TZ_ROME)
     today = now.date()
     print(f"\nOra: {now.strftime('%d/%m/%Y %H:%M')} – {LOCATION_NAME}")
+
+    print("\n🚨 Verifico lo stato di allerta ufficiale ARPAL...")
+    arpal_alert = fetch_arpal_alert()
+    if arpal_alert.get("ok"):
+        print(f"  ✓ Livello: {arpal_alert['level']} — {arpal_alert.get('title')}")
+    else:
+        print(f"  ⚠ Non disponibile: {arpal_alert.get('error')}")
+
     # ── 1. Fetch dati 3 giorni ────────────────────────────────────────────
     print("\n📡 Scaricamento dati Open-Meteo (AROME + ICON-EU)...")
     try:
@@ -707,6 +798,7 @@ def main():
     ) if forecast.get("day1") else []
 
     print(f"\n⚙️  Elaborazione OGGI ({_format_date(today)})...")
+    site_data: dict = {}
     msg0, quarti_per_domani = build_day_message(
         day_date        = today,
         day_hourly      = forecast["day0"],
@@ -719,8 +811,10 @@ def main():
         temp_history    = temp_history,
         uwyo_sounding   = uwyo_sounding,
         html_blocks     = html_blocks,
+        site_data       = site_data,
         arome_pi_data   = forecast.get("arome_pi"),
         next_day_hourly_list = day1_hourly_preview,
+        arpal_alert     = arpal_alert,
     )
     messages.append(msg0)
     print(f"  ✓ OGGI: {len(msg0)} chars")
@@ -738,8 +832,10 @@ def main():
         temp_history    = temp_history,
         uwyo_sounding   = uwyo_sounding,
         html_blocks     = html_blocks,
+        site_data       = site_data,
         arome_pi_data   = None,
         injected_quarters = quarti_per_domani,
+        arpal_alert     = arpal_alert,
     )
     messages.append(msg1)
     print(f"  ✓ DOMANI: {len(msg1)} chars")
@@ -757,7 +853,9 @@ def main():
         temp_history    = temp_history,
         uwyo_sounding   = uwyo_sounding,
         html_blocks     = html_blocks,
+        site_data       = site_data,
         arome_pi_data   = None,
+        arpal_alert     = arpal_alert,
     )
     messages.append(msg2)
     print(f"  ✓ DOPODOMANI: {len(msg2)} chars")
@@ -773,6 +871,39 @@ def main():
         send_telegram_document(html_doc, filename=nome_file)
     else:
         print("  ⚠ Nessun blocco HTML generato, invio saltato.")
+
+        # ── 5b. Costruzione JSON per il sito (Fase 1-4) ────────────────────────
+    print("\n🌐 Costruzione dati per il sito web...")
+    try:
+        from api_builder import build_full_site_json
+
+        zone_results = None
+        try:
+            from run_zone_forecast import build_all_zones_today
+            zone_results = build_all_zones_today()
+        except Exception as e:
+            print(f"  ⚠ Zone non disponibili: {e}")
+
+        try:
+            from multi_model import fetch_and_compare
+            print("  [multi_model] Confronto tra modelli disponibili...")
+            site_data["model_comparison"] = fetch_and_compare()
+        except Exception as e:
+            print(f"  ⚠ Confronto multi-modello non disponibile: {e}")
+            site_data["model_comparison"] = None
+
+        snapshot = site_data.get("_snapshot", {})
+        diff_precedente = confronta_con_precedente("oggi", snapshot)
+
+        build_full_site_json(
+            forecast=site_data,
+            zone_results=zone_results,
+            diff_precedente=diff_precedente,
+            path="docs/site_data.json",
+        )
+        print("  ✓ docs/site_data.json generato")
+    except Exception as e:
+        print(f"  ✗ Errore generazione sito: {e}")
 
     # ── 5. Salva JSON ────────────────────────────────────────────────────
     export_json({"messages": messages, "generated": now.isoformat()}, "previsioni_output.json")

@@ -477,6 +477,11 @@ def render_section1_simple(
     else:
         lines.append(f"Vento debole da {nome_v}, media {w_max:.0f} km/h, raffiche fino a {g_max:.0f} km/h.")
 
+    if 202 <= wd <= 248:
+        lines.append("Il libeccio espone in particolare Portovenere e all'imboccatura del Golfo.")
+    elif g_max >= thresholds.ARPAL_WIND_COAST_GIALLO:
+        lines.append("Raffiche più sensibili sulle zone esposte della costa.")
+
     # ── Note orografiche ──────────────────────────────────────────────────
     if oro >= 0.6 and (wmo_dom >= 61 or cape >= 800):
         lines.append(
@@ -564,11 +569,11 @@ def render_section3_objective_table(hourly: List[Dict]) -> str:
     
     for h in hourly[:24]:
         t = h.get("time", "")[-5:]
-        temp = f"{float(h.get('temperature', 0)):>4.1f}"
-        wind = f"{float(h.get('wind_gust', 0)):>3.0f}"
-        prec = f"{float(h.get('precip', 0)):>4.1f}"
-        cape = f"{float(h.get('cape', 0)):>4.0f}"
-        wmo = int(h.get("weather_code", 0))
+        temp = f"{float(h.get('T', 0) or 0):>4.1f}"
+        wind = f"{float(h.get('wind_gust', 0) or 0):>3.0f}"
+        prec = f"{float(h.get('precip', 0) or 0):>4.1f}"
+        cape = f"{float(h.get('CAPE', 0) or 0):>4.0f}"
+        wmo = int(h.get("wmo_code", 0) or 0)
         
         # Emoji meteo semplice
         icon = "☀️" if wmo < 2 else "⛅" if wmo < 50 else "🌧️" if wmo < 80 else "⛈️"

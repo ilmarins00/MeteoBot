@@ -261,12 +261,17 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
         "DCAPE":              obs.get("DCAPE",             params.get("DCAPE", 0)),
     })
 
-    # — Fattore orografico e brezza marina
+        # — Fattore orografico e brezza marina
     wind_dir = obs.get("wind_dir_deg", 225)
     wind_ms  = obs.get("wind_speed_ms", obs.get("wind_gust_kmh", 0) / 3.6)
+    elevation_m = obs.get("elevation_m", 95.0)  # 95.0 = default storico (Foce)
     cape_factor = min(params.get("MUCAPE", 0) / 2000.0, 1.0)
     params["orographic_factor"] = round(
-        orographic_enhancement(wind_dir, wind_ms, instability_factor=max(cape_factor, 0.3)),
+        orographic_enhancement(
+            wind_dir, wind_ms,
+            instability_factor=max(cape_factor, 0.3),
+            elevation_m=elevation_m,
+        ),
         3,
     )
     hour_utc = obs.get("hour_utc", datetime.now(timezone.utc).hour)

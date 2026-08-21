@@ -509,3 +509,45 @@ T850_CLIMATOLOGY_C: Dict[int, float] = {
 TEMP_ALOFT_ANOMALY_NOTABLE:     float = 6.0
 TEMP_ALOFT_ANOMALY_SIGNIFICANT: float = 10.0
 TEMP_ALOFT_ANOMALY_EXCEPTIONAL: float = 14.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Zone interne a La Spezia (Fase 3 — sito web)
+# ATTENZIONE: coordinate ed elevazioni sono stime iniziali (verificale tu su
+# mappa reale); non hanno lo status "certificato" delle soglie ARPAL/SPC.
+# ─────────────────────────────────────────────────────────────────────────────
+CITY_ZONES: Dict[str, Dict] = {
+    "foce":       {"lat": 44.124363, "lon": 9.798269, "label": "Foce",
+                    "elevation_m": 100, "note": "costiera, esposta a libeccio/scirocco"},
+    "centro":     {"lat": 44.105130, "lon": 9.823554, "label": "Centro",
+                    "elevation_m": 3,  "note": "settore urbano centrale"},
+    "migliarina": {"lat": 44.118279, "lon": 9.840946, "label": "Maggiolina",
+                    "elevation_m": 7, "note": "settore orientale della città"},
+    "felettino":  {"lat": 44.131810, "lon": 9.845865, "label": "Felettino",
+                    "elevation_m": 45, "note": "zona collinare interna, più forzante orografico"},
+}
+
+# Soglia minima di differenza tra zone (in punti di score maltempo, 0-5)
+# sotto la quale le differenze rientrano nell'incertezza del modello e NON
+# vanno presentate come reali differenze meteorologiche tra zone.
+ZONE_DIFFERENCE_SIGNIFICANT_THRESHOLD: float = 1.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Confronto multi-modello (Fase 5 — probabilità per accordo tra modelli)
+# Tutti disponibili gratis su Open-Meteo, una sola chiamata. AROME resta
+# SEMPRE il riferimento primario del bollettino: gli altri servono solo a
+# stimare quanto è "condivisa" una previsione, non sostituiscono AROME.
+# NOTA: MeteoBlue non è incluso, è un servizio a pagamento a sé (nessuna
+# chiave gratuita); se lo vuoi vanno gestite credenziali separate.
+# NOTA: ICON-D2 copre principalmente Centro-Europa/Alpi: su La Spezia può
+# risultare parzialmente fuori dominio, in tal caso viene scartato in automatico.
+# ─────────────────────────────────────────────────────────────────────────────
+MULTI_MODEL_SET: Dict[str, str] = {
+    "meteofrance_arome_france":    "AROME",
+    "meteofrance_arome_france_hd": "AROME-HD",
+    "icon_eu":                     "ICON-EU",
+    "icon_d2":                     "ICON-D2",
+    "icon_global":                 "ICON-Global",
+    "ecmwf_ifs025":                "ECMWF-IFS",
+    "gfs_seamless":                "GFS",
+}
+MULTI_MODEL_REFERENCE = "meteofrance_arome_france"  # AROME resta il riferimento
