@@ -1,6 +1,6 @@
 {
   "city": "La Spezia",
-  "generated_at": "2026-08-22T04:18:29.173584+02:00",
+  "generated_at": "2026-08-22T04:33:44.216831+02:00",
   "timezone": "Europe/Rome",
   "forecast": {
     "official_alert": {
@@ -19,7 +19,7 @@
       "day_label": "OGGI",
       "date": "",
       "model": "AROME+ICON-EU",
-      "generated_at": "2026-08-22T04:15:53.520615+02:00",
+      "generated_at": "2026-08-22T04:31:09.381321+02:00",
       "timezone": "Europe/Rome",
       "source": "AROME+ICON-EU"
     },
@@ -607,7 +607,7 @@
           "day_label": "OGGI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T04:15:53.520615+02:00",
+          "generated_at": "2026-08-22T04:31:09.381321+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -1200,7 +1200,7 @@
           "day_label": "DOMANI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T04:15:53.566974+02:00",
+          "generated_at": "2026-08-22T04:31:09.430163+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -1788,7 +1788,7 @@
           "day_label": "DOPODOMANI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T04:15:53.606374+02:00",
+          "generated_at": "2026-08-22T04:31:09.472701+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -2385,7 +2385,7 @@
           "day_label": "OGGI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T04:15:55.699779+02:00",
+          "generated_at": "2026-08-22T04:31:11.448872+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -2978,7 +2978,7 @@
               "day_label": "OGGI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T04:15:55.699779+02:00",
+              "generated_at": "2026-08-22T04:31:11.448872+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -3573,7 +3573,7 @@
               "day_label": "DOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T04:15:55.746174+02:00",
+              "generated_at": "2026-08-22T04:31:11.497611+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -4163,7 +4163,7 @@
               "day_label": "DOPODOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T04:15:55.787247+02:00",
+              "generated_at": "2026-08-22T04:31:11.540143+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -4762,7 +4762,7 @@
           "day_label": "OGGI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T04:16:32.665433+02:00",
+          "generated_at": "2026-08-22T04:31:13.560923+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -5355,7 +5355,7 @@
               "day_label": "OGGI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T04:16:32.665433+02:00",
+              "generated_at": "2026-08-22T04:31:13.560923+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -5950,7 +5950,7 @@
               "day_label": "DOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T04:16:32.712357+02:00",
+              "generated_at": "2026-08-22T04:31:13.610132+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -6540,7 +6540,7 @@
               "day_label": "DOPODOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T04:16:32.753191+02:00",
+              "generated_at": "2026-08-22T04:31:13.653007+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -9516,7 +9516,7 @@
           "day_label": "OGGI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T04:18:29.085245+02:00",
+          "generated_at": "2026-08-22T04:33:44.125610+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -10109,7 +10109,7 @@
               "day_label": "OGGI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T04:18:29.085245+02:00",
+              "generated_at": "2026-08-22T04:33:44.125610+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -10704,7 +10704,7 @@
               "day_label": "DOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T04:18:29.131777+02:00",
+              "generated_at": "2026-08-22T04:33:44.174299+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -11294,7 +11294,7 @@
               "day_label": "DOPODOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T04:18:29.173336+02:00",
+              "generated_at": "2026-08-22T04:33:44.216713+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
