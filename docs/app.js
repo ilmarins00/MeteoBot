@@ -10,8 +10,25 @@ let lightningLayerGroup = null;
 let radarRefreshTimer = null;
 let midnightTimer = null;
 
-const ZONE_COORDS = { foce: [44.124363, 9.798269, 'Foce'], centro: [44.105130, 9.823554, 'Centro'], migliarina: [44.118279, 9.840946, 'Migliarina'], felettino: [44.131810, 9.845865, 'Felettino'] };
-const LA_SPEZIA_CENTER = [44.12, 9.82];
+const ZONE_COORDS = {
+  foce: [44.124363, 9.798269, 'Foce'],
+  centro: [44.105130, 9.823554, 'Centro'],
+  migliarina: [44.118279, 9.840946, 'Migliarina'],
+  felettino: [44.131810, 9.845865, 'Felettino'],
+  santo_stefano_magra: [44.160668, 9.915821, 'Santo Stefano di Magra'],
+  sarzana: [44.112775, 9.960461, 'Sarzana'],
+  marinella_sarzana: [44.048771, 10.010244, 'Marinella di Sarzana'],
+  riomaggiore: [44.100119, 9.737493, 'Riomaggiore'],
+  ricco_del_golfo: [44.154869, 9.764319, 'Riccò del Golfo'],
+  lerici: [44.076588, 9.913639, 'Lerici'],
+  portovenere: [44.054367, 9.837378, 'Portovenere'],
+  le_grazie: [44.066651, 9.835905, 'Le Grazie'],
+  marola: [44.091753, 9.819317, 'Marola'],
+  marina_di_carrara: [44.034886, 10.044428, 'Marina di Carrara'],
+  ceparana: [44.169025, 9.885630, 'Ceparana'],
+  aulla: [44.213917, 9.968351, 'Aulla']
+};
+const LA_SPEZIA_CENTER = [44.12, 9.87];
 
 const WEATHER_SCENES = [
   ['Cielo sereno', 'https://images.unsplash.com/photo-1499346030926-9a72daac6c63?auto=format&fit=crop&w=2200&q=85'],
@@ -83,7 +100,10 @@ function showGate() {
 function selectZone(zoneId) {
   selectedZone = zoneId;
   const baseForecast = SITE_DATA.areas?.zones?.[zoneId];
-  if (!baseForecast) return;
+  if (!baseForecast) {
+    alert('Dati non ancora disponibili per questa zona: il sito verrà aggiornato al prossimo ciclo automatico. Riprova tra qualche minuto.');
+    return;
+  }
   const forecast = baseForecast.days?.oggi || baseForecast;
   document.getElementById('zone-gate').hidden = true;
   document.getElementById('site-content').hidden = false;
@@ -177,7 +197,7 @@ function renderHourly(hourly, days) {
   const container = document.getElementById('hourly-forecast');
   const labels = { oggi: 'Oggi', domani: 'Domani', dopodomani: 'Dopodomani' };
   const dayEntries = Object.entries(days || { oggi: { hourly: hourly || [] } });
-  container.innerHTML = `<div class="section-kicker">Previsione oraria</div><div class="section-heading"><h2>Le prossime giornate</h2><span class="muted">Scorri le schede per cambiare giornata</span></div><div class="day-tabs">${Object.entries(labels).map(([key, label], index) => `<button data-day="${key}" class="day-tab ${index === 0 ? 'active' : ''}" onclick="selectDay('${key}')">${label}</button>`).join('')}</div><div id="day-panels">${dayEntries.map(([key, day], index) => `<div class="day-panel ${index === 0 ? 'active' : ''}" data-day="${key}"><div class="day-date">${escapeHTML(day.meta?.date || '')}</div>${day.hourly?.length ? `<div class="hourly-scroll">${day.hourly.map(h => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h)}</span><b>${fmt(h.T ?? h.temp_c, 0)}°</b><small>${wmoLabel(h.wmo_code, h)}</small><small>${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>raff. ${fmt(h.wind_gust, 0)} km/h</small></div>`).join('')}</div>` : '<p class="muted">Dati orari non disponibili per questa giornata.</p>'}</div>`).join('')}</div>`;
+  container.innerHTML = `<div class="section-kicker">Previsione oraria</div><div class="section-heading"><h2>Le prossime giornate</h2><span class="muted">Scorri le schede per cambiare giornata</span></div><div class="day-tabs">${Object.entries(labels).map(([key, label], index) => `<button data-day="${key}" class="day-tab ${index === 0 ? 'active' : ''}" onclick="selectDay('${key}')">${label}</button>`).join('')}</div><div id="day-panels">${dayEntries.map(([key, day], index) => `<div class="day-panel ${index === 0 ? 'active' : ''}" data-day="${key}"><div class="day-date">${escapeHTML(day.meta?.date || '')}</div>${day.hourly?.length ? `<div class="hourly-scroll">${day.hourly.map((h, hIdx) => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h)}</span><b>${fmt(h.T ?? h.temp_c, 0)}°</b><small>${wmoLabel(h.wmo_code, h)}</small><small>${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>raff. ${fmt(h.wind_gust, 0)} km/h</small><button class="hour-detail-btn" onclick="showHourDetail('${key}', ${hIdx})">Dettagli ▸</button></div>`).join('')}</div>` : '<p class="muted">Dati orari non disponibili per questa giornata.</p>'}</div>`).join('')}</div>`;
 }
 
 function selectDay(day) { document.querySelectorAll('.day-tab').forEach(button => button.classList.toggle('active', button.dataset.day === day)); document.querySelectorAll('.day-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.day === day)); if (currentDays?.[day]?.hourly) renderCharts(currentDays[day].hourly); }
@@ -185,9 +205,12 @@ function selectDay(day) { document.querySelectorAll('.day-tab').forEach(button =
 function renderZoneMap() {
   const mapElement = document.getElementById('zone-map');
   if (!mapElement || !window.L || zoneMap) return;
-  zoneMap = L.map(mapElement, { scrollWheelZoom: false }).setView(LA_SPEZIA_CENTER, 12);
+  zoneMap = L.map(mapElement, { scrollWheelZoom: false }).setView(LA_SPEZIA_CENTER, 10);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(zoneMap);
-  Object.entries(ZONE_COORDS).forEach(([id, location]) => L.marker(location.slice(0, 2)).addTo(zoneMap).bindTooltip(location[2]).on('click', () => selectZone(id)));
+  const markers = Object.entries(ZONE_COORDS).map(([id, location]) =>
+    L.marker(location.slice(0, 2)).addTo(zoneMap).bindTooltip(location[2]).on('click', () => selectZone(id))
+  );
+  if (markers.length) zoneMap.fitBounds(L.featureGroup(markers).getBounds().pad(0.15));
 }
 
 // ── Radar (RainViewer) + fulmini (Blitzortung, via monitor_fulmini.py) ──
@@ -381,3 +404,62 @@ function fmt(value, decimals) { return value != null && !isNaN(value) ? Number(v
 function escapeHTML(value) { return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char])); }
 
 init();
+
+// ── Dettaglio orario completo (tutti i dati tecnici) ──────────────────────
+const COMPASS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"];
+function windDirText(deg) {
+  if (deg == null || isNaN(deg)) return 'n.d.';
+  return COMPASS_16[Math.round((((Number(deg) % 360) + 360) % 360) / 22.5) % 16];
+}
+
+// Ordine "conveniente": prima meteo di superficie, poi cielo/precipitazioni,
+// infine tutti gli indici tecnici avanzati (termodinamica, shear, indici compositi).
+const HOUR_DETAIL_FIELDS = [
+  ['time',       'Ora',                         v => v ?? '--'],
+  ['T',          'Temperatura',                 v => fmt(v, 1) + '°C'],
+  ['RH',         'Umidità relativa',            v => fmt(v, 0) + '%'],
+  ['wind',       'Vento medio',                 v => fmt(v, 0) + ' km/h'],
+  ['wind_dir',   'Direzione vento',             v => v != null ? `${fmt(v, 0)}° (${windDirText(v)})` : 'n.d.'],
+  ['wind_gust',  'Raffica massima',             v => fmt(v, 0) + ' km/h'],
+  ['precip',     'Pioggia in quest\'ora',       v => fmt(v, 1) + ' mm/h'],
+  ['precip_cum', 'Pioggia cumulata dall\'inizio giornata', v => fmt(v, 1) + ' mm'],
+  ['wmo_code',   'Condizione prevalente',       (v, h) => wmoLabel(v, h)],
+  ['cloud',      'Nuvolosità totale',           v => fmt(v, 0) + '%'],
+  ['cloud_low',  'Nuvole basse',                v => fmt(v, 0) + '%'],
+  ['cloud_mid',  'Nuvole medie',                v => fmt(v, 0) + '%'],
+  ['cloud_high', 'Nuvole alte',                 v => fmt(v, 0) + '%'],
+  ['CAPE',       'CAPE (energia convettiva)',   v => fmt(v, 0) + ' J/kg'],
+  ['CIN',        'CIN (inibizione)',            v => fmt(v, 0) + ' J/kg'],
+  ['LI',         'Lifted Index',                v => fmt(v, 1)],
+  ['shear',      'Shear 0-6 km',                v => fmt(v, 1) + ' kt'],
+  ['shear_0_1',  'Shear 0-1 km',                v => fmt(v, 1) + ' kt'],
+  ['shear_0_3',  'Shear 0-3 km',                v => fmt(v, 1) + ' kt'],
+  ['SRH',        'SRH 0-3 km',                  v => fmt(v, 0) + ' m²/s²'],
+  ['srh_0_1',    'SRH 0-1 km',                  v => fmt(v, 0) + ' m²/s²'],
+  ['PWAT',       'Acqua precipitabile (PWAT)',  v => fmt(v, 1) + ' mm'],
+  ['KI',         'K-Index',                     v => fmt(v, 0)],
+  ['TT',         'Totals-Totals',               v => fmt(v, 0)],
+  ['DCAPE',      'DCAPE (potenziale downburst)',v => fmt(v, 0) + ' J/kg'],
+  ['SCP',        'Supercell Composite (SCP)',   v => fmt(v, 2)],
+];
+
+function showHourDetail(dayKey, hourIndex) {
+  const day = currentDays?.[dayKey];
+  const h = day?.hourly?.[hourIndex];
+  const modal = document.getElementById('hour-detail-modal');
+  const body = document.getElementById('hour-detail-body');
+  if (!h || !modal || !body) return;
+  const labels = { oggi: 'Oggi', domani: 'Domani', dopodomani: 'Dopodomani' };
+  const dateTxt = day?.meta?.date ? ` — ${day.meta.date}` : '';
+  document.getElementById('hour-detail-title').textContent = `${labels[dayKey] || dayKey}${dateTxt} · ore ${h.time || ''}`;
+  body.innerHTML = HOUR_DETAIL_FIELDS
+    .filter(([key]) => h[key] !== undefined)
+    .map(([key, label, fmtFn]) => `<tr><td>${escapeHTML(label)}</td><td>${escapeHTML(String(fmtFn(h[key], h)))}</td></tr>`)
+    .join('');
+  modal.hidden = false;
+}
+
+function closeHourDetail() {
+  const modal = document.getElementById('hour-detail-modal');
+  if (modal) modal.hidden = true;
+}

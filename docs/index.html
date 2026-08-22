@@ -41,6 +41,17 @@
 
     <section id="technical-toggle" class="technical-section"><button onclick="toggleTechnical()">Mostra analisi tecnica</button><div id="technical-data" hidden></div></section>
     <footer><p class="disclaimer">Previsione automatica generata da modello. Non è un'allerta ufficiale.</p></footer>
+    <div id="hour-detail-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeHourDetail()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="hour-detail-title">Dettaglio ora</h3>
+      <button class="modal-close" onclick="closeHourDetail()" aria-label="Chiudi">✕</button>
+    </div>
+    <div class="modal-body">
+      <table><tbody id="hour-detail-body"></tbody></table>
+    </div>
+  </div>
+</div>
   </main>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="app.js"></script>

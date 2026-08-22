@@ -13,6 +13,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Dict, Any, List, Optional
 
+from config import REGION_ALERT_SOURCES
+
 
 # Sottoinsieme di params mostrato nella sezione "tecnica" del sito.
 _TECHNICAL_FIELDS = [
@@ -115,6 +117,7 @@ def build_bulletin_json(
     rain_evolution_text: Optional[str] = None,
     wind_evolution_text: Optional[str] = None,
     temp_anomaly: Optional[Dict[str, Any]] = None,
+    region: str = "liguria",
 ) -> Dict[str, Any]:
     """
     Riconfeziona l'output di run_pipeline() + dati collaterali già calcolati
@@ -175,23 +178,38 @@ def build_bulletin_json(
         "rain_peak": max((h.get("precip") or 0) for h in (hourly or [])) if hourly else 0.0,
     }
 
-    if arpal_alert and arpal_alert.get("ok"):
+    # fetch_arpal_alert() legge SOLO il portale ARPAL Liguria: usare quel dato
+    # per zone non liguri (es. Aulla, Marina di Carrara → Toscana/ARPAT)
+    # mostrerebbe l'ente sbagliato. La lettura automatica ARPAL si applica
+    # SOLO quando la zona è effettivamente in Liguria.
+    region_info = REGION_ALERT_SOURCES.get(region, REGION_ALERT_SOURCES["liguria"])
+    usa_dato_arpal = region == "liguria" and arpal_alert and arpal_alert.get("ok")
+
+    if usa_dato_arpal:
         official_alert = {
             "status": arpal_alert.get("title") or "Nessuna Allerta",
             "level": arpal_alert.get("level"),
             "risk_types": arpal_alert.get("risk_types"),
             "message_datetime": arpal_alert.get("message_datetime"),
-            "source": "AllertaLiguria / ARPAL",
-            "url": arpal_alert.get("source_url") or "https://allertaliguria.regione.liguria.it/allerta_protezione_civile.php",
+            "source": region_info["source"],
+            "url": arpal_alert.get("source_url") or region_info["url"],
             "note": "Rilevato automaticamente dal portale ufficiale ARPAL.",
+        }
+    elif region == "liguria":
+        official_alert = {
+            "status": "da verificare sul portale ufficiale",
+            "level": None,
+            "source": region_info["source"],
+            "url": region_info["url"],
+            "note": "Lettura automatica non disponibile in questo momento.",
         }
     else:
         official_alert = {
             "status": "da verificare sul portale ufficiale",
             "level": None,
-            "source": "AllertaLiguria / ARPAL",
-            "url": "https://allertaliguria.regione.liguria.it/allerta_protezione_civile.php",
-            "note": "Lettura automatica non disponibile in questo momento.",
+            "source": region_info["source"],
+            "url": region_info["url"],
+            "note": "Questa zona è di competenza ARPAT (Toscana): lettura automatica non ancora integrata per quest'area.",
         }
 
     return {

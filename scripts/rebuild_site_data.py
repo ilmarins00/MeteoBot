@@ -5,14 +5,27 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import datetime
+from zoneinfo import ZoneInfo
+
 from api_builder import build_bulletin_json, build_full_site_json
 from config import CITY_ZONES, LATITUDE, LONGITUDE
 from engine import run_pipeline
 from io_ingest import build_day_hourly_list, build_day_obs, fetch_arpal_alert, fetch_forecast_3days
 from logic import assess_phenomena_risks, hazard_probability, livello_attenzione, maltempo_score
 
+_TZ_ROME = ZoneInfo("Europe/Rome")
+_GIORNI_IT = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"]
+_MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+            "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
+_DAY_OFFSETS = {"day0": 0, "day1": 1, "day2": 2}
 
-def build_day(forecast, day_key, label, arpal_alert=None):
+
+def _format_date_it(d: datetime.date) -> str:
+    return f"{_GIORNI_IT[d.weekday()]} {d.day} {_MESI_IT[d.month - 1]} {d.year}"
+
+
+def build_day(forecast, day_key, label, arpal_alert=None, region="liguria"):
     day_data = forecast[day_key]
     obs = build_day_obs(day_data, forecast["model_primary"])
     hourly = build_day_hourly_list(
@@ -34,16 +47,16 @@ def build_day(forecast, day_key, label, arpal_alert=None):
         hazards_reali=hazards.get("reali", []),
         hazards_potenziali=hazards.get("potenziali", []), narrativa=None,
         day_label=label, date_str="", model_label=forecast["model_primary"],
-        arpal_alert=arpal_alert,
+        arpal_alert=arpal_alert, region=region,
     )
 
 
-def build_location(lat, lon, label=None, note=None, arpal_alert=None):
+def build_location(lat, lon, label=None, note=None, arpal_alert=None, region="liguria"):
     forecast = fetch_forecast_3days(lat=lat, lon=lon)
     days = {
-        "oggi": build_day(forecast, "day0", "OGGI", arpal_alert),
-        "domani": build_day(forecast, "day1", "DOMANI", arpal_alert),
-        "dopodomani": build_day(forecast, "day2", "DOPODOMANI", arpal_alert),
+        "oggi": build_day(forecast, "day0", "OGGI", arpal_alert, region=region),
+        "domani": build_day(forecast, "day1", "DOMANI", arpal_alert, region=region),
+        "dopodomani": build_day(forecast, "day2", "DOPODOMANI", arpal_alert, region=region),
     }
     result = dict(days["oggi"])
     result["days"] = days
@@ -91,7 +104,10 @@ def main():
     for zone_id, zone in CITY_ZONES.items():
         print(f"[zone] {zone['label']}")
         try:
-            zones[zone_id] = build_location(zone["lat"], zone["lon"], zone["label"], zone["note"], arpal_alert=arpal_alert)
+            zones[zone_id] = build_location(
+                zone["lat"], zone["lon"], zone["label"], zone["note"],
+                arpal_alert=arpal_alert, region=zone.get("region", "liguria"),
+            )
         except Exception as e:
             print(f"[zone] {zone['label']}: fetch fallito ({e})")
             if zone_id in prev_zones:

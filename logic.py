@@ -353,9 +353,22 @@ def classify_storm_mode(params: Dict[str, float]) -> str:
         return "supercella intensa con rischio tornado significativo"
     if scp >= thresholds.SCP_HIGH and srh >= thresholds.SRH_03_HIGH:
         return "supercelle probabili – ambiente fortemente rotante"
-    if scp >= thresholds.SCP_MODERATE and shear >= thresholds.SHEAR_06_ORGANIZED:
+    # CORREZIONE FALSO ALLARME: prima bastava SCP>=1.0 (soglia "moderata") più
+    # shear semplicemente "organizzato" (20 kt) per etichettare la giornata come
+    # "supercella isolata possibile", anche quando CAPE/shear/SRH derivavano da
+    # ore diverse tra loro e nessuna ora reale mostrava davvero quella
+    # combinazione. Ora servono TUTTE le conferme insieme: SCP alto (>=4.0),
+    # shear da vera soglia supercella (>=35 kt), rotazione moderata (SRH>=300)
+    # e almeno energia moderata (CAPE>=800 J/kg) — oltre all'innesco già
+    # richiesto da ha_innesco più sopra nella funzione.
+    if (scp >= thresholds.SCP_HIGH
+            and shear >= thresholds.SHEAR_06_SUPERCELL
+            and srh >= thresholds.SRH_03_MODERATE
+            and cape >= thresholds.SBCAPE_MODERATE):
         return "supercella isolata possibile"
-    if shear >= thresholds.SHEAR_06_SUPERCELL and srh >= thresholds.SRH_03_MODERATE:
+    if (shear >= thresholds.SHEAR_06_SUPERCELL
+            and srh >= thresholds.SRH_03_MODERATE
+            and cape >= thresholds.SBCAPE_MODERATE):
         return "multicelle organizzate con possibile supercella"
     if shear >= thresholds.SHEAR_06_ORGANIZED:
         if oro >= 0.5:

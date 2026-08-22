@@ -9,7 +9,9 @@ Open-Meteo, già nell'allowlist del progetto):
     python run_zone_forecast.py
 """
 
+import datetime
 from typing import Dict, Any
+from zoneinfo import ZoneInfo
 
 from config import CITY_ZONES, ZONE_DIFFERENCE_SIGNIFICANT_THRESHOLD
 from io_ingest import fetch_forecast_3days, build_day_obs, build_day_hourly_list
@@ -17,12 +19,23 @@ from engine import run_pipeline
 from logic import maltempo_score, livello_attenzione, hazard_probability, assess_phenomena_risks
 from api_builder import build_bulletin_json
 
+_TZ_ROME = ZoneInfo("Europe/Rome")
+_GIORNI_IT = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"]
+_MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+            "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
+_DAY_OFFSETS = {"OGGI": 0, "DOMANI": 1, "DOPODOMANI": 2}
+
+
+def _format_date_it(d: datetime.date) -> str:
+    return f"{_GIORNI_IT[d.weekday()]} {d.day} {_MESI_IT[d.month - 1]} {d.year}"
+
 
 def build_zone_result(zona_id: str, zona: Dict[str, Any]) -> Dict[str, Any]:
     """Calcola la pipeline completa per UNA zona e restituisce un bollettino
     con la STESSA struttura di quello generale (hourly, hazards, risk_panel),
     non solo un numero di score — altrimenti selezionare una zona nel sito
     non mostra quasi nulla di diverso dal quadro cittadino."""
+    region = zona.get("region", "liguria")
     forecast = fetch_forecast_3days(lat=zona["lat"], lon=zona["lon"])
     day0 = forecast["day0"]
 
@@ -68,12 +81,14 @@ def build_zone_result(zona_id: str, zona: Dict[str, Any]) -> Dict[str, Any]:
         day_prob = hazard_probability(day_result["params"])
         day_risks = assess_phenomena_risks(day_result["params"], day_obs, day_hourly, hazard_prob_pct=day_prob)
         day_hazards = day_result.get("hazards_dict", {"reali": [], "potenziali": []})
+        target_date = datetime.datetime.now(_TZ_ROME).date() + datetime.timedelta(days=_DAY_OFFSETS.get(day_label, 0))
         return build_bulletin_json(
             result=day_result, obs=day_obs, hourly=day_hourly, risks=day_risks,
             m_score=day_score, livello=day_level, emoji_liv=day_emoji,
             prob_pct=day_prob, hazards_reali=day_hazards.get("reali", []),
             hazards_potenziali=day_hazards.get("potenziali", []), narrativa=None,
             day_label=day_label, date_str="", model_label=forecast["model_primary"],
+            region=region,
         )
 
     bulletin = build_bulletin_json(
@@ -83,7 +98,8 @@ def build_zone_result(zona_id: str, zona: Dict[str, Any]) -> Dict[str, Any]:
         hazards_reali=hazards_dict.get("reali", []),
         hazards_potenziali=hazards_dict.get("potenziali", []),
         narrativa=None,  # niente Gemini per le zone: costerebbe 4x le chiamate AI
-        day_label="OGGI", date_str="", model_label=forecast["model_primary"],
+        day_label="OGGI", date_str=_format_date_it(datetime.datetime.now(_TZ_ROME).date()),
+        model_label=forecast["model_primary"],
     )
     bulletin.pop("_snapshot", None)
     bulletin["label"] = zona["label"]

@@ -405,6 +405,24 @@ ALERT_EMOJI: Dict[str, str] = {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Fonte ufficiale di allerta per regione — usata per non mostrare "ARPAL"
+# (Liguria) su zone che ricadono amministrativamente in un'altra regione.
+# fetch_arpal_alert() legge SOLO il portale ARPAL Liguria: per le zone non
+# liguri non abbiamo ancora una lettura automatica, quindi mostriamo solo
+# l'ente corretto con lo stato "da verificare", senza inventare un livello.
+# ─────────────────────────────────────────────────────────────────────────────
+REGION_ALERT_SOURCES: Dict[str, Dict[str, str]] = {
+    "liguria": {
+        "source": "AllertaLiguria / ARPAL",
+        "url": "https://allertaliguria.regione.liguria.it/allerta_protezione_civile.php",
+    },
+    "toscana": {
+        "source": "Sala Italia Toscana / ARPAT",
+        "url": "https://www.cfr.toscana.it/",
+    },
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # THRESHOLDS dict – compatibilità con engine.py / logic.py
 # Basato su WMO Guide to Severe Weather Warnings (2018) + ARPAL Liguria
 # ─────────────────────────────────────────────────────────────────────────────
@@ -517,13 +535,40 @@ TEMP_ALOFT_ANOMALY_EXCEPTIONAL: float = 14.0
 # ─────────────────────────────────────────────────────────────────────────────
 CITY_ZONES: Dict[str, Dict] = {
     "foce":       {"lat": 44.124363, "lon": 9.798269, "label": "Foce",
-                    "elevation_m": 100, "note": "costiera, esposta a libeccio/scirocco"},
+                    "elevation_m": 100, "note": "costiera, esposta a libeccio/scirocco", "region": "liguria"},
     "centro":     {"lat": 44.105130, "lon": 9.823554, "label": "Centro",
-                    "elevation_m": 3,  "note": "settore urbano centrale"},
-    "migliarina": {"lat": 44.118279, "lon": 9.840946, "label": "Maggiolina",
-                    "elevation_m": 7, "note": "settore orientale della città"},
+                    "elevation_m": 3,  "note": "settore urbano centrale", "region": "liguria"},
+    "migliarina": {"lat": 44.118279, "lon": 9.840946, "label": "Migliarina",
+                    "elevation_m": 7, "note": "settore orientale della città", "region": "liguria"},
     "felettino":  {"lat": 44.131810, "lon": 9.845865, "label": "Felettino",
-                    "elevation_m": 45, "note": "zona collinare interna, più forzante orografico"},
+                    "elevation_m": 45, "note": "zona collinare interna, più forzante orografico", "region": "liguria"},
+
+    "santo_stefano_magra": {"lat": 44.160668, "lon": 9.915821, "label": "Santo Stefano di Magra",
+                              "elevation_m": 45, "note": "Val di Magra, entroterra", "region": "liguria"},
+    "sarzana":         {"lat": 44.112775, "lon": 9.960461, "label": "Sarzana",
+                          "elevation_m": 25, "note": "Val di Magra, pianura interna", "region": "liguria"},
+    "marinella_sarzana": {"lat": 44.048771, "lon": 10.010244, "label": "Marinella di Sarzana",
+                            "elevation_m": 0, "note": "costiera, foce del Magra", "region": "liguria"},
+    "riomaggiore":     {"lat": 44.100119, "lon": 9.737493, "label": "Riomaggiore",
+                          "elevation_m": 45, "note": "Cinque Terre, costa esposta a libeccio", "region": "liguria"},
+    "ricco_del_golfo": {"lat": 44.154869, "lon": 9.764319, "label": "Riccò del Golfo",
+                          "elevation_m": 180, "note": "entroterra collinare, forte forzante orografico", "region": "liguria"},
+    "lerici":          {"lat": 44.076588, "lon": 9.913639, "label": "Lerici",
+                          "elevation_m": 15, "note": "costiera, Golfo dei Poeti", "region": "liguria"},
+    "portovenere":     {"lat": 44.054367, "lon": 9.837378, "label": "Portovenere",
+                          "elevation_m": 3, "note": "costiera, imboccatura del Golfo, molto esposta a libeccio", "region": "liguria"},
+    "le_grazie":       {"lat": 44.066651, "lon": 9.835905, "label": "Le Grazie",
+                          "elevation_m": 3, "note": "costiera, interno del Golfo", "region": "liguria"},
+    "marola":          {"lat": 44.091753, "lon": 9.819317, "label": "Marola",
+                          "elevation_m": 1, "note": "costiera, Golfo della Spezia", "region": "liguria"},
+    # Toscana (provincia di Massa-Carrara): fonte ufficiale corretta ARPAT, non ARPAL.
+    "marina_di_carrara": {"lat": 44.034886, "lon": 10.044428, "label": "Marina di Carrara",
+                            "elevation_m": 0, "note": "costiera, provincia di Massa-Carrara", "region": "toscana"},
+    "ceparana":        {"lat": 44.169025, "lon": 9.885630, "label": "Ceparana",
+                          "elevation_m": 30, "note": "Val di Vara/Val di Magra, entroterra", "region": "liguria"},
+    # Toscana (provincia di Massa-Carrara, Lunigiana): fonte ufficiale ARPAT, non ARPAL.
+    "aulla":           {"lat": 44.213917, "lon": 9.968351, "label": "Aulla",
+                          "elevation_m": 64, "note": "Lunigiana, entroterra montano", "region": "toscana"},
 }
 
 # Soglia minima di differenza tra zone (in punti di score maltempo, 0-5)
