@@ -1,6 +1,6 @@
 {
   "city": "La Spezia",
-  "generated_at": "2026-08-22T11:50:24.538901+02:00",
+  "generated_at": "2026-08-22T12:05:51.435894+02:00",
   "timezone": "Europe/Rome",
   "forecast": {
     "official_alert": {
@@ -19,23 +19,23 @@
       "day_label": "OGGI",
       "date": "",
       "model": "AROME+ICON-EU",
-      "generated_at": "2026-08-22T11:45:58.066616+02:00",
+      "generated_at": "2026-08-22T12:01:23.615546+02:00",
       "timezone": "Europe/Rome",
       "source": "AROME+ICON-EU"
     },
     "current": {
-      "temp_c": 25.6,
+      "temp_c": 25.7,
       "temp_max_c": 26.0,
       "temp_min_c": 21.1,
       "apparent_temperature": 29.6,
-      "wind_kmh": 8.9,
-      "wind_gust_kmh": 22.0,
+      "wind_kmh": 11.7,
+      "wind_gust_kmh": 27.7,
       "precip_rate_mm_h": 0.0,
-      "cloud_pct": 13,
-      "cloud_low_pct": 13,
+      "cloud_pct": 28,
+      "cloud_low_pct": 23,
       "cloud_mid_pct": 0,
-      "cloud_high_pct": 0,
-      "wmo_code": 0,
+      "cloud_high_pct": 7,
+      "wmo_code": 1,
       "wmo_peak_code": 3,
       "alert_level": "verde",
       "alert_source": "ARPAL",
@@ -43,7 +43,7 @@
       "model_alert_emoji": "🟠",
       "livello_attenzione": "MODERATO",
       "livello_emoji": "🟡",
-      "score": 1.6,
+      "score": 1.1,
       "score_scale": 5
     },
     "risk_panel": {
@@ -607,23 +607,23 @@
           "day_label": "OGGI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T11:45:58.066616+02:00",
+          "generated_at": "2026-08-22T12:01:23.615546+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
         "current": {
-          "temp_c": 25.6,
+          "temp_c": 25.7,
           "temp_max_c": 26.0,
           "temp_min_c": 21.1,
           "apparent_temperature": 29.6,
-          "wind_kmh": 8.9,
-          "wind_gust_kmh": 22.0,
+          "wind_kmh": 11.7,
+          "wind_gust_kmh": 27.7,
           "precip_rate_mm_h": 0.0,
-          "cloud_pct": 13,
-          "cloud_low_pct": 13,
+          "cloud_pct": 28,
+          "cloud_low_pct": 23,
           "cloud_mid_pct": 0,
-          "cloud_high_pct": 0,
-          "wmo_code": 0,
+          "cloud_high_pct": 7,
+          "wmo_code": 1,
           "wmo_peak_code": 3,
           "alert_level": "verde",
           "alert_source": "ARPAL",
@@ -631,7 +631,7 @@
           "model_alert_emoji": "🟠",
           "livello_attenzione": "MODERATO",
           "livello_emoji": "🟡",
-          "score": 1.6,
+          "score": 1.1,
           "score_scale": 5
         },
         "risk_panel": {
@@ -1178,7 +1178,7 @@
         "ai_analysis": null,
         "model_comparison": null,
         "_snapshot": {
-          "score": 1.6,
+          "score": 1.1,
           "wind_gust_kmh": 29.5,
           "rain_peak": 0
         }
@@ -1200,7 +1200,7 @@
           "day_label": "DOMANI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T11:45:58.111162+02:00",
+          "generated_at": "2026-08-22T12:01:23.664719+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -1788,7 +1788,7 @@
           "day_label": "DOPODOMANI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T11:45:58.150446+02:00",
+          "generated_at": "2026-08-22T12:01:23.708476+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -2385,23 +2385,23 @@
           "day_label": "OGGI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T11:46:01.173736+02:00",
+          "generated_at": "2026-08-22T12:01:27.446333+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
         "current": {
-          "temp_c": 25.7,
+          "temp_c": 25.8,
           "temp_max_c": 26.1,
           "temp_min_c": 21.2,
           "apparent_temperature": 29.7,
-          "wind_kmh": 8.9,
-          "wind_gust_kmh": 22.0,
+          "wind_kmh": 11.7,
+          "wind_gust_kmh": 27.7,
           "precip_rate_mm_h": 0.0,
-          "cloud_pct": 13,
-          "cloud_low_pct": 13,
+          "cloud_pct": 28,
+          "cloud_low_pct": 23,
           "cloud_mid_pct": 0,
-          "cloud_high_pct": 0,
-          "wmo_code": 0,
+          "cloud_high_pct": 7,
+          "wmo_code": 1,
           "wmo_peak_code": 3,
           "alert_level": "verde",
           "alert_source": "ARPAL",
@@ -2409,7 +2409,7 @@
           "model_alert_emoji": "🟠",
           "livello_attenzione": "MODERATO",
           "livello_emoji": "🟡",
-          "score": 1.6,
+          "score": 1.1,
           "score_scale": 5
         },
         "risk_panel": {
@@ -2937,7 +2937,7 @@
           "STP": 0.0,
           "KI": 7.8,
           "TT": 36.7,
-          "DCAPE": 170.0
+          "DCAPE": 170.1
         },
         "hazards": {
           "reali": [],
@@ -2956,7 +2956,7 @@
         "ai_analysis": null,
         "model_comparison": null,
         "_snapshot": {
-          "score": 1.6,
+          "score": 1.1,
           "wind_gust_kmh": 29.5,
           "rain_peak": 0
         },
@@ -2978,23 +2978,23 @@
               "day_label": "OGGI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T11:46:01.173736+02:00",
+              "generated_at": "2026-08-22T12:01:27.446333+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
             "current": {
-              "temp_c": 25.7,
+              "temp_c": 25.8,
               "temp_max_c": 26.1,
               "temp_min_c": 21.2,
               "apparent_temperature": 29.7,
-              "wind_kmh": 8.9,
-              "wind_gust_kmh": 22.0,
+              "wind_kmh": 11.7,
+              "wind_gust_kmh": 27.7,
               "precip_rate_mm_h": 0.0,
-              "cloud_pct": 13,
-              "cloud_low_pct": 13,
+              "cloud_pct": 28,
+              "cloud_low_pct": 23,
               "cloud_mid_pct": 0,
-              "cloud_high_pct": 0,
-              "wmo_code": 0,
+              "cloud_high_pct": 7,
+              "wmo_code": 1,
               "wmo_peak_code": 3,
               "alert_level": "verde",
               "alert_source": "ARPAL",
@@ -3002,7 +3002,7 @@
               "model_alert_emoji": "🟠",
               "livello_attenzione": "MODERATO",
               "livello_emoji": "🟡",
-              "score": 1.6,
+              "score": 1.1,
               "score_scale": 5
             },
             "risk_panel": {
@@ -3530,7 +3530,7 @@
               "STP": 0.0,
               "KI": 7.8,
               "TT": 36.7,
-              "DCAPE": 170.0
+              "DCAPE": 170.1
             },
             "hazards": {
               "reali": [],
@@ -3549,7 +3549,7 @@
             "ai_analysis": null,
             "model_comparison": null,
             "_snapshot": {
-              "score": 1.6,
+              "score": 1.1,
               "wind_gust_kmh": 29.5,
               "rain_peak": 0
             },
@@ -3573,7 +3573,7 @@
               "day_label": "DOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T11:46:01.220181+02:00",
+              "generated_at": "2026-08-22T12:01:27.495787+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -4163,7 +4163,7 @@
               "day_label": "DOPODOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T11:46:01.260716+02:00",
+              "generated_at": "2026-08-22T12:01:27.539837+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -4762,21 +4762,21 @@
           "day_label": "OGGI",
           "date": "",
           "model": "ICON-EU",
-          "generated_at": "2026-08-22T11:48:30.650360+02:00",
+          "generated_at": "2026-08-22T12:03:57.217491+02:00",
           "timezone": "Europe/Rome",
           "source": "ICON-EU"
         },
         "current": {
-          "temp_c": 26.8,
+          "temp_c": 27.5,
           "temp_max_c": 28.4,
           "temp_min_c": 22.3,
           "apparent_temperature": 30.8,
-          "wind_kmh": 13.0,
-          "wind_gust_kmh": 31.3,
+          "wind_kmh": 14.3,
+          "wind_gust_kmh": 34.2,
           "precip_rate_mm_h": 0.0,
-          "cloud_pct": 57,
-          "cloud_low_pct": 54,
-          "cloud_mid_pct": 9,
+          "cloud_pct": 60,
+          "cloud_low_pct": 56,
+          "cloud_mid_pct": 6,
           "cloud_high_pct": 0,
           "wmo_code": 2,
           "wmo_peak_code": 80,
@@ -4784,9 +4784,9 @@
           "alert_source": "ARPAL",
           "model_alert_level": "arancione",
           "model_alert_emoji": "🟠",
-          "livello_attenzione": "ALTO",
-          "livello_emoji": "🟠",
-          "score": 2.5,
+          "livello_attenzione": "MODERATO",
+          "livello_emoji": "🟡",
+          "score": 2.0,
           "score_scale": 5
         },
         "risk_panel": {
@@ -5314,7 +5314,7 @@
           "STP": 0.041,
           "KI": -2.0,
           "TT": 38.4,
-          "DCAPE": 251.5
+          "DCAPE": 252.7
         },
         "hazards": {
           "reali": [],
@@ -5338,7 +5338,7 @@
         "ai_analysis": null,
         "model_comparison": null,
         "_snapshot": {
-          "score": 2.5,
+          "score": 2.0,
           "wind_gust_kmh": 36.0,
           "rain_peak": 0.2
         },
@@ -5360,21 +5360,21 @@
               "day_label": "OGGI",
               "date": "",
               "model": "ICON-EU",
-              "generated_at": "2026-08-22T11:48:30.650360+02:00",
+              "generated_at": "2026-08-22T12:03:57.217491+02:00",
               "timezone": "Europe/Rome",
               "source": "ICON-EU"
             },
             "current": {
-              "temp_c": 26.8,
+              "temp_c": 27.5,
               "temp_max_c": 28.4,
               "temp_min_c": 22.3,
               "apparent_temperature": 30.8,
-              "wind_kmh": 13.0,
-              "wind_gust_kmh": 31.3,
+              "wind_kmh": 14.3,
+              "wind_gust_kmh": 34.2,
               "precip_rate_mm_h": 0.0,
-              "cloud_pct": 57,
-              "cloud_low_pct": 54,
-              "cloud_mid_pct": 9,
+              "cloud_pct": 60,
+              "cloud_low_pct": 56,
+              "cloud_mid_pct": 6,
               "cloud_high_pct": 0,
               "wmo_code": 2,
               "wmo_peak_code": 80,
@@ -5382,9 +5382,9 @@
               "alert_source": "ARPAL",
               "model_alert_level": "arancione",
               "model_alert_emoji": "🟠",
-              "livello_attenzione": "ALTO",
-              "livello_emoji": "🟠",
-              "score": 2.5,
+              "livello_attenzione": "MODERATO",
+              "livello_emoji": "🟡",
+              "score": 2.0,
               "score_scale": 5
             },
             "risk_panel": {
@@ -5912,7 +5912,7 @@
               "STP": 0.041,
               "KI": -2.0,
               "TT": 38.4,
-              "DCAPE": 251.5
+              "DCAPE": 252.7
             },
             "hazards": {
               "reali": [],
@@ -5936,7 +5936,7 @@
             "ai_analysis": null,
             "model_comparison": null,
             "_snapshot": {
-              "score": 2.5,
+              "score": 2.0,
               "wind_gust_kmh": 36.0,
               "rain_peak": 0.2
             },
@@ -5960,7 +5960,7 @@
               "day_label": "DOMANI",
               "date": "",
               "model": "ICON-EU",
-              "generated_at": "2026-08-22T11:48:30.696729+02:00",
+              "generated_at": "2026-08-22T12:03:57.268256+02:00",
               "timezone": "Europe/Rome",
               "source": "ICON-EU"
             },
@@ -6550,7 +6550,7 @@
               "day_label": "DOPODOMANI",
               "date": "",
               "model": "ICON-EU",
-              "generated_at": "2026-08-22T11:48:30.737525+02:00",
+              "generated_at": "2026-08-22T12:03:57.312258+02:00",
               "timezone": "Europe/Rome",
               "source": "ICON-EU"
             },
@@ -7149,23 +7149,23 @@
           "day_label": "OGGI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T11:48:33.848098+02:00",
+          "generated_at": "2026-08-22T12:04:00.610902+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
         "current": {
-          "temp_c": 27.2,
+          "temp_c": 27.3,
           "temp_max_c": 27.5,
           "temp_min_c": 23.1,
           "apparent_temperature": 29.8,
-          "wind_kmh": 10.8,
-          "wind_gust_kmh": 23.8,
+          "wind_kmh": 13.8,
+          "wind_gust_kmh": 29.2,
           "precip_rate_mm_h": 0.0,
-          "cloud_pct": 25,
-          "cloud_low_pct": 25,
+          "cloud_pct": 54,
+          "cloud_low_pct": 26,
           "cloud_mid_pct": 0,
-          "cloud_high_pct": 0,
-          "wmo_code": 1,
+          "cloud_high_pct": 37,
+          "wmo_code": 2,
           "wmo_peak_code": 3,
           "alert_level": "verde",
           "alert_source": "ARPAL",
@@ -7701,7 +7701,7 @@
           "STP": 0.0,
           "KI": 6.7,
           "TT": 36.1,
-          "DCAPE": 194.7
+          "DCAPE": 194.9
         },
         "hazards": {
           "reali": [],
@@ -7742,23 +7742,23 @@
               "day_label": "OGGI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T11:48:33.848098+02:00",
+              "generated_at": "2026-08-22T12:04:00.610902+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
             "current": {
-              "temp_c": 27.2,
+              "temp_c": 27.3,
               "temp_max_c": 27.5,
               "temp_min_c": 23.1,
               "apparent_temperature": 29.8,
-              "wind_kmh": 10.8,
-              "wind_gust_kmh": 23.8,
+              "wind_kmh": 13.8,
+              "wind_gust_kmh": 29.2,
               "precip_rate_mm_h": 0.0,
-              "cloud_pct": 25,
-              "cloud_low_pct": 25,
+              "cloud_pct": 54,
+              "cloud_low_pct": 26,
               "cloud_mid_pct": 0,
-              "cloud_high_pct": 0,
-              "wmo_code": 1,
+              "cloud_high_pct": 37,
+              "wmo_code": 2,
               "wmo_peak_code": 3,
               "alert_level": "verde",
               "alert_source": "ARPAL",
@@ -8294,7 +8294,7 @@
               "STP": 0.0,
               "KI": 6.7,
               "TT": 36.1,
-              "DCAPE": 194.7
+              "DCAPE": 194.9
             },
             "hazards": {
               "reali": [],
@@ -8337,7 +8337,7 @@
               "day_label": "DOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T11:48:33.894836+02:00",
+              "generated_at": "2026-08-22T12:04:00.662399+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -8927,7 +8927,7 @@
               "day_label": "DOPODOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T11:48:33.935599+02:00",
+              "generated_at": "2026-08-22T12:04:00.707997+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -9526,23 +9526,23 @@
           "day_label": "OGGI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T11:50:24.451351+02:00",
+          "generated_at": "2026-08-22T12:05:51.339186+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
         "current": {
-          "temp_c": 27.0,
+          "temp_c": 27.1,
           "temp_max_c": 27.3,
           "temp_min_c": 22.8,
           "apparent_temperature": 29.5,
-          "wind_kmh": 10.8,
-          "wind_gust_kmh": 23.8,
+          "wind_kmh": 13.8,
+          "wind_gust_kmh": 29.2,
           "precip_rate_mm_h": 0.0,
-          "cloud_pct": 25,
-          "cloud_low_pct": 25,
+          "cloud_pct": 54,
+          "cloud_low_pct": 26,
           "cloud_mid_pct": 0,
-          "cloud_high_pct": 0,
-          "wmo_code": 1,
+          "cloud_high_pct": 37,
+          "wmo_code": 2,
           "wmo_peak_code": 3,
           "alert_level": "verde",
           "alert_source": "ARPAL",
@@ -10077,7 +10077,7 @@
           "STP": 0.0,
           "KI": 6.7,
           "TT": 36.1,
-          "DCAPE": 187.0
+          "DCAPE": 187.1
         },
         "hazards": {
           "reali": [],
@@ -10118,23 +10118,23 @@
               "day_label": "OGGI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T11:50:24.451351+02:00",
+              "generated_at": "2026-08-22T12:05:51.339186+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
             "current": {
-              "temp_c": 27.0,
+              "temp_c": 27.1,
               "temp_max_c": 27.3,
               "temp_min_c": 22.8,
               "apparent_temperature": 29.5,
-              "wind_kmh": 10.8,
-              "wind_gust_kmh": 23.8,
+              "wind_kmh": 13.8,
+              "wind_gust_kmh": 29.2,
               "precip_rate_mm_h": 0.0,
-              "cloud_pct": 25,
-              "cloud_low_pct": 25,
+              "cloud_pct": 54,
+              "cloud_low_pct": 26,
               "cloud_mid_pct": 0,
-              "cloud_high_pct": 0,
-              "wmo_code": 1,
+              "cloud_high_pct": 37,
+              "wmo_code": 2,
               "wmo_peak_code": 3,
               "alert_level": "verde",
               "alert_source": "ARPAL",
@@ -10669,7 +10669,7 @@
               "STP": 0.0,
               "KI": 6.7,
               "TT": 36.1,
-              "DCAPE": 187.0
+              "DCAPE": 187.1
             },
             "hazards": {
               "reali": [],
@@ -10712,7 +10712,7 @@
               "day_label": "DOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T11:50:24.498010+02:00",
+              "generated_at": "2026-08-22T12:05:51.391591+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -11301,7 +11301,7 @@
               "day_label": "DOPODOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T11:50:24.538816+02:00",
+              "generated_at": "2026-08-22T12:05:51.435800+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -11883,8 +11883,8 @@
         "note_locale": "zona collinare interna, più forzante orografico"
       }
     },
-    "differenze_significative": true,
-    "score_spread": 1.4,
+    "differenze_significative": false,
+    "score_spread": 0.9,
     "nota": "Previsioni calcolate sulle coordinate delle singole zone."
   },
   "changes_since_last": null
