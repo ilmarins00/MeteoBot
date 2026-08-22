@@ -1,6 +1,6 @@
 {
   "city": "La Spezia",
-  "generated_at": "2026-08-22T12:20:21.958326+02:00",
+  "generated_at": "2026-08-22T12:36:27.557867+02:00",
   "timezone": "Europe/Rome",
   "forecast": {
     "official_alert": {
@@ -19,7 +19,7 @@
       "day_label": "OGGI",
       "date": "",
       "model": "AROME+ICON-EU",
-      "generated_at": "2026-08-22T12:15:56.122629+02:00",
+      "generated_at": "2026-08-22T12:31:20.277363+02:00",
       "timezone": "Europe/Rome",
       "source": "AROME+ICON-EU"
     },
@@ -607,7 +607,7 @@
           "day_label": "OGGI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T12:15:56.122629+02:00",
+          "generated_at": "2026-08-22T12:31:20.277363+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -1200,7 +1200,7 @@
           "day_label": "DOMANI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T12:15:56.170875+02:00",
+          "generated_at": "2026-08-22T12:31:20.304971+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -1788,7 +1788,7 @@
           "day_label": "DOPODOMANI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T12:15:56.213974+02:00",
+          "generated_at": "2026-08-22T12:31:20.328416+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -2385,7 +2385,7 @@
           "day_label": "OGGI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T12:15:59.122237+02:00",
+          "generated_at": "2026-08-22T12:31:23.864558+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -2978,7 +2978,7 @@
               "day_label": "OGGI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T12:15:59.122237+02:00",
+              "generated_at": "2026-08-22T12:31:23.864558+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -3573,7 +3573,7 @@
               "day_label": "DOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T12:15:59.171132+02:00",
+              "generated_at": "2026-08-22T12:31:23.890703+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -4163,7 +4163,7 @@
               "day_label": "DOPODOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T12:15:59.221505+02:00",
+              "generated_at": "2026-08-22T12:31:23.913746+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -7149,7 +7149,7 @@
           "day_label": "OGGI",
           "date": "",
           "model": "AROME+ICON-EU",
-          "generated_at": "2026-08-22T12:18:31.458131+02:00",
+          "generated_at": "2026-08-22T12:33:57.726595+02:00",
           "timezone": "Europe/Rome",
           "source": "AROME+ICON-EU"
         },
@@ -7742,7 +7742,7 @@
               "day_label": "OGGI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T12:18:31.458131+02:00",
+              "generated_at": "2026-08-22T12:33:57.726595+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -8337,7 +8337,7 @@
               "day_label": "DOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T12:18:31.507466+02:00",
+              "generated_at": "2026-08-22T12:33:57.753119+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
@@ -8927,7 +8927,7 @@
               "day_label": "DOPODOMANI",
               "date": "",
               "model": "AROME+ICON-EU",
-              "generated_at": "2026-08-22T12:18:31.550594+02:00",
+              "generated_at": "2026-08-22T12:33:57.776363+02:00",
               "timezone": "Europe/Rome",
               "source": "AROME+ICON-EU"
             },
