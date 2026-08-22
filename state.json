@@ -187,5 +187,12 @@
         "status": "ok",
         "last_send_ts": "2026-07-15T23:33:12.833346+02:00",
         "last_strike_count": 3
+    },
+    "storico_previsioni": {
+        "oggi": {
+            "score": 2.1,
+            "wind_gust_kmh": 30.2,
+            "rain_peak": 0
+        }
     }
 }
