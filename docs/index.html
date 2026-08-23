@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Meteo La Spezia</title>
+  <title>METEOBOT</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -12,16 +12,17 @@
 </head>
 <body data-theme="sereno">
   <div class="weather-backdrop" aria-hidden="true"></div>
+  <p id="site-update">Ultimo aggiornamento: 23 Agosto 2026</p>
   <div id="zone-gate">
-    <div class="gate-copy"><span class="eyebrow">METEOBOT / LA SPEZIA</span><h1>Che tempo fa<br><em>da te?</em></h1><p>Scegli la zona per cui vuoi vedere le previsioni.</p></div>
+    <div class="gate-copy"><span class="eyebrow">METEOBOT</span><h1>Che tempo fa<br><em>da te?</em></h1><p>Scegli la zona per cui vuoi vedere le previsioni.</p></div>
     <div class="gate-tools"><label for="zone-select">Zona</label><select id="zone-select" aria-label="Seleziona la zona per le previsioni"><option value="">Seleziona una zona...</option></select></div>
     <p id="gate-error" class="warn" hidden>Dati non ancora disponibili, riprova tra poco.</p>
   </div>
 
   <main id="site-content" hidden>
     <header id="site-header">
-      <div><span class="eyebrow">METEOBOT / PREVISIONE LOCALE</span><h1 id="zone-title">Meteo La Spezia</h1><p id="scene-label" class="scene-label">Cielo sereno</p></div>
-      <div class="header-meta"><div class="live-clock"><span class="live-dot"></span><span id="local-clock">--:--:--</span><small>ora locale</small></div><p id="data-update">Dati ricevuti --</p></div>
+      <div><span class="eyebrow">METEOBOT</span><h1 id="zone-title">METEOBOT</h1><p id="scene-label" class="scene-label">Cielo sereno</p></div>
+      <div class="header-meta"><div class="live-clock"><span class="live-dot"></span><span id="local-clock">--:--:--</span><small>ora locale</small></div></div>
     </header>
 
     <div class="dashboard-grid">
@@ -36,10 +37,8 @@
       <section id="hourly-forecast" class="card wide-card"></section>
       <section id="charts-panel" class="card wide-card"></section>
       <section id="ai-analysis" class="card wide-card"></section>
-      <section id="hazards-panel" class="card"></section>
     </div>
 
-    <section id="technical-toggle" class="technical-section"><button onclick="toggleTechnical()">Mostra analisi tecnica</button><div id="technical-data" hidden></div></section>
     <footer><p class="disclaimer">Previsione automatica generata da modello. Non è un'allerta ufficiale.</p></footer>
     <div id="hour-detail-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeHourDetail()">
   <div class="modal-box">

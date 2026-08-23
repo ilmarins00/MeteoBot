@@ -623,23 +623,24 @@ def build_day_obs(
     s_p, s_T, s_Td, s_h, s_u, s_v = [], [], [], [], [], []
     for sfx, (pa, zm) in LVLS.items():
         T  = _agg(f"temperature_{sfx}")
+        if T is None:
+            continue  # livello non coperto dall'orizzonte del modello per questo giorno
         # Open-Meteo: 'dew_point_' per livelli isobarici, 'dewpoint_' non sempre disponibile
         Td = (_agg(f"dew_point_{sfx}") if sfx in _DEW_POINT_LEVELS
               else _agg(f"dewpoint_{sfx}"))
         ws = _agg(f"wind_speed_{sfx}")      # km/h da Open-Meteo
         wd = _agg(f"wind_direction_{sfx}")  # gradi meteorologici
-        if T is not None:
-            s_p.append(pa); s_T.append(T + 273.15)
-            s_Td.append((Td + 273.15) if Td is not None else T + 271.15)
-            s_h.append(zm)
-            if ws is not None and wd is not None:
-                rad = _math.radians(wd)
-                ws_ms = ws / 3.6
-                s_u.append(-ws_ms * _math.sin(rad))
-                s_v.append(-ws_ms * _math.cos(rad))
-            else:
-                s_u.append(0.0)
-                s_v.append(0.0)
+        s_p.append(pa); s_T.append(T + 273.15)
+        s_Td.append((Td + 273.15) if Td is not None else T + 271.15)
+        s_h.append(zm)
+        if ws is not None and wd is not None:
+            rad = _math.radians(wd)
+            ws_ms = ws / 3.6
+            s_u.append(-ws_ms * _math.sin(rad))
+            s_v.append(-ws_ms * _math.cos(rad))
+        else:
+            s_u.append(0.0)
+            s_v.append(0.0)
 
     # Temperatura rappresentativa: il valore dell'ora corrente, non la massima
     # giornaliera. La massima resta disponibile separatamente in temp_max_c.
@@ -920,9 +921,10 @@ def build_day_hourly_list(
         wmo_i = wmos[i] if i < len(wmos) else None
         wmo_i = _upgrade_wmo_for_storm(wmo_i, cape_i, wp["shear_0_6"], p, thr)
 
-        pwat_h = ki_h = tt_h = dcape_h = scp_h = None
+        pwat_h = ki_h = tt_h = dcape_h = scp_h = stp_h = None
         if len(p_prof) >= 4:
-            from indices import pwat_from_profile, k_index, totals_totals, supercell_composite
+            from indices import pwat_from_profile, k_index, totals_totals, supercell_composite, significant_tornado_parameter
+            from thermo import mucape_mucin
             pwat_h = pwat_from_profile(p_prof, T_prof, Td_prof)
             t850v = day_hourly.get("temperature_850hPa", []); td850v = day_hourly.get("dew_point_850hPa", [])
             t700v = day_hourly.get("temperature_700hPa", []); td700v = day_hourly.get("dew_point_700hPa", [])
@@ -933,8 +935,12 @@ def build_day_hourly_list(
             from thermo import dcape_from_profile
             dcape_h = dcape_from_profile(p_prof, T_prof, Td_prof)
             cape_h  = float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0
+            mucape_h, _, _ = mucape_mucin(p_prof, T_prof, Td_prof)
             if wp["shear_0_6"] is not None and wp["srh_0_3"] is not None:
-                scp_h = round(supercell_composite(cape_h, wp["srh_0_3"], wp["shear_0_6"]), 2)
+                scp_h = round(supercell_composite(mucape_h, wp["srh_0_3"], wp["shear_0_6"]), 2)
+            from thermo import lcl_height
+            cin_h = cins[i] if i < len(cins) and cins[i] is not None else 0
+            stp_h = round(significant_tornado_parameter(cape_h, wp["srh_0_1"], wp["shear_0_6"], lcl_height(T_prof[0], Td_prof[0]), cin_h), 2)
 
         result.append({
             "time":       t_key,
@@ -950,6 +956,8 @@ def build_day_hourly_list(
             "precip":     p,
             "precip_cum": round(cum, 1),
             "CAPE":       float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0,
+            "SBCAPE":     float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0,
+            "MUCAPE":     mucape_h,
             "CIN":        cins[i]   if i < len(cins)  else 0,
             "shear":      wp["shear_0_6"],
             "SRH":        wp["srh_0_3"],
@@ -959,6 +967,7 @@ def build_day_hourly_list(
             "KI": ki_h,
             "TT": tt_h,
             "DCAPE": dcape_h,
+            "STP": stp_h,
             "SCP": scp_h,
             "srh_0_1":    wp["srh_0_1"],
             "wmo_code":   wmo_i,

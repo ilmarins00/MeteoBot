@@ -415,7 +415,7 @@ def orographic_enhancement(
     wind_dir_deg: float,
     wind_speed_ms: float,
     instability_factor: float = 1.0,
-    elevation_m: float = 95.0,
+    elevation_m: float = 0.0,
 ) -> float:
     """
     Fattore di amplificazione orografica delle precipitazioni per il

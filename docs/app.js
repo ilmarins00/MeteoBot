@@ -116,14 +116,11 @@ function renderAll(forecast, days = null) {
   const dayMap = days || { oggi: forecast };
   currentDays = dayMap;
   const generated = SITE_DATA.generated_at || forecast.meta?.generated_at;
-  document.getElementById('data-update').textContent = generated ? `Dati ricevuti ${new Date(generated).toLocaleString('it-IT')}` : 'Dati ricevuti non disponibili';
   renderCurrent(forecast);
   renderRiskPanel(dayMap);
   renderHourly(forecast.hourly, dayMap);
   renderCharts(dayMap.oggi?.hourly || forecast.hourly || []);
-  renderHazards(forecast.hazards);
   renderAIBox(forecast);
-  renderTechnical(forecast.technical, forecast.hourly);
   applyTheme(forecast.current?.model_alert_level || forecast.current?.alert_level, forecast.current?.wmo_code, forecast.hourly);
 }
 
@@ -385,19 +382,8 @@ function renderAIBox(forecast) {
   const insightsHtml = insights.length
     ? `<h3>Approfondimenti</h3><ul class="insights-list">${insights.map(i => `<li><strong>${escapeHTML(i.label)}:</strong> ${escapeHTML(i.text)}</li>`).join('')}</ul>`
     : '';
-  el.innerHTML = `<div class="section-kicker">Lettura della giornata</div><h2>Momenti salienti</h2>${aiHtml}${highlightsHtml}${insightsHtml}`;
+  el.innerHTML = `<div class="section-kicker">Lettura della giornata</div><h2>Momenti salienti (giornata corrente)</h2>${aiHtml}${highlightsHtml}${insightsHtml}`;
 }
-
-function renderHazards(hazards) { const el = document.getElementById('hazards-panel'); el.innerHTML = `<div class="section-kicker">Fenomeni severi</div><h2>Ci sono fenomeni in atto?</h2>${hazards?.reali?.length || hazards?.potenziali?.length ? `<ul>${[...(hazards.reali || []), ...(hazards.potenziali || [])].map(h => `<li>${escapeHTML(h)}</li>`).join('')}</ul>` : '<p class="safe-message">Nessun fenomeno severo rilevato.</p>'}`; }
-
-function renderTechnical(tech, hourly) {
-  const el = document.getElementById('technical-data');
-  const rows = tech && typeof tech === 'object' ? Object.entries(tech).map(([key, value]) => `<tr><td>${escapeHTML(key)}</td><td>${typeof value === 'number' ? value.toFixed(1) : escapeHTML(String(value ?? 'n.d.'))}</td></tr>`).join('') : '';
-  const evolution = (hourly || []).map(h => `<div class="technical-hour"><strong>${h.time || '--'}</strong><span>T ${fmt(h.T, 1)}°</span><span>RH ${fmt(h.RH, 0)}%</span><span>Vento ${fmt(h.wind, 1)}</span><span>Dir ${fmt(h.wind_dir, 0)}°</span><span>Raff. ${fmt(h.wind_gust, 1)}</span><span>Pioggia ${fmt(h.precip, 1)}</span><span>CAPE ${fmt(h.CAPE, 0)}</span><span>CIN ${fmt(h.CIN, 0)}</span><span>Shear ${fmt(h.shear, 1)}</span><span>SRH ${fmt(h.SRH, 0)}</span><span>PWAT ${fmt(h.PWAT, 1)}</span><span>DCAPE ${fmt(h.DCAPE, 0)}</span><span>SCP ${fmt(h.SCP, 2)}</span></div>`).join('');
-  el.innerHTML = `<div class="technical-columns"><div><h3>Valori di riferimento</h3>${rows ? `<table>${rows}</table>` : '<p class="muted">Dati tecnici puntuali non disponibili.</p>'}</div><div><h3>Evoluzione ora per ora</h3><div class="technical-scroll">${evolution || '<p class="muted">Evoluzione non disponibile.</p>'}</div></div></div>`;
-}
-
-function toggleTechnical() { const el = document.getElementById('technical-data'); const button = document.querySelector('#technical-toggle button'); el.hidden = !el.hidden; button.textContent = el.hidden ? 'Mostra analisi tecnica' : 'Nascondi analisi tecnica'; }
 function sceneFor(hourly) { const h = (hourly || []).reduce((peak, item) => severita(item.wmo_code) > severita(peak.wmo_code) ? item : peak, hourly?.[0] || {}); const code = h.wmo_code || 0; const snow = [71,73,75,85,86].includes(code); const storm = [95,96,99].includes(code); const rain = code >= 51 && code <= 82; if (snow && rain) return 21; if (snow) return code >= 75 ? 19 : 16; if (storm) return severita(code) >= 5 ? 8 : 7; if (rain) return code >= 65 ? 6 : 9; if (code >= 45) return code === 45 ? 13 : 14; return Math.min(code + 1, 5); }
 function applyTheme(alertLevel, wmoCode, hourly) { const index = sceneFor(hourly); const scene = WEATHER_SCENES[index]; document.body.dataset.theme = alertLevel === 'rossa' || alertLevel === 'arancione' ? 'maltempo' : wmoCode >= 51 ? 'nuvoloso' : 'sereno'; document.documentElement.style.setProperty('--weather-image', `url("${scene[1]}")`); document.getElementById('scene-label').textContent = scene[0]; }
 function fmt(value, decimals) { return value != null && !isNaN(value) ? Number(value).toFixed(decimals) : '--'; }
@@ -428,7 +414,8 @@ const HOUR_DETAIL_FIELDS = [
   ['cloud_low',  'Nuvole basse',                v => fmt(v, 0) + '%'],
   ['cloud_mid',  'Nuvole medie',                v => fmt(v, 0) + '%'],
   ['cloud_high', 'Nuvole alte',                 v => fmt(v, 0) + '%'],
-  ['CAPE',       'CAPE (energia convettiva)',   v => fmt(v, 0) + ' J/kg'],
+  ['SBCAPE',     'SBCAPE (energia convettiva)', v => fmt(v, 0) + ' J/kg'],
+  ['MUCAPE',     'MUCAPE (energia convettiva)', v => fmt(v, 0) + ' J/kg'],
   ['CIN',        'CIN (inibizione)',            v => fmt(v, 0) + ' J/kg'],
   ['LI',         'Lifted Index',                v => fmt(v, 1)],
   ['shear',      'Shear 0-6 km',                v => fmt(v, 1) + ' kt'],
@@ -437,9 +424,10 @@ const HOUR_DETAIL_FIELDS = [
   ['SRH',        'SRH 0-3 km',                  v => fmt(v, 0) + ' m²/s²'],
   ['srh_0_1',    'SRH 0-1 km',                  v => fmt(v, 0) + ' m²/s²'],
   ['PWAT',       'Acqua precipitabile (PWAT)',  v => fmt(v, 1) + ' mm'],
+  ['DCAPE',      'DCAPE (potenziale downburst)',v => fmt(v, 0) + ' J/kg'],
+  ['STP',        'Significant Tornado Parameter (STP)', v => fmt(v, 2)],
   ['KI',         'K-Index',                     v => fmt(v, 0)],
   ['TT',         'Totals-Totals',               v => fmt(v, 0)],
-  ['DCAPE',      'DCAPE (potenziale downburst)',v => fmt(v, 0) + ' J/kg'],
   ['SCP',        'Supercell Composite (SCP)',   v => fmt(v, 2)],
 ];
 
@@ -451,10 +439,17 @@ function showHourDetail(dayKey, hourIndex) {
   if (!h || !modal || !body) return;
   const labels = { oggi: 'Oggi', domani: 'Domani', dopodomani: 'Dopodomani' };
   const dateTxt = day?.meta?.date ? ` — ${day.meta.date}` : '';
+  const detailHour = {
+    ...h,
+    SBCAPE: h.SBCAPE ?? h.CAPE,
+    MUCAPE: h.MUCAPE ?? h.SBCAPE ?? h.CAPE,
+    KI: h.KI ?? null,
+    TT: h.TT ?? null,
+  };
   document.getElementById('hour-detail-title').textContent = `${labels[dayKey] || dayKey}${dateTxt} · ore ${h.time || ''}`;
   body.innerHTML = HOUR_DETAIL_FIELDS
-    .filter(([key]) => h[key] !== undefined)
-    .map(([key, label, fmtFn]) => `<tr><td>${escapeHTML(label)}</td><td>${escapeHTML(String(fmtFn(h[key], h)))}</td></tr>`)
+    .filter(([key]) => detailHour[key] !== undefined)
+    .map(([key, label, fmtFn]) => `<tr><td>${escapeHTML(label)}</td><td>${escapeHTML(String(fmtFn(detailHour[key], detailHour)))}</td></tr>`)
     .join('');
   modal.hidden = false;
 }
