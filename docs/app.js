@@ -203,14 +203,14 @@ function renderHourly(hourly, days) {
 function selectDay(day) { document.querySelectorAll('.day-tab').forEach(button => button.classList.toggle('active', button.dataset.day === day)); document.querySelectorAll('.day-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.day === day)); if (currentDays?.[day]?.hourly) renderCharts(currentDays[day].hourly); }
 
 function renderZoneMap() {
-  const mapElement = document.getElementById('zone-map');
-  if (!mapElement || !window.L || zoneMap) return;
-  zoneMap = L.map(mapElement, { scrollWheelZoom: false }).setView(LA_SPEZIA_CENTER, 10);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(zoneMap);
-  const markers = Object.entries(ZONE_COORDS).map(([id, location]) =>
-    L.marker(location.slice(0, 2)).addTo(zoneMap).bindTooltip(location[2]).on('click', () => selectZone(id))
-  );
-  if (markers.length) zoneMap.fitBounds(L.featureGroup(markers).getBounds().pad(0.15));
+  const select = document.getElementById('zone-select');
+  if (!select || select.options.length > 1) return;
+  Object.entries(ZONE_COORDS).forEach(([id, location]) => {
+    select.add(new Option(location[2], id));
+  });
+  select.addEventListener('change', event => {
+    if (event.target.value) selectZone(event.target.value);
+  });
 }
 
 // ── Radar (RainViewer) + fulmini (Blitzortung, via monitor_fulmini.py) ──
