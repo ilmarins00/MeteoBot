@@ -181,7 +181,7 @@
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-08-22T19:17:53.889525+02:00",
+        "last_check_ts": "2026-08-23T17:48:01.514101+02:00",
         "recent_strikes": [],
         "total_in_window": 0,
         "status": "ok",
@@ -190,8 +190,8 @@
     },
     "storico_previsioni": {
         "oggi": {
-            "score": 1.6,
-            "wind_gust_kmh": 30.6,
+            "score": 0.0,
+            "wind_gust_kmh": 21.2,
             "rain_peak": 0
         }
     }
