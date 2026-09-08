@@ -12,7 +12,7 @@
 </head>
 <body data-theme="sereno">
   <div class="weather-backdrop" aria-hidden="true"></div>
-  <p id="site-update">Ultimo aggiornamento: 23 Agosto 2026</p>
+  <p id="site-update">Ultimo aggiornamento: 8 Settembre 2026</p>
   <div id="zone-gate">
     <div class="gate-copy"><span class="eyebrow">METEOBOT</span><h1>Che tempo fa<br><em>da te?</em></h1><p>Scegli la zona per cui vuoi vedere le previsioni.</p></div>
     <div class="gate-tools"><label for="zone-select">Zona</label><select id="zone-select" aria-label="Seleziona la zona per le previsioni"><option value="">Seleziona una zona...</option></select></div>
@@ -26,20 +26,18 @@
     </header>
 
     <div class="dashboard-grid">
-      <section id="current-conditions" class="card current-card"></section>
-      <section id="risk-panel" class="card"></section>
+      <section id="current-conditions" class="card current-card wide-card"></section>
+      <section id="day-explorer" class="card wide-card"></section>
       <section id="radar-panel" class="card wide-card">
-        <div class="section-kicker">Radar e fulmini in tempo reale</div>
+        <div class="section-kicker">Radar in tempo reale</div>
         <div class="section-heading"><h2>Cosa sta succedendo adesso</h2><span class="muted" id="radar-updated">Aggiornamento in corso...</span></div>
-        <div id="radar-map" aria-label="Radar precipitazioni (RainViewer) e fulmini rilevati (Blitzortung)"></div>
-        <p class="muted radar-legend"><span id="radar-legend-count">In attesa dei primi dati fulmini...</span> · 🔴 &lt; 5 min · 🟠 5-15 min · 🟡 15-30 min · Radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · Fulmini: <a href="https://www.blitzortung.org/" target="_blank" rel="noopener">Blitzortung.org</a></p>
+        <div id="radar-map" aria-label="Radar precipitazioni (RainViewer)"></div>
+        <p class="muted radar-lightning-disabled">Fulminazioni attualmente disabilitate.</p>
+        <p class="muted radar-legend">Radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a></p>
       </section>
-      <section id="hourly-forecast" class="card wide-card"></section>
-      <section id="charts-panel" class="card wide-card"></section>
-      <section id="ai-analysis" class="card wide-card"></section>
     </div>
 
-    <footer><p class="disclaimer">Previsione automatica generata da modello. Non è un'allerta ufficiale.</p></footer>
+    <footer><p class="disclaimer">Previsione automatica generata da modello. Non è un'allerta ufficiale.</p><p class="disclaimer">Tutti i dati presenti nel sito richiedono interpretazione da parte di competenti.</p></footer>
     <div id="hour-detail-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeHourDetail()">
   <div class="modal-box">
     <div class="modal-header">

@@ -256,36 +256,23 @@ def assess_phenomena_risks(params: Dict, obs: Dict, hourly: list, hazard_prob_pc
     else:
         r["Vento"] = "Estremo"
 
-    # --- TEMPERATURA (caldo estremo / freddo) ---
+    # --- DISAGIO FISIOLOGICO (ex Temperatura + Afa, fuse in un'unica voce
+    # con lo stesso meccanismo basato sulla temperatura percepita) ---
     t_max = obs.get("temp_max_c", obs.get("temp_c", 0)) or 0
-    t_min = obs.get("temp_min_c", obs.get("temp_c", 0)) or 0
-
-    if t_max >= 40 or t_min <= -10:
-        r["Temperatura"] = "Estremo"
-    elif t_max >= 38 or t_min <= -5:
-        r["Temperatura"] = "Elevato"
-    elif t_max >= 35 or t_min <= 0:
-        r["Temperatura"] = "Moderato"
-    elif t_max >= 32 or t_min <= 5:
-        r["Temperatura"] = "Marginale"
-    else:
-        r["Temperatura"] = "Trascurabile"
-
-    # --- AFA / DISAGIO TERMICO ---
     hi = obs.get("heat_index", params.get("heat_index"))
     if hi is None:
         hi = t_max
 
     if hi >= 41:
-        r["Afa"] = "Estremo"
+        r["Disagio fisiologico"] = "Estremo"
     elif hi >= 38:
-        r["Afa"] = "Elevato"
+        r["Disagio fisiologico"] = "Elevato"
     elif hi >= 35:
-        r["Afa"] = "Moderato"
+        r["Disagio fisiologico"] = "Moderato"
     elif hi >= 32:
-        r["Afa"] = "Marginale"
+        r["Disagio fisiologico"] = "Marginale"
     else:
-        r["Afa"] = "Trascurabile"
+        r["Disagio fisiologico"] = "Trascurabile"
 
     return r
 

@@ -534,13 +534,13 @@ TEMP_ALOFT_ANOMALY_EXCEPTIONAL: float = 14.0
 # mappa reale); non hanno lo status "certificato" delle soglie ARPAL/SPC.
 # ─────────────────────────────────────────────────────────────────────────────
 CITY_ZONES: Dict[str, Dict] = {
-    "foce":       {"lat": 44.124363, "lon": 9.798269, "label": "Foce",
+    "foce":       {"lat": 44.124363, "lon": 9.798269, "label": "La Spezia Ovest",
                     "elevation_m": 0, "note": "costiera, esposta a libeccio/scirocco", "region": "liguria"},
-    "centro":     {"lat": 44.105130, "lon": 9.823554, "label": "Centro",
+    "centro":     {"lat": 44.105130, "lon": 9.823554, "label": "La Spezia Centro",
                     "elevation_m": 0,  "note": "settore urbano centrale", "region": "liguria"},
-    "migliarina": {"lat": 44.118279, "lon": 9.840946, "label": "Migliarina",
+    "migliarina": {"lat": 44.118279, "lon": 9.840946, "label": "La Spezia Est",
                     "elevation_m": 0, "note": "settore orientale della città", "region": "liguria"},
-    "felettino":  {"lat": 44.131810, "lon": 9.845865, "label": "Felettino",
+    "felettino":  {"lat": 44.131810, "lon": 9.845865, "label": "La Spezia Nord",
                     "elevation_m": 0, "note": "zona collinare interna, più forzante orografico", "region": "liguria"},
 
     "santo_stefano_magra": {"lat": 44.160668, "lon": 9.915821, "label": "Santo Stefano di Magra",
@@ -549,8 +549,6 @@ CITY_ZONES: Dict[str, Dict] = {
                           "elevation_m": 0, "note": "Val di Magra, pianura interna", "region": "liguria"},
     "marinella_sarzana": {"lat": 44.048771, "lon": 10.010244, "label": "Marinella di Sarzana",
                             "elevation_m": 0, "note": "costiera, foce del Magra", "region": "liguria"},
-    "riomaggiore":     {"lat": 44.100119, "lon": 9.737493, "label": "Riomaggiore",
-                          "elevation_m": 0, "note": "Cinque Terre, costa esposta a libeccio", "region": "liguria"},
     "ricco_del_golfo": {"lat": 44.154869, "lon": 9.764319, "label": "Riccò del Golfo",
                           "elevation_m": 0, "note": "entroterra collinare, forte forzante orografico", "region": "liguria"},
     "lerici":          {"lat": 44.076588, "lon": 9.913639, "label": "Lerici",
@@ -561,14 +559,8 @@ CITY_ZONES: Dict[str, Dict] = {
                           "elevation_m": 0, "note": "costiera, interno del Golfo", "region": "liguria"},
     "marola":          {"lat": 44.091753, "lon": 9.819317, "label": "Marola",
                           "elevation_m": 0, "note": "costiera, Golfo della Spezia", "region": "liguria"},
-    # Toscana (provincia di Massa-Carrara): fonte ufficiale corretta ARPAT, non ARPAL.
-    "marina_di_carrara": {"lat": 44.034886, "lon": 10.044428, "label": "Marina di Carrara",
-                            "elevation_m": 0, "note": "costiera, provincia di Massa-Carrara", "region": "toscana"},
     "ceparana":        {"lat": 44.169025, "lon": 9.885630, "label": "Ceparana",
                           "elevation_m": 0, "note": "Val di Vara/Val di Magra, entroterra", "region": "liguria"},
-    # Toscana (provincia di Massa-Carrara, Lunigiana): fonte ufficiale ARPAT, non ARPAL.
-    "aulla":           {"lat": 44.213917, "lon": 9.968351, "label": "Aulla",
-                          "elevation_m": 0, "note": "Lunigiana, entroterra montano", "region": "toscana"},
 }
 
 # Soglia minima di differenza tra zone (in punti di score maltempo, 0-5)

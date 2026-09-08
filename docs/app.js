@@ -11,50 +11,45 @@ let radarRefreshTimer = null;
 let midnightTimer = null;
 
 const ZONE_COORDS = {
-  foce: [44.124363, 9.798269, 'Foce'],
-  centro: [44.105130, 9.823554, 'Centro'],
-  migliarina: [44.118279, 9.840946, 'Migliarina'],
-  felettino: [44.131810, 9.845865, 'Felettino'],
+  foce: [44.124363, 9.798269, 'La Spezia Ovest'],
+  centro: [44.105130, 9.823554, 'La Spezia Centro'],
+  migliarina: [44.118279, 9.840946, 'La Spezia Est'],
+  felettino: [44.131810, 9.845865, 'La Spezia Nord'],
   santo_stefano_magra: [44.160668, 9.915821, 'Santo Stefano di Magra'],
   sarzana: [44.112775, 9.960461, 'Sarzana'],
   marinella_sarzana: [44.048771, 10.010244, 'Marinella di Sarzana'],
-  riomaggiore: [44.100119, 9.737493, 'Riomaggiore'],
   ricco_del_golfo: [44.154869, 9.764319, 'Riccò del Golfo'],
   lerici: [44.076588, 9.913639, 'Lerici'],
   portovenere: [44.054367, 9.837378, 'Portovenere'],
   le_grazie: [44.066651, 9.835905, 'Le Grazie'],
   marola: [44.091753, 9.819317, 'Marola'],
-  marina_di_carrara: [44.034886, 10.044428, 'Marina di Carrara'],
-  ceparana: [44.169025, 9.885630, 'Ceparana'],
-  aulla: [44.213917, 9.968351, 'Aulla']
+  ceparana: [44.169025, 9.885630, 'Ceparana']
 };
 const LA_SPEZIA_CENTER = [44.12, 9.87];
 
-const WEATHER_SCENES = [
-  ['Cielo sereno', 'https://images.unsplash.com/photo-1499346030926-9a72daac6c63?auto=format&fit=crop&w=2200&q=85'],
-  ['Cielo prevalentemente sereno', 'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=2200&q=85'],
-  ['Cielo con nubi sparse', 'https://images.unsplash.com/photo-1534088568595-a066f410bcda?auto=format&fit=crop&w=2200&q=85'],
-  ['Cielo prevalentemente nuvoloso', 'https://images.unsplash.com/photo-1534088568595-a066f410bcda?auto=format&fit=crop&w=2200&q=85'],
-  ['Nuvoloso', 'https://images.unsplash.com/photo-1515694346937-94d85e41e6f0?auto=format&fit=crop&w=2200&q=85'],
-  ['Coperto', 'https://images.unsplash.com/photo-1534274988757-a28bf1a57c17?auto=format&fit=crop&w=2200&q=85'],
-  ['Coperto e pioggia', 'https://images.unsplash.com/photo-1519692933481-e162a57d6721?auto=format&fit=crop&w=2200&q=85'],
-  ['Coperto e temporali', 'https://images.unsplash.com/photo-1605727216801-e27ce1d0a371?auto=format&fit=crop&w=2200&q=85'],
-  ['Coperto e temporali forti', 'https://images.unsplash.com/photo-1561485132-59468cd0b553?auto=format&fit=crop&w=2200&q=85'],
-  ['Nubi sparse e pioggia', 'https://images.unsplash.com/photo-1534274988757-a28bf1a57c17?auto=format&fit=crop&w=2200&q=85'],
-  ['Nubi sparse e temporali', 'https://images.unsplash.com/photo-1605727216801-e27ce1d0a371?auto=format&fit=crop&w=2200&q=85'],
-  ['Nubi sparse e temporali forti', 'https://images.unsplash.com/photo-1561485132-59468cd0b553?auto=format&fit=crop&w=2200&q=85'],
-  ['Foschia', 'https://images.unsplash.com/photo-1487621167305-5d248087c724?auto=format&fit=crop&w=2200&q=85'],
-  ['Nebbia', 'https://images.unsplash.com/photo-1485236715568-ddc5ee6ca227?auto=format&fit=crop&w=2200&q=85'],
-  ['Nuvole basse', 'https://images.unsplash.com/photo-1536244636800-a3f74db0f3f2?auto=format&fit=crop&w=2200&q=85'],
-  ['Nubi sparse e nevischio', 'https://images.unsplash.com/photo-1483664852095-d6cc6870702d?auto=format&fit=crop&w=2200&q=85'],
-  ['Nubi sparse e neve', 'https://images.unsplash.com/photo-1491002052546-bf38f186af56?auto=format&fit=crop&w=2200&q=85'],
-  ['Coperto e nevischio', 'https://images.unsplash.com/photo-1457269449834-928af64c684d?auto=format&fit=crop&w=2200&q=85'],
-  ['Coperto e neve', 'https://images.unsplash.com/photo-1511131341194-24e2eeeebb09?auto=format&fit=crop&w=2200&q=85'],
-  ['Coperto e neve intensa', 'https://images.unsplash.com/photo-1517299321609-52687d1bc55a?auto=format&fit=crop&w=2200&q=85'],
-  ['Coperto e temporale di neve', 'https://images.unsplash.com/photo-1548777123-5b7f4b6b0f5c?auto=format&fit=crop&w=2200&q=85'],
-  ['Nubi sparse e pioggia/neve', 'https://images.unsplash.com/photo-1516715094483-75da7dee9758?auto=format&fit=crop&w=2200&q=85'],
-  ['Coperto e pioggia/neve', 'https://images.unsplash.com/photo-1485594050903-8e8ee2b071c0?auto=format&fit=crop&w=2200&q=85']
-];
+// Ordine e nomi delle schede giorno: le prime tre hanno un nome fisso,
+// giorno 4/5 mostrano invece la data ("12 Settembre") perché sono solo
+// una tendenza, non una previsione con lo stesso nome delle altre.
+const DAY_KEYS = ['oggi', 'domani', 'dopodomani', 'giorno4', 'giorno5'];
+const DAY_FIXED_LABELS = { oggi: 'Oggi', domani: 'Domani', dopodomani: 'Dopodomani' };
+const TENDENCY_DAYS = new Set(['giorno4', 'giorno5']);
+function dayTabLabel(key, days) {
+  return DAY_FIXED_LABELS[key] || days?.[key]?.meta?.date || key;
+}
+function tendencyNoteHtml() {
+  return '<p class="muted tendency-note">Attenzione: questa è solo una tendenza. La probabilità di variazioni rispetto a quanto mostrato è medio/alta, specie in contesti instabili.</p>';
+}
+
+// Sfondo a colore in base alla condizione meteo prevalente della giornata
+// (non più foto): blu=sereno, grigio chiaro=nuvoloso/nebbia/foschia,
+// grigio=pioggia, grigio scuro=temporali, bianco=neve.
+const THEME_COLORS = {
+  sereno:    { label: 'Cielo sereno',           bg: 'linear-gradient(160deg, #163a5c, #2f77a8)' },
+  nuvoloso:  { label: 'Nuvoloso / nebbia',       bg: 'linear-gradient(160deg, #5b6670, #7c8890)' },
+  pioggia:   { label: 'Pioggia',                 bg: 'linear-gradient(160deg, #3d444a, #565f66)' },
+  temporale: { label: 'Temporali',               bg: 'linear-gradient(160deg, #1a1d20, #2b2f33)' },
+  neve:      { label: 'Neve',                    bg: 'linear-gradient(160deg, #c9d4db, #f1f5f8)' },
+};
 
 async function init() {
   try {
@@ -117,11 +112,8 @@ function renderAll(forecast, days = null) {
   currentDays = dayMap;
   const generated = SITE_DATA.generated_at || forecast.meta?.generated_at;
   renderCurrent(forecast);
-  renderRiskPanel(dayMap);
-  renderHourly(forecast.hourly, dayMap);
-  renderCharts(dayMap.oggi?.hourly || forecast.hourly || []);
-  renderAIBox(forecast);
-  applyTheme(forecast.current?.model_alert_level || forecast.current?.alert_level, forecast.current?.wmo_code, forecast.hourly);
+  renderDayExplorer(dayMap);
+  applyTheme(forecast.hourly);
 }
 
 function updateClock() {
@@ -136,10 +128,37 @@ function renderCurrent(forecast) {
   const officialUrl = official.url || 'https://allertaliguria.regione.liguria.it/allerta_protezione_civile.php';
   const tempStr = fmt(c.temp_c, 1);
   const tempClass = tempStr.replace('-', '').length >= 4 ? 'temp-big long-temp' : 'temp-big';
-  document.getElementById('current-conditions').innerHTML = `<div class="section-kicker">Situazione attuale</div><div class="current-grid"><div class="temperature-block"><p class="weather-symbol">${wmoIcon(c.wmo_code, c)}</p><p class="${tempClass}">${tempStr}°</p><p class="condition-name">${wmoLabel(c.wmo_code, c)}</p></div><div class="current-details"><p>Min <strong>${fmt(c.temp_min_c, 0)}°</strong> / Max <strong>${fmt(c.temp_max_c, 0)}°</strong></p><p>Vento <strong>${fmt(c.wind_kmh, 0)} km/h</strong> · raffiche <strong>${fmt(c.wind_gust_kmh, 0)} km/h</strong></p><div class="status-key"><span class="status-dot ${c.alert_level || 'unknown'}"></span><span>${officialLabel}<small>Fonte ufficiale: <a href="${officialUrl}" target="_blank" rel="noopener">AllertaLiguria / ARPAL</a></small></span></div><div class="status-key"><span class="status-dot score"></span><span>Indice modello: <strong>${(c.livello_attenzione || 'non disponibile').toUpperCase()}</strong><small>Non è un'allerta di protezione civile</small></span></div></div></div>`;
+  document.getElementById('current-conditions').innerHTML = `<div class="section-kicker">Situazione attuale</div><div class="current-grid"><div class="temperature-block"><p class="weather-symbol">${wmoIcon(c.wmo_code, c)}</p><p class="${tempClass}">${tempStr}°</p><p class="condition-name">${wmoLabel(c.wmo_code, c)}</p></div><div class="current-details"><p>Min <strong>${fmt(c.temp_min_c, 0)}°</strong> / Max <strong>${fmt(c.temp_max_c, 0)}°</strong></p><p>Vento <strong>${fmt(c.wind_kmh, 0)} km/h</strong> · raffiche <strong>${fmt(c.wind_gust_kmh, 0)} km/h</strong></p><div class="status-key"><span class="status-dot ${c.alert_level || 'unknown'}"></span><span>${officialLabel}<small>Fonte ufficiale: <a href="${officialUrl}" target="_blank" rel="noopener">AllertaLiguria / ARPAL</a></small></span></div></div></div>`;
 }
 
-function severita(wmo) { if (wmo == null) return -1; if ([95,96,99].includes(wmo)) return 5; if ([80,81,82,65,67].includes(wmo)) return 4; if ([61,63,66].includes(wmo)) return 3; if ([51,53,55,71,73,75].includes(wmo)) return 2; if (wmo >= 45) return 1; return 0; }
+// Categoria meteo per un codice WMO, usata per decidere il colore di sfondo.
+function categoryFor(wmo) {
+  const code = Number(wmo) || 0;
+  if ([95, 96, 99].includes(code)) return 'temporale';
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return 'neve';
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return 'pioggia';
+  if ([45, 48].includes(code)) return 'nuvoloso'; // nebbia/foschia
+  if (code >= 2) return 'nuvoloso'; // nuvoloso/coperto
+  return 'sereno'; // 0 = sereno, 1 = poco nuvoloso
+}
+
+// Condizione prevalente della giornata: la categoria con più ore, ma pioggia
+// e neve contano come prevalenti solo se coprono almeno 2 ore (richiesta
+// esplicita: un rovescio isolato di un'ora non deve tingere di grigio/bianco
+// l'intero sfondo del sito).
+function prevalentCategory(hourly) {
+  const list = hourly || [];
+  if (!list.length) return 'sereno';
+  const counts = { sereno: 0, nuvoloso: 0, pioggia: 0, temporale: 0, neve: 0 };
+  list.forEach(h => { counts[categoryFor(h.wmo_code)]++; });
+  const eligible = Object.entries(counts).filter(([cat, n]) => {
+    if (cat === 'pioggia' || cat === 'neve') return n >= 2;
+    return n > 0;
+  });
+  if (!eligible.length) return 'sereno';
+  eligible.sort((a, b) => b[1] - a[1]);
+  return eligible[0][0];
+}
 
 // Icona/etichetta "sole" a 7 livelli in base alla nuvolosità (totale + alta),
 // usata solo per i codici WMO 0-3 (sereno/poco nuvoloso/nuvoloso/coperto):
@@ -179,25 +198,35 @@ function wmoLabel(wmo, h) {
   return 'sereno';
 }
 
-function renderRiskPanel(days) {
-  const el = document.getElementById('risk-panel');
-  const labels = { oggi: 'Oggi', domani: 'Domani', dopodomani: 'Dopodomani' };
-  const entries = Object.entries(labels).filter(([key]) => days?.[key]?.risk_panel && Object.keys(days[key].risk_panel).length);
-  if (!entries.length) { el.innerHTML = ''; return; }
+// Una sola scheda giorno mostra insieme rischi, previsione oraria, grafici
+// e momenti salienti di quella giornata, per evitare tab scollegati tra loro.
+function renderDayExplorer(days) {
+  const el = document.getElementById('day-explorer');
   const levels = { Trascurabile: 'basso', Marginale: 'medio', Moderato: 'medio', Elevato: 'alto', Estremo: 'estremo' };
-  el.innerHTML = `<div class="section-kicker">Rischi stimati</div><h2>Quanto è probabile un fenomeno?</h2><div class="risk-day-tabs">${entries.map(([key, label], index) => `<button data-risk-day="${key}" class="risk-tab ${index === 0 ? 'active' : ''}" onclick="selectRiskDay('${key}')">${label}</button>`).join('')}</div>${entries.map(([key, label], index) => `<div class="risk-day-panel ${index === 0 ? 'active' : ''}" data-risk-day="${key}"><div class="risk-list">${Object.entries(days[key].risk_panel).map(([name, level]) => `<div class="risk-row"><span>${escapeHTML(name)}</span><strong class="risk-level ${levels[level] || 'basso'}">${escapeHTML(level)}</strong></div>`).join('')}</div></div>`).join('')}<p class="muted">Questi livelli sono una stima modellistica e non sostituiscono le allerte ufficiali.</p>`;
+  const entries = DAY_KEYS.filter(key => days?.[key]).map(key => [key, days[key]]);
+  if (!entries.length) { el.innerHTML = ''; return; }
+
+  const panelHtml = ([key, day], index) => {
+    const risks = day.risk_panel && Object.keys(day.risk_panel).length
+      ? `<h3>Rischi stimati</h3><div class="risk-list">${Object.entries(day.risk_panel).map(([name, level]) => `<div class="risk-row"><span>${escapeHTML(name)}</span><strong class="risk-level ${levels[level] || 'basso'}">${escapeHTML(level)}</strong></div>`).join('')}</div><p class="muted">Questi livelli sono una stima modellistica e non sostituiscono le allerte ufficiali.</p>`
+      : '';
+    const hourly = day.hourly?.length
+      ? `<h3>Previsione oraria</h3><div class="hourly-scroll">${day.hourly.map((h, hIdx) => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h)}</span><b>${fmt(h.T ?? h.temp_c, 0)}°</b><small>${wmoLabel(h.wmo_code, h)}</small><small>${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>raff. ${fmt(h.wind_gust, 0)} km/h</small><button class="hour-detail-btn" onclick="showHourDetail('${key}', ${hIdx})">Dettagli ▸</button></div>`).join('')}</div>`
+      : '<h3>Previsione oraria</h3><p class="muted">Dati orari non disponibili per questa giornata.</p>';
+    const charts = `<div class="section-heading"><h3>Grafici</h3><span class="muted">${day.hourly?.length || 0} ore</span></div><div class="mode-tabs">${chartModeTabsHtml()}</div><div class="chart-mode-content" data-day="${key}">${buildChartsGrid(day.hourly, chartMode)}</div>`;
+    const highlights = day.highlights?.length
+      ? `<h3>Momenti salienti</h3><ul class="highlights-list">${day.highlights.map(ev => `<li><time>${escapeHTML(ev.time || '--')}</time><span>${escapeHTML(ev.label)}</span></li>`).join('')}</ul>`
+      : '<h3>Momenti salienti</h3><p class="muted">Nessun momento particolarmente significativo individuato per questa giornata.</p>';
+    return `<div class="day-panel ${index === 0 ? 'active' : ''}" data-day="${key}"><div class="day-date">${escapeHTML(day.meta?.date || '')}</div>${TENDENCY_DAYS.has(key) ? tendencyNoteHtml() : ''}${risks}${hourly}${charts}${highlights}</div>`;
+  };
+
+  el.innerHTML = `<div class="section-kicker">Previsione giornaliera</div><div class="section-heading"><h2>Rischi, orario e grafici della giornata</h2><span class="muted">Scorri le schede per cambiare giornata</span></div><div class="day-tabs">${entries.map(([key], index) => `<button data-day="${key}" class="day-tab ${index === 0 ? 'active' : ''}" onclick="selectDay('${key}')">${dayTabLabel(key, days)}</button>`).join('')}</div><div id="day-panels">${entries.map(panelHtml).join('')}</div>`;
 }
 
-function selectRiskDay(day) { document.querySelectorAll('.risk-tab').forEach(button => button.classList.toggle('active', button.dataset.riskDay === day)); document.querySelectorAll('.risk-day-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.riskDay === day)); }
-
-function renderHourly(hourly, days) {
-  const container = document.getElementById('hourly-forecast');
-  const labels = { oggi: 'Oggi', domani: 'Domani', dopodomani: 'Dopodomani' };
-  const dayEntries = Object.entries(days || { oggi: { hourly: hourly || [] } });
-  container.innerHTML = `<div class="section-kicker">Previsione oraria</div><div class="section-heading"><h2>Le prossime giornate</h2><span class="muted">Scorri le schede per cambiare giornata</span></div><div class="day-tabs">${Object.entries(labels).map(([key, label], index) => `<button data-day="${key}" class="day-tab ${index === 0 ? 'active' : ''}" onclick="selectDay('${key}')">${label}</button>`).join('')}</div><div id="day-panels">${dayEntries.map(([key, day], index) => `<div class="day-panel ${index === 0 ? 'active' : ''}" data-day="${key}"><div class="day-date">${escapeHTML(day.meta?.date || '')}</div>${day.hourly?.length ? `<div class="hourly-scroll">${day.hourly.map((h, hIdx) => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h)}</span><b>${fmt(h.T ?? h.temp_c, 0)}°</b><small>${wmoLabel(h.wmo_code, h)}</small><small>${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>raff. ${fmt(h.wind_gust, 0)} km/h</small><button class="hour-detail-btn" onclick="showHourDetail('${key}', ${hIdx})">Dettagli ▸</button></div>`).join('')}</div>` : '<p class="muted">Dati orari non disponibili per questa giornata.</p>'}</div>`).join('')}</div>`;
+function selectDay(day) {
+  document.querySelectorAll('.day-tab').forEach(button => button.classList.toggle('active', button.dataset.day === day));
+  document.querySelectorAll('.day-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.day === day));
 }
-
-function selectDay(day) { document.querySelectorAll('.day-tab').forEach(button => button.classList.toggle('active', button.dataset.day === day)); document.querySelectorAll('.day-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.day === day)); if (currentDays?.[day]?.hourly) renderCharts(currentDays[day].hourly); }
 
 function renderZoneMap() {
   const select = document.getElementById('zone-select');
@@ -210,7 +239,7 @@ function renderZoneMap() {
   });
 }
 
-// ── Radar (RainViewer) + fulmini (Blitzortung, via monitor_fulmini.py) ──
+// ── Radar (RainViewer) — fulmini (Blitzortung) attualmente disabilitati ──
 // Si aggiorna da solo ogni 60 secondi finché la pagina resta aperta.
 function initRadarMap(centerLat, centerLon) {
   const el = document.getElementById('radar-map');
@@ -246,25 +275,17 @@ async function refreshRadarAndLightning() {
     console.error('Radar RainViewer non disponibile', error);
   }
 
-  try {
-    const res = await fetch('lightning_data.json?t=' + Date.now());
-    if (res.ok) {
-      const data = await res.json();
-      renderLightningMarkers(data.strikes || []);
-    }
-  } catch (error) {
-    // File non ancora presente finché il monitor fulmini non ha girato la prima volta.
-  }
+  // Fulminazioni attualmente disabilitate: niente fetch di lightning_data.json.
 
   const updatedEl = document.getElementById('radar-updated');
   if (updatedEl) updatedEl.textContent = 'Aggiornato alle ' + new Date().toLocaleTimeString('it-IT');
 }
 
 function renderLightningMarkers(strikes) {
+  // Fulminazioni attualmente disabilitate: funzione non più invocata,
+  // lasciata solo per una riattivazione futura senza riscrivere il rendering.
   if (!lightningLayerGroup) return;
   lightningLayerGroup.clearLayers();
-  const legendEl = document.getElementById('radar-legend-count');
-  if (legendEl) legendEl.textContent = strikes.length ? `${strikes.length} fulmini rilevati nella finestra` : 'Nessun fulmine rilevato nella finestra recente';
   const now = Date.now();
   strikes.forEach(s => {
     const ageMin = (now - new Date(s.time).getTime()) / 60000;
@@ -340,19 +361,16 @@ function buildAxisChart(values, times, opts = {}) {
 function svgLineChart(values, times, opts = {}) { return buildAxisChart(values, times, { ...opts, type: 'line' }); }
 function svgBarChart(values, times, opts = {}) { return buildAxisChart(values, times, { ...opts, type: 'bar' }); }
 
-function renderCharts(hourly) {
-  const el = document.getElementById('charts-panel');
-  if (!el) return;
-  if (!hourly?.length) { el.innerHTML = '<div class="section-kicker">Andamento orario</div><h2>Grafici</h2><p class="muted">Dati orari non disponibili.</p>'; return; }
+function chartModeTabsHtml() {
+  return `<button class="mode-tab ${chartMode === 'base' ? 'active' : ''}" onclick="selectChartMode('base')">Base</button><button class="mode-tab ${chartMode === 'avanzata' ? 'active' : ''}" onclick="selectChartMode('avanzata')">Avanzata (CAPE, CIN...)</button>`;
+}
+
+function buildChartsGrid(hourly, mode) {
+  if (!hourly?.length) return '<p class="muted">Dati orari non disponibili.</p>';
   const times = hourly.map(h => h.time);
-  const basic = `<div class="chart-grid">
-    <div class="chart-block"><h4>Temperatura</h4><small class="chart-meta muted">°C</small>${svgLineChart(hourly.map(h => h.T), times, { unit: '°C' })}</div>
-    <div class="chart-block"><h4>Pioggia oraria</h4><small class="chart-meta muted">mm/h</small>${svgBarChart(hourly.map(h => h.precip), times, { unit: 'mm' })}</div>
-    <div class="chart-block"><h4>Nuvolosità</h4><small class="chart-meta muted">% copertura</small>${svgLineChart(hourly.map(h => h.cloud), times, { unit: '%', decimals: 0 })}</div>
-    <div class="chart-block"><h4>Vento e raffiche</h4><small class="chart-meta muted">km/h</small>${svgLineChart(hourly.map(h => h.wind_gust), times, { unit: ' km/h', decimals: 0 })}</div>
-  </div>`;
-  const advanced = `<div class="chart-grid">
-    <div class="chart-block"><h4>CAPE</h4><small class="chart-meta muted">J/kg — energia disponibile per i temporali</small>${svgLineChart(hourly.map(h => h.CAPE), times, { unit: ' J/kg', decimals: 0 })}</div>
+  if (mode === 'avanzata') {
+    return `<div class="chart-grid">
+    <div class="chart-block"><h4>CAPE</h4><small class="chart-meta muted">J/kg — energia disponibile per i temporali</small>${svgLineChart(hourly.map(h => h.SBCAPE ?? h.MUCAPE), times, { unit: ' J/kg', decimals: 0 })}</div>
     <div class="chart-block"><h4>CIN</h4><small class="chart-meta muted">J/kg — inibizione della convezione</small>${svgLineChart(hourly.map(h => h.CIN), times, { unit: ' J/kg', decimals: 0 })}</div>
     <div class="chart-block"><h4>Shear 0-6 km</h4><small class="chart-meta muted">kt — organizzazione dei temporali</small>${svgLineChart(hourly.map(h => h.shear), times, { unit: ' kt', decimals: 0 })}</div>
     <div class="chart-block"><h4>SRH 0-3 km</h4><small class="chart-meta muted">m²/s² — rotazione</small>${svgLineChart(hourly.map(h => h.SRH), times, { decimals: 0 })}</div>
@@ -360,32 +378,32 @@ function renderCharts(hourly) {
     <div class="chart-block"><h4>DCAPE</h4><small class="chart-meta muted">J/kg — potenziale raffiche da downburst</small>${svgLineChart(hourly.map(h => h.DCAPE), times, { unit: ' J/kg', decimals: 0 })}</div>
     <div class="chart-block"><h4>SCP</h4><small class="chart-meta muted">indice composito supercelle</small>${svgLineChart(hourly.map(h => h.SCP), times, { decimals: 2 })}</div>
   </div>`;
-  el.innerHTML = `<div class="section-kicker">Andamento orario</div><div class="section-heading"><h2>Grafici</h2><span class="muted">${hourly.length} ore</span></div><div class="mode-tabs"><button class="mode-tab ${chartMode === 'base' ? 'active' : ''}" onclick="selectChartMode('base')">Base</button><button class="mode-tab ${chartMode === 'avanzata' ? 'active' : ''}" onclick="selectChartMode('avanzata')">Avanzata (CAPE, CIN...)</button></div><div id="chart-mode-content">${chartMode === 'avanzata' ? advanced : basic}</div>`;
+  }
+  return `<div class="chart-grid">
+    <div class="chart-block"><h4>Temperatura</h4><small class="chart-meta muted">°C</small>${svgLineChart(hourly.map(h => h.T), times, { unit: '°C' })}</div>
+    <div class="chart-block"><h4>Pioggia oraria</h4><small class="chart-meta muted">mm/h</small>${svgBarChart(hourly.map(h => h.precip), times, { unit: 'mm' })}</div>
+    <div class="chart-block"><h4>Nuvolosità</h4><small class="chart-meta muted">% copertura</small>${svgLineChart(hourly.map(h => h.cloud), times, { unit: '%', decimals: 0 })}</div>
+    <div class="chart-block"><h4>Vento e raffiche</h4><small class="chart-meta muted">km/h</small>${svgLineChart(hourly.map(h => h.wind_gust), times, { unit: ' km/h', decimals: 0 })}</div>
+  </div>`;
 }
 
+// Il toggle Base/Avanzata è unico e vale per tutte le schede giorno: al
+// cambio va rigenerato il grafico di ognuna, non solo di quella visibile.
 function selectChartMode(mode) {
   chartMode = mode;
-  const activeDayKey = document.querySelector('.day-tab.active')?.dataset.day || 'oggi';
-  renderCharts(currentDays?.[activeDayKey]?.hourly);
+  document.querySelectorAll('.mode-tab').forEach(button => button.classList.toggle('active', button.textContent.trim().startsWith(mode === 'avanzata' ? 'Avanzata' : 'Base')));
+  document.querySelectorAll('.chart-mode-content').forEach(container => {
+    const key = container.dataset.day;
+    container.innerHTML = buildChartsGrid(currentDays?.[key]?.hourly, chartMode);
+  });
 }
-
-// ── Analisi/Momenti salienti: mostra il testo AI se disponibile, altrimenti
-// una timeline calcolata dai dati (sempre presente, mai una scatola vuota) ──
-function renderAIBox(forecast) {
-  const el = document.getElementById('ai-analysis');
-  const highlights = forecast.highlights || [];
-  const highlightsHtml = highlights.length
-    ? `<ul class="highlights-list">${highlights.map(ev => `<li><time>${escapeHTML(ev.time || '--')}</time><span>${escapeHTML(ev.label)}</span></li>`).join('')}</ul>`
-    : '<p class="muted">Nessun momento particolarmente significativo individuato per questa giornata.</p>';
-  const aiHtml = forecast.ai_analysis ? `<p class="ai-text">${escapeHTML(forecast.ai_analysis)}</p>` : '';
-  const insights = forecast.insights || [];
-  const insightsHtml = insights.length
-    ? `<h3>Approfondimenti</h3><ul class="insights-list">${insights.map(i => `<li><strong>${escapeHTML(i.label)}:</strong> ${escapeHTML(i.text)}</li>`).join('')}</ul>`
-    : '';
-  el.innerHTML = `<div class="section-kicker">Lettura della giornata</div><h2>Momenti salienti (giornata corrente)</h2>${aiHtml}${highlightsHtml}${insightsHtml}`;
+function applyTheme(hourly) {
+  const cat = prevalentCategory(hourly);
+  const theme = THEME_COLORS[cat] || THEME_COLORS.sereno;
+  document.body.dataset.theme = cat;
+  document.documentElement.style.setProperty('--weather-bg', theme.bg);
+  document.getElementById('scene-label').textContent = theme.label;
 }
-function sceneFor(hourly) { const h = (hourly || []).reduce((peak, item) => severita(item.wmo_code) > severita(peak.wmo_code) ? item : peak, hourly?.[0] || {}); const code = h.wmo_code || 0; const snow = [71,73,75,85,86].includes(code); const storm = [95,96,99].includes(code); const rain = code >= 51 && code <= 82; if (snow && rain) return 21; if (snow) return code >= 75 ? 19 : 16; if (storm) return severita(code) >= 5 ? 8 : 7; if (rain) return code >= 65 ? 6 : 9; if (code >= 45) return code === 45 ? 13 : 14; return Math.min(code + 1, 5); }
-function applyTheme(alertLevel, wmoCode, hourly) { const index = sceneFor(hourly); const scene = WEATHER_SCENES[index]; document.body.dataset.theme = alertLevel === 'rossa' || alertLevel === 'arancione' ? 'maltempo' : wmoCode >= 51 ? 'nuvoloso' : 'sereno'; document.documentElement.style.setProperty('--weather-image', `url("${scene[1]}")`); document.getElementById('scene-label').textContent = scene[0]; }
 function fmt(value, decimals) { return value != null && !isNaN(value) ? Number(value).toFixed(decimals) : '--'; }
 function escapeHTML(value) { return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char])); }
 
@@ -437,7 +455,6 @@ function showHourDetail(dayKey, hourIndex) {
   const modal = document.getElementById('hour-detail-modal');
   const body = document.getElementById('hour-detail-body');
   if (!h || !modal || !body) return;
-  const labels = { oggi: 'Oggi', domani: 'Domani', dopodomani: 'Dopodomani' };
   const dateTxt = day?.meta?.date ? ` — ${day.meta.date}` : '';
   const detailHour = {
     ...h,
@@ -446,7 +463,7 @@ function showHourDetail(dayKey, hourIndex) {
     KI: h.KI ?? null,
     TT: h.TT ?? null,
   };
-  document.getElementById('hour-detail-title').textContent = `${labels[dayKey] || dayKey}${dateTxt} · ore ${h.time || ''}`;
+  document.getElementById('hour-detail-title').textContent = `${dayTabLabel(dayKey, currentDays)}${dateTxt} · ore ${h.time || ''}`;
   body.innerHTML = HOUR_DETAIL_FIELDS
     .filter(([key]) => detailHour[key] !== undefined)
     .map(([key, label, fmtFn]) => `<tr><td>${escapeHTML(label)}</td><td>${escapeHTML(String(fmtFn(detailHour[key], detailHour)))}</td></tr>`)

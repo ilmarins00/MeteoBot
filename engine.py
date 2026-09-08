@@ -225,12 +225,12 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
     else:
         # — Fallback: osservazioni superficiali
         params.update({
-            "CAPE":   obs.get("CAPE",      0),
-            "SBCAPE": obs.get("SBCAPE",    obs.get("CAPE", 0)),
-            "MUCAPE": obs.get("MUCAPE",    obs.get("CAPE", 0)),
-            "MLCAPE": obs.get("MLCAPE",    obs.get("CAPE", 0)),
-            "CIN":    obs.get("CIN",       0),
-            "SBCIN":  obs.get("SBCIN",     obs.get("CIN", 0)),
+            "CAPE":   obs.get("CAPE") or 0,
+            "SBCAPE": obs.get("SBCAPE") or obs.get("CAPE") or 0,
+            "MUCAPE": obs.get("MUCAPE") or obs.get("CAPE") or 0,
+            "MLCAPE": obs.get("MLCAPE") or obs.get("CAPE") or 0,
+            "CIN":    obs.get("CIN") or 0,
+            "SBCIN":  obs.get("SBCIN") or obs.get("CIN") or 0,
             "shear_0_6": obs.get("shear_0_6", 0),
             "shear_0_1": obs.get("shear_0_1", 0),
             "srh_0_1":   obs.get("srh_0_1",   0),
@@ -247,8 +247,8 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
 
     # — Parametri superficiali sempre presenti
     params.update({
-        "precip_rate_mm_h":  obs.get("precip_rate_mm_h", 0),
-        "wind_gust_kmh":     obs.get("wind_gust_kmh",    0),
+        "precip_rate_mm_h":  obs.get("precip_rate_mm_h") or 0,
+        "wind_gust_kmh":     obs.get("wind_gust_kmh") or 0,
         "heat_index":        obs.get("heat_index",       None),
         "temp_c":            obs.get("temp_c",           None),
         "humidity_pct":      obs.get("humidity_pct",     0),
@@ -261,11 +261,15 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
         "DCAPE":              obs.get("DCAPE",             params.get("DCAPE", 0)),
     })
 
-        # — Fattore orografico e brezza marina
-    wind_dir = obs.get("wind_dir_deg", 225)
-    wind_ms  = obs.get("wind_speed_ms", obs.get("wind_gust_kmh", 0) / 3.6)
+    # — Fattore orografico e brezza marina
+    wind_dir = obs.get("wind_dir_deg")
+    if wind_dir is None:
+        wind_dir = 225
+    wind_ms  = obs.get("wind_speed_ms")
+    if wind_ms is None:
+        wind_ms = (obs.get("wind_gust_kmh") or 0) / 3.6
     elevation_m = obs.get("elevation_m", 0.0)
-    cape_factor = min(params.get("MUCAPE", 0) / 2000.0, 1.0)
+    cape_factor = min((params.get("MUCAPE") or 0) / 2000.0, 1.0)
     params["orographic_factor"] = round(
         orographic_enhancement(
             wind_dir, wind_ms,

@@ -921,7 +921,7 @@ def build_day_hourly_list(
         wmo_i = wmos[i] if i < len(wmos) else None
         wmo_i = _upgrade_wmo_for_storm(wmo_i, cape_i, wp["shear_0_6"], p, thr)
 
-        pwat_h = ki_h = tt_h = dcape_h = scp_h = stp_h = None
+        pwat_h = ki_h = tt_h = dcape_h = scp_h = stp_h = mucape_h = None
         if len(p_prof) >= 4:
             from indices import pwat_from_profile, k_index, totals_totals, supercell_composite, significant_tornado_parameter
             from thermo import mucape_mucin
@@ -1039,18 +1039,20 @@ def fetch_forecast_3days(
     timeout: int = 35,
 ) -> Dict[str, Any]:
     """
-    Scarica previsioni 3 giorni da AROME + ICON-EU (+ ICON-2I per LI e TENDENZA)
-    e le unisce.
+    Scarica previsioni 5 giorni da AROME + ICON-EU (+ best_match per il Lifted Index).
+    Giorno 2/3/4 ("tendenza") si basano solo su ICON-EU: AROME non copre
+    quell'orizzonte. Oltre l'orizzonte orario reale di ICON-EU (di norma nel
+    5° giorno) vengono tenute solo le ore effettivamente previste dal modello.
     """
     import datetime as _dt
     from zoneinfo import ZoneInfo as _ZI
     today   = _dt.datetime.now(_ZI(TIMEZONE)).date()
     start_s = today.strftime("%Y-%m-%d")
-    end_d2  = (today + _dt.timedelta(days=3)).strftime("%Y-%m-%d")
+    end_d4  = (today + _dt.timedelta(days=5)).strftime("%Y-%m-%d")
     end_d1  = (today + _dt.timedelta(days=2)).strftime("%Y-%m-%d")
 
-    print("  [io] Scarico ICON-EU (3 giorni)...")
-    icon_data = _fetch_one_model("icon_eu", start_s, end_d2, lat, lon, timeout)
+    print("  [io] Scarico ICON-EU (5 giorni)...")
+    icon_data = _fetch_one_model("icon_eu", start_s, end_d4, lat, lon, timeout)
     if icon_data is not None:
         print(f"  [io] ICON-EU: {len(icon_data['hourly']['time'])} ore")
     else:
@@ -1075,18 +1077,8 @@ def fetch_forecast_3days(
     if icon_data is None:
         raise RuntimeError("Nessun modello meteorologico disponibile")
 
-    # ICON-2I (ItaliaMeteo-ARPAE, 2km): usato per il Lifted Index (AROME non lo
-    # fornisce in modo affidabile su quest'area) e come base per la TENDENZA
-    # (giorno 2), dato che AROME non copre quell'orizzonte.
-    print("  [io] Provo ICON-2I (ItaliaMeteo-ARPAE)...")
-    icon2i_data = _fetch_one_model("italia_meteo_arpae_icon_2i", start_s, end_d2, lat, lon, timeout)
-    if icon2i_data is not None:
-        print(f"  [io] ICON-2I: {len(icon2i_data['hourly']['time'])} ore")
-    else:
-        print("  [io] ICON-2I non disponibile")
-
     print("  [io] Provo best_match (per Lifted Index)...")
-    li_data = _fetch_one_model("best_match", start_s, end_d2, lat, lon, timeout)
+    li_data = _fetch_one_model("best_match", start_s, end_d4, lat, lon, timeout)
     if li_data is not None:
         print(f"  [io] best_match: {len(li_data['hourly']['time'])} ore")
     else:
@@ -1136,23 +1128,24 @@ def fetch_forecast_3days(
     else:
         print("  [io] best_match non disponibile, Lifted Index resta quello di AROME/ICON-EU (se presente)")
 
-    if icon2i_data is not None and 'li_map' in dir() and li_map:
-        h2i = icon2i_data.get("hourly", {})
-        times2i = h2i.get("time", [])
-        old_li2i = h2i.get("lifted_index", [None] * len(times2i))
-        h2i["lifted_index"] = [
-            li_map.get(str(t)[-5:], old_li2i[i] if i < len(old_li2i) else None)
-            for i, t in enumerate(times2i)
-        ]
+    # Giorno 2/3/4 (TENDENZA): sempre ICON-EU (unico modello con orizzonte a 5
+    # giorni affidabile qui). Oltre l'orizzonte orario reale del modello (di
+    # norma verso il 5° giorno) Open-Meteo restituisce righe placeholder con
+    # temperature_2m=None perché da lì in poi il modello aggiorna solo ogni 3
+    # ore: quelle ore vuote vengono scartate invece di mostrare buchi in tabella.
+    def _drop_unforecasted_hours(day_hourly: Dict[str, Any]) -> Dict[str, Any]:
+        temps = day_hourly.get("temperature_2m", [])
+        keep = [i for i, v in enumerate(temps) if v is not None]
+        if not keep or len(keep) == len(temps):
+            return day_hourly
+        return {k: [v[i] for i in keep] for k, v in day_hourly.items() if isinstance(v, list)}
 
-    # Giorno 2 (TENDENZA): usa ICON-2I se copre a sufficienza, altrimenti ICON-EU
-    day2_icon2i = extract_day_hourly(icon2i_data, 2) if icon2i_data is not None else {}
-    if day2_icon2i.get("time") and len(day2_icon2i["time"]) >= 12:
-        day2_final = day2_icon2i
-        model_fallback_label = "ICON-2I"
-    else:
-        day2_final = extract_day_hourly(icon_data, 2)
-        model_fallback_label = "ICON-EU"
+    def _day_tendenza(offset: int):
+        return _drop_unforecasted_hours(extract_day_hourly(icon_data, offset)), "ICON-EU"
+
+    day2_final, model_fallback_label = _day_tendenza(2)
+    day3_final, _ = _day_tendenza(3)
+    day4_final, _ = _day_tendenza(4)
 
     print("  [io] Provo AROME-PI (nowcast 15 minuti)...")
     arome_pi_data = fetch_arome_pi_nowcast(lat, lon, timeout)
@@ -1161,6 +1154,8 @@ def fetch_forecast_3days(
         "day0":         extract_day_hourly(merged,     0),
         "day1":         extract_day_hourly(merged,     1),
         "day2":         day2_final,
+        "day3":         day3_final,
+        "day4":         day4_final,
         "day0_icon":    extract_day_hourly(icon_data,  0),
         "day1_icon":    extract_day_hourly(icon_data,  1),
         "model_primary":  "AROME+ICON-EU" if arome_data else "ICON-EU",
@@ -1643,30 +1638,35 @@ def fetch_arpal_alert(timeout: int = 15) -> Dict[str, Any]:
     cambiato formato: il chiamante deve trattare l'allerta come "non
     disponibile", mai assumere un livello di default.
     """
-    try:
-        from bs4 import BeautifulSoup
-        resp = requests.get(_ARPAL_ALERT_URL, timeout=timeout, headers={"User-Agent": "MeteoBot/1.0"})
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-        bar = soup.find(class_=lambda c: c and c.startswith("al-msgbar-"))
-        if bar is None:
-            return {"ok": False, "error": "formato pagina ARPAL non riconosciuto"}
-        color = next((c.replace("al-msgbar-", "") for c in bar.get("class", [])
-                      if c.startswith("al-msgbar-")), None)
-        level = _ARPAL_LEVEL_MAP.get(color)
-        if level is None:
-            return {"ok": False, "error": f"colore allerta non riconosciuto: {color}"}
-        headings = [h.get_text(strip=True) for h in bar.find_all(["h1", "h2"])]
-        return {
-            "ok": True,
-            "level": level,
-            "message_datetime": headings[0] if len(headings) > 0 else None,
-            "title": headings[1] if len(headings) > 1 else None,
-            "risk_types": headings[2] if len(headings) > 2 else None,
-            "source_url": _ARPAL_ALERT_URL,
-        }
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    last_error: Optional[Exception] = None
+    for attempt in range(2):
+        try:
+            from bs4 import BeautifulSoup
+            resp = requests.get(_ARPAL_ALERT_URL, timeout=timeout, headers={"User-Agent": "MeteoBot/1.0"})
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+            bar = soup.find(class_=lambda c: c and c.startswith("al-msgbar-"))
+            if bar is None:
+                return {"ok": False, "error": "formato pagina ARPAL non riconosciuto"}
+            color = next((c.replace("al-msgbar-", "") for c in bar.get("class", [])
+                          if c.startswith("al-msgbar-")), None)
+            level = _ARPAL_LEVEL_MAP.get(color)
+            if level is None:
+                return {"ok": False, "error": f"colore allerta non riconosciuto: {color}"}
+            headings = [h.get_text(strip=True) for h in bar.find_all(["h1", "h2"])]
+            return {
+                "ok": True,
+                "level": level,
+                "message_datetime": headings[0] if len(headings) > 0 else None,
+                "title": headings[1] if len(headings) > 1 else None,
+                "risk_types": headings[2] if len(headings) > 2 else None,
+                "source_url": _ARPAL_ALERT_URL,
+            }
+        except Exception as e:
+            last_error = e
+            if attempt == 0:
+                time.sleep(2)
+    return {"ok": False, "error": str(last_error)}
 
 
 def read_radar(radar_source: str) -> Dict[str, Any]:

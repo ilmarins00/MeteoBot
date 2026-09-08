@@ -5,7 +5,7 @@
   --panel: rgba(14, 25, 29, .73);
   --panel-strong: rgba(9, 19, 22, .87);
   --accent: #f5bd4f;
-  --weather-image: url('https://images.unsplash.com/photo-1499346030926-9a72daac6c63?auto=format&fit=crop&w=2200&q=85');
+  --weather-bg: linear-gradient(160deg, #163a5c, #2f77a8);
   font-family: 'DM Sans', sans-serif;
   color: var(--ink);
   background: #0d1d21;
@@ -14,7 +14,7 @@
 * { box-sizing: border-box; }
 body { position: relative; margin: 0; min-width: 320px; background: #0d1d21; color: var(--ink); }
 #site-update { position: absolute; top: 18px; right: 20px; z-index: 2; margin: 0; color: var(--ink); font-size: .78rem; }
-.weather-backdrop { position: fixed; inset: 0; z-index: 0; background-image: linear-gradient(115deg, rgba(7, 20, 22, .64), rgba(7, 20, 22, .2)), var(--weather-image); background-position: center; background-size: cover; background-repeat: no-repeat; transition: background-image 800ms ease; pointer-events: none; }
+.weather-backdrop { position: fixed; inset: 0; z-index: 0; background-image: linear-gradient(180deg, rgba(6, 14, 16, .38), rgba(6, 14, 16, .58)), var(--weather-bg); background-position: center; background-size: cover; background-repeat: no-repeat; transition: background-image 800ms ease; pointer-events: none; }
 body::after { content: ''; position: fixed; inset: 0; z-index: 0; background: linear-gradient(180deg, rgba(6, 14, 16, .08), rgba(6, 14, 16, .66)); pointer-events: none; }
 button { font: inherit; }
 h1, h2, h3, p { margin-top: 0; }
@@ -71,6 +71,9 @@ h3 { font-size: 1rem; }
 .day-panel, .risk-day-panel { display: none; }
 .day-panel.active, .risk-day-panel.active { display: block; animation: reveal 300ms ease both; }
 .day-date { margin: 0 0 10px; color: var(--muted); font-size: .8rem; }
+.day-panel h3 { margin: 26px 0 12px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 1.5rem; font-weight: 600; }
+.day-panel h3:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+.tendency-note { margin: 0 0 14px; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 12px; background: rgba(245, 189, 79, .08); }
 .risk-list { display: grid; gap: 3px; margin-bottom: 20px; }
 .risk-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .risk-level { padding: 4px 9px; border-radius: 99px; font-size: .7rem; text-transform: uppercase; } .risk-level.basso { background: rgba(126, 226, 168, .17); color: #a8efc1; } .risk-level.medio { background: rgba(244, 211, 94, .18); color: #ffe58a; } .risk-level.alto, .risk-level.estremo { background: rgba(239, 102, 91, .2); color: #ffaaa1; }
