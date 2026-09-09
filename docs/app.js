@@ -138,10 +138,7 @@ function renderAll(forecast, days = null) {
 // Elenco in linguaggio semplice delle ultime modifiche al sito, leggibile
 // cliccando la scritta "Ultimo aggiornamento".
 const CHANGELOG_ITEMS = [
-  'Corretto un bug: lo sfondo e la scritta sotto il nome della zona ora guardano il meteo delle prossime ore (non più la media di tutta la giornata), quindi non capita più di vedere "sole" quando in realtà sta per piovere o ci sono temporali.',
-  'Lo sfondo cambia colore verso pioggia/temporali solo se dura almeno 2 ore vicine ad adesso: un rovescio isolato di un\'ora non tinge più tutto il sito.',
-  'I colori di sfondo sono stati resi più chiari e più leggibili, soprattutto quello del cielo sereno.',
-  'Se ARPAL Liguria ha emesso un\'allerta meteo, ora appare subito un avviso non appena scegli la tua zona, con link al sito ufficiale.',
+  'Errore di visualizzazione corretto per le condizioni meteo attuali.',
 ];
 function openChangelog() {
   const body = document.getElementById('changelog-body');

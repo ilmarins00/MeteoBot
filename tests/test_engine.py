@@ -22,6 +22,7 @@ from logic import (
     map_score_to_alert, arpal_alert_rain, arpal_alert_wind,
     composite_arpal_alert, full_alert,
 )
+from io_ingest import build_nowcast_quarter_hourly
 
 # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 # Pipeline
@@ -95,6 +96,25 @@ def test_pipeline_calm_scenario():
     res = run_pipeline(obs, [])
     assert res["meta"]["score"] <= 3
     assert res["meta"]["alert_level"] in ("verde", "gialla")
+
+
+def test_nowcast_uses_its_own_weather_code_and_cloud_cover():
+    """Il nowcast non deve riutilizzare icona e nuvole dell'ora precedente."""
+    import datetime
+    from io_ingest import TIMEZONE
+    from zoneinfo import ZoneInfo
+
+    now = datetime.datetime.now(ZoneInfo(TIMEZONE)).replace(second=0, microsecond=0)
+    timestamp = now.strftime("%Y-%m-%dT%H:%M")
+    parent = [{"time": now.strftime("%H:00"), "wmo_code": 0, "cloud": 10}]
+    pi_data = {"minutely_15": {
+        "time": [timestamp], "temperature_2m": [20], "precipitation": [1],
+        "weather_code": [95], "cloud_cover": [100],
+    }}
+
+    today_rows, _ = build_nowcast_quarter_hourly(pi_data, parent, now.date())
+    assert today_rows[0]["wmo_code"] == 95
+    assert today_rows[0]["cloud"] == 100
 
 
 # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
