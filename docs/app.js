@@ -1,5 +1,8 @@
 let SITE_DATA = null;
 let selectedZone = null;
+// Bump ad ogni modifica delle icone in docs/icons/: evita che il browser
+// mostri versioni vecchie (o un 404) cachate prima che il file esistesse.
+const ICONS_VERSION = 'v2';
 let clockTimer = null;
 let zoneMap = null;
 let currentDays = null;
@@ -138,7 +141,9 @@ function renderAll(forecast, days = null) {
 // Elenco in linguaggio semplice delle ultime modifiche al sito, leggibile
 // cliccando la scritta "Ultimo aggiornamento".
 const CHANGELOG_ITEMS = [
-  'Errore di visualizzazione corretto per le condizioni meteo attuali.',
+  'Nuove icone personalizzate',
+  'Migliorata l\'interfaccia utente per la visualizzazione delle previsioni orarie',
+  'Velocità di aggiornamento migliorata',
 ];
 function openChangelog() {
   const body = document.getElementById('changelog-body');
@@ -164,7 +169,7 @@ function renderCurrent(forecast) {
   const officialUrl = official.url || 'https://allertaliguria.regione.liguria.it/allerta_protezione_civile.php';
   const tempStr = fmt(c.temp_c, 1);
   const tempClass = tempStr.replace('-', '').length >= 4 ? 'temp-big long-temp' : 'temp-big';
-  document.getElementById('current-conditions').innerHTML = `<div class="section-kicker">Situazione attuale</div><div class="current-grid"><div class="temperature-block"><p class="weather-symbol">${wmoIcon(c.wmo_code, c)}</p><p class="${tempClass}">${tempStr}°</p><p class="condition-name">${wmoLabel(c.wmo_code, c)}</p></div><div class="current-details"><p>Min <strong>${fmt(c.temp_min_c, 0)}°</strong> / Max <strong>${fmt(c.temp_max_c, 0)}°</strong></p><p>Vento <strong>${fmt(c.wind_kmh, 0)} km/h</strong> · raffiche <strong>${fmt(c.wind_gust_kmh, 0)} km/h</strong></p><div class="status-key"><span class="status-dot ${c.alert_level || 'unknown'}"></span><span>${officialLabel}<small>Fonte ufficiale: <a href="${officialUrl}" target="_blank" rel="noopener">AllertaLiguria / ARPAL</a></small></span></div></div></div>`;
+  document.getElementById('current-conditions').innerHTML = `<div class="section-kicker">Situazione attuale</div><div class="current-grid"><div class="temperature-block"><p class="weather-symbol">${wmoIcon(c.wmo_code, c, isNightNow())}</p><p class="${tempClass}">${tempStr}°</p><p class="condition-name">${wmoLabel(c.wmo_code, c)}</p></div><div class="current-details"><p>Min <strong>${fmt(c.temp_min_c, 0)}°</strong> / Max <strong>${fmt(c.temp_max_c, 0)}°</strong></p><p>Vento <strong>${fmt(c.wind_kmh, 0)} km/h</strong> · raffiche <strong>${fmt(c.wind_gust_kmh, 0)} km/h</strong></p><div class="status-key"><span class="status-dot ${c.alert_level || 'unknown'}"></span><span>${officialLabel}<small>Fonte ufficiale: <a href="${officialUrl}" target="_blank" rel="noopener">AllertaLiguria / ARPAL</a></small></span></div></div></div>`;
 }
 
 // Categoria meteo per un codice WMO, usata per decidere il colore di sfondo.
@@ -210,42 +215,209 @@ function prevalentCategory(hourly, timezone) {
   return eligible[0][0];
 }
 
-// Icona/etichetta "sole" a 7 livelli in base alla nuvolosità (totale + alta),
-// usata solo per i codici WMO 0-3 (sereno/poco nuvoloso/nuvoloso/coperto):
+// Le 23 condizioni meteo del sito, ciascuna con la propria icona SVG in
+// docs/icons/. Le condizioni "a cielo sereno/nuvoloso" (WMO 0-3) vengono
+// scelte in base alla nuvolosità (totale + alta) per avere gradazioni fini;
 // i fenomeni (pioggia, temporale, neve, nebbia) hanno sempre la priorità.
+const CONDITION_LABELS = {
+  'sereno': 'Sereno',
+  'prevalentemente-sereno': 'Prevalentemente sereno',
+  'variabile': 'Variabile',
+  'nubi-sparse': 'Nubi sparse',
+  'prevalentemente-coperto': 'Prevalentemente coperto',
+  'coperto': 'Coperto',
+  'nubi-alte-lievi': 'Nubi alte lievi',
+  'nubi-alte': 'Nubi alte',
+  'pioggia-debole': 'Pioggia debole',
+  'pioggia': 'Pioggia',
+  'pioggia-forte': 'Pioggia forte',
+  'nubifragio': 'Nubifragio',
+  'rovesci': 'Rovesci',
+  'temporali': 'Temporali',
+  'temporali-forti': 'Temporali forti',
+  'nevischio': 'Nevischio',
+  'neve': 'Neve',
+  'neve-forte': 'Neve forte',
+  'temporale-nevoso': 'Temporale nevoso',
+  'pioggia-mista-neve': 'Pioggia mista a neve',
+  'nebbia': 'Nebbia',
+  'nebbia-banchi': 'Nebbia a banchi',
+  'foschia': 'Foschia',
+};
+
+// Condizione (sereno..coperto, nubi alte lievi/nubi alte) in base alla
+// nuvolosità totale e al velo di nubi alte, usata solo per i codici WMO 0-3.
 function skyCondition(h) {
   const cloud = h?.cloud ?? h?.cloud_pct ?? 0;
   const low = h?.cloud_low ?? h?.cloud_low_pct ?? 0;
   const mid = h?.cloud_mid ?? h?.cloud_mid_pct ?? 0;
   const high = h?.cloud_high ?? h?.cloud_high_pct ?? 0;
   const veiled = high > 25 && high >= (low + mid) && cloud < 70;
-  if (cloud < 10) return veiled ? ['sole leggermente velato', '🌤️', 'icon-veil'] : ['sole pieno', '☀️', ''];
-  if (cloud < 30) return veiled ? ['sole molto velato', '🌥️', 'icon-veil'] : ['sole prevalentemente pieno', '🌤️', ''];
-  if (cloud < 55) return ['sole coperto a metà', '⛅', ''];
-  if (cloud < 80) return ['sole quasi del tutto coperto', '🌥️', ''];
-  return ['nuvoloso', '☁️', ''];
+  if (veiled) return cloud < 30 ? 'nubi-alte-lievi' : 'nubi-alte';
+  if (cloud < 10) return 'sereno';
+  if (cloud < 25) return 'prevalentemente-sereno';
+  if (cloud < 40) return 'variabile';
+  if (cloud < 60) return 'nubi-sparse';
+  if (cloud < 80) return 'prevalentemente-coperto';
+  return 'coperto';
 }
 
-function wmoIcon(wmo, h) {
-  if (wmo == null) return '◌';
-  if ([95,96,99].includes(wmo)) return '⛈';
-  if ([80,81,82,61,63,65,66,67].includes(wmo)) return '☂';
-  if ([71,73,75].includes(wmo)) return '❄';
-  if ([45,48].includes(wmo)) return '≋';
-  if (wmo <= 3 && h) return skyCondition(h)[1];
-  if (wmo >= 2) return '☁';
-  return '☀';
+// Condizione di nebbia/foschia in base alla nuvolosità, dato che il modello
+// WMO ha un solo codice per nebbia e uno per nebbia con brina.
+function fogCondition(h) {
+  const cloud = h?.cloud ?? h?.cloud_pct ?? 100;
+  if (cloud >= 80) return 'nebbia';
+  if (cloud >= 40) return 'nebbia-banchi';
+  return 'foschia';
+}
+
+// Mappa il codice WMO (+ dati orari opzionali) su una delle 23 condizioni.
+function conditionFor(wmo, h) {
+  if (wmo == null) return null;
+  const temp = h?.T ?? h?.temp_c;
+  const isFreezingCold = typeof temp === 'number' && temp <= 1;
+  if ([95, 96].includes(wmo)) return isFreezingCold ? 'temporale-nevoso' : 'temporali';
+  if (wmo === 99) return isFreezingCold ? 'temporale-nevoso' : 'temporali-forti';
+  if ([80, 81].includes(wmo)) return 'rovesci';
+  if (wmo === 82) return 'nubifragio';
+  if ([66, 67].includes(wmo)) return 'pioggia-mista-neve';
+  if ([51, 56, 61].includes(wmo)) return 'pioggia-debole';
+  if ([53, 63].includes(wmo)) return 'pioggia';
+  if ([55, 57, 65].includes(wmo)) return 'pioggia-forte';
+  if ([71, 77].includes(wmo)) return 'nevischio';
+  if ([73, 85].includes(wmo)) return 'neve';
+  if ([75, 86].includes(wmo)) return 'neve-forte';
+  if ([45, 48].includes(wmo)) return fogCondition(h);
+  if (wmo <= 3 && h) return skyCondition(h);
+  if (wmo >= 2) return 'coperto';
+  return 'sereno';
+}
+
+function wmoIcon(wmo, h, isNight) {
+  const condition = conditionFor(wmo, h);
+  if (!condition) return '<img class="wx-icon" src="icons/wx-sereno.svg?v=' + ICONS_VERSION + '" alt="" width="32" height="32">';
+  const label = CONDITION_LABELS[condition] || condition;
+  const iconKey = (isNight && NIGHT_CAPABLE_CONDITIONS.has(condition)) ? `${condition}-notte` : condition;
+  return `<img class="wx-icon" src="icons/wx-${iconKey}.svg?v=${ICONS_VERSION}" alt="${label}" width="32" height="32">`;
 }
 function wmoLabel(wmo, h) {
   if (wmo == null) return 'n.d.';
-  if ([95,96,99].includes(wmo)) return 'temporale';
-  if ([80,81,82].includes(wmo)) return 'rovesci';
-  if ([61,63,65,66,67].includes(wmo)) return 'pioggia';
-  if ([71,73,75].includes(wmo)) return 'neve';
-  if ([45,48].includes(wmo)) return 'nebbia';
-  if (wmo <= 3 && h) return skyCondition(h)[0];
-  if (wmo >= 2) return 'nuvoloso';
-  return 'sereno';
+  const condition = conditionFor(wmo, h);
+  return (CONDITION_LABELS[condition] || condition || 'n.d.').toLowerCase();
+}
+
+// Condizioni "a cielo" che mostrano il sole di giorno: di notte usano
+// l'equivalente con la luna al posto del sole (icons/wx-<condizione>-notte.svg).
+const NIGHT_CAPABLE_CONDITIONS = new Set([
+  'sereno', 'prevalentemente-sereno', 'variabile', 'nubi-sparse',
+  'prevalentemente-coperto', 'nubi-alte-lievi', 'nubi-alte',
+  'nebbia-banchi', 'foschia',
+]);
+
+// ── Alba/tramonto (algoritmo NOAA/Almanac) per scegliere sole o luna ──
+function sinDeg(x) { return Math.sin(x * Math.PI / 180); }
+function cosDeg(x) { return Math.cos(x * Math.PI / 180); }
+function tanDeg(x) { return Math.tan(x * Math.PI / 180); }
+function asinDeg(x) { return Math.asin(x) * 180 / Math.PI; }
+function acosDeg(x) { return Math.acos(x) * 180 / Math.PI; }
+function atanDeg(x) { return Math.atan(x) * 180 / Math.PI; }
+function norm360(x) { return ((x % 360) + 360) % 360; }
+
+// Ritorna l'orario UTC (decimale, 0-24) di alba (isSunrise=true) o tramonto
+// per il giorno UTC "dateUtcDay" (usiamo solo anno/mese/giorno) alle coordinate date.
+function sunEventUtcHours(dateUtcDay, lat, lon, isSunrise) {
+  const zenith = 90.833; // rifrazione atmosferica ufficiale
+  const month = dateUtcDay.getUTCMonth() + 1;
+  const day = dateUtcDay.getUTCDate();
+  const year = dateUtcDay.getUTCFullYear();
+  const N1 = Math.floor(275 * month / 9);
+  const N2 = Math.floor((month + 9) / 12);
+  const N3 = (1 + Math.floor((year - 4 * Math.floor(year / 4) + 2) / 3));
+  const N = N1 - (N2 * N3) + day - 30;
+
+  const lngHour = lon / 15;
+  const t = isSunrise ? N + ((6 - lngHour) / 24) : N + ((18 - lngHour) / 24);
+
+  const M = (0.9856 * t) - 3.289;
+  let L = M + (1.916 * sinDeg(M)) + (0.020 * sinDeg(2 * M)) + 282.634;
+  L = norm360(L);
+
+  let RA = atanDeg(0.91764 * tanDeg(L));
+  RA = norm360(RA);
+  const Lquadrant = Math.floor(L / 90) * 90;
+  const RAquadrant = Math.floor(RA / 90) * 90;
+  RA = (RA + (Lquadrant - RAquadrant)) / 15;
+
+  const sinDec = 0.39782 * sinDeg(L);
+  const cosDec = cosDeg(asinDeg(sinDec));
+  const cosH = (cosDeg(zenith) - (sinDec * sinDeg(lat))) / (cosDec * cosDeg(lat));
+  if (cosH > 1 || cosH < -1) return null; // sole sempre sotto/sopra l'orizzonte (non capita a La Spezia)
+
+  let H = isSunrise ? 360 - acosDeg(cosH) : acosDeg(cosH);
+  H = H / 15;
+
+  const T = H + RA - (0.06571 * t) - 6.622;
+  return ((T - lngHour) % 24 + 24) % 24;
+}
+
+// Converte un orario UTC decimale di uno specifico giorno UTC in ora locale
+// decimale (Europe/Rome), gestendo automaticamente l'ora legale.
+function utcHoursToRomeDecimal(dateUtcDay, utcHours) {
+  if (utcHours == null) return null;
+  const hh = Math.floor(utcHours);
+  const mm = Math.round((utcHours - hh) * 60);
+  const instant = new Date(Date.UTC(dateUtcDay.getUTCFullYear(), dateUtcDay.getUTCMonth(), dateUtcDay.getUTCDate(), hh, mm));
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(instant);
+  const h = Number(parts.find(p => p.type === 'hour').value);
+  const m = Number(parts.find(p => p.type === 'minute').value);
+  return h + m / 60;
+}
+
+function sunTimesLocal(dateUtcDay, lat, lon) {
+  return {
+    sunrise: utcHoursToRomeDecimal(dateUtcDay, sunEventUtcHours(dateUtcDay, lat, lon, true)),
+    sunset: utcHoursToRomeDecimal(dateUtcDay, sunEventUtcHours(dateUtcDay, lat, lon, false)),
+  };
+}
+
+// "Oggi" alle coordinate date, come giorno UTC di comodo (anno/mese/giorno
+// coincidono col calendario di Roma; l'ora non conta per il calcolo alba/tramonto).
+function todayAsUtcDay() {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const [y, m, d] = parts.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+function utcDayPlusDays(baseUtcDay, offsetDays) {
+  const dt = new Date(baseUtcDay);
+  dt.setUTCDate(dt.getUTCDate() + offsetDays);
+  return dt;
+}
+function zoneLatLon() {
+  return ZONE_COORDS[selectedZone] ? ZONE_COORDS[selectedZone].slice(0, 2) : LA_SPEZIA_CENTER;
+}
+
+// È notte adesso? (usata per l'icona della situazione attuale)
+function isNightNow() {
+  const [lat, lon] = zoneLatLon();
+  const { sunrise, sunset } = sunTimesLocal(todayAsUtcDay(), lat, lon);
+  if (sunrise == null || sunset == null) return false;
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  const nowHours = Number(parts.find(p => p.type === 'hour').value) + Number(parts.find(p => p.type === 'minute').value) / 60;
+  return !(nowHours >= sunrise && nowHours < sunset);
+}
+
+// L'ora "HH:00"-"HH+1:00" è prevalentemente notturna? Regola: se il sole
+// copre più del 50% dell'ora è giorno, altrimenti (anche in caso di parità,
+// es. alba esattamente a metà ora) è notte.
+function isNightHourWindow(timeStr, dateUtcDay, lat, lon) {
+  if (!timeStr) return false;
+  const hourStart = Number(timeStr.split(':')[0]);
+  if (Number.isNaN(hourStart)) return false;
+  const hourEnd = hourStart + 1;
+  const { sunrise, sunset } = sunTimesLocal(dateUtcDay, lat, lon);
+  if (sunrise == null || sunset == null) return false;
+  const dayFraction = Math.max(0, Math.min(hourEnd, sunset) - Math.max(hourStart, sunrise));
+  return dayFraction <= 0.5;
 }
 
 // Una sola scheda giorno mostra insieme rischi, previsione oraria, grafici
@@ -257,11 +429,14 @@ function renderDayExplorer(days) {
   if (!entries.length) { el.innerHTML = ''; return; }
 
   const panelHtml = ([key, day], index) => {
+    const dayOffset = DAY_KEYS.indexOf(key);
+    const dayUtc = utcDayPlusDays(todayAsUtcDay(), dayOffset >= 0 ? dayOffset : 0);
+    const [zoneLat, zoneLon] = zoneLatLon();
     const risks = day.risk_panel && Object.keys(day.risk_panel).length
       ? `<h3>Rischi stimati</h3><div class="risk-list">${Object.entries(day.risk_panel).map(([name, level]) => `<div class="risk-row"><span>${escapeHTML(name)}</span><strong class="risk-level ${levels[level] || 'basso'}">${escapeHTML(level)}</strong></div>`).join('')}</div><p class="muted">Questi livelli sono una stima modellistica e non sostituiscono le allerte ufficiali.</p>`
       : '';
     const hourly = day.hourly?.length
-      ? `<h3>Previsione oraria</h3><div class="hourly-scroll">${day.hourly.map((h, hIdx) => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h)}</span><b>${fmt(h.T ?? h.temp_c, 0)}°</b><small>${wmoLabel(h.wmo_code, h)}</small><small>${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>raff. ${fmt(h.wind_gust, 0)} km/h</small><button class="hour-detail-btn" onclick="showHourDetail('${key}', ${hIdx})">Dettagli ▸</button></div>`).join('')}</div>`
+      ? `<h3>Previsione oraria</h3><div class="hourly-scroll">${day.hourly.map((h, hIdx) => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h, isNightHourWindow(h.time, dayUtc, zoneLat, zoneLon))}</span><b>${fmt(h.T ?? h.temp_c, 0)}°</b><small class="hour-condition">${wmoLabel(h.wmo_code, h)}</small><small>${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>raff. ${fmt(h.wind_gust, 0)} km/h</small><button class="hour-detail-btn" onclick="showHourDetail('${key}', ${hIdx})">Dettagli ▸</button></div>`).join('')}</div>`
       : '<h3>Previsione oraria</h3><p class="muted">Dati orari non disponibili per questa giornata.</p>';
     const charts = `<div class="section-heading"><h3>Grafici</h3><span class="muted">${day.hourly?.length || 0} ore</span></div><div class="mode-tabs">${chartModeTabsHtml()}</div><div class="chart-mode-content" data-day="${key}">${buildChartsGrid(day.hourly, chartMode)}</div>`;
     const highlights = day.highlights?.length

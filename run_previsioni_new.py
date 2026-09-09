@@ -7,7 +7,7 @@ Struttura per ogni giorno:
   ◆ ANALISI SEMPLICE  (script – testo dinamico con molte varianti)
   ◆ ANALISI TECNICA   (script – dati avanzati)
 
-Modelli: AROME (day 0-1) + ICON-EU (tutti i giorni, sempre). Niente Gemini/Telegram/UWYO:
+Modelli: AROME (day 0-1) + ICON-EU (tutti i giorni, sempre). Niente Gemini/UWYO:
 il risultato è solo il JSON per docs/site_data.json.
 """
 
@@ -547,7 +547,7 @@ def main():
     messages.append(msg2)
     print(f"  ✓ DOPODOMANI: {len(msg2)} chars")
 
-    # ── Giorno 4 e 5: solo tendenza per il sito (niente Telegram/Gemini,
+    # ── Giorno 4 e 5: solo tendenza per il sito (niente Gemini,
     # per non moltiplicare i costi AI su un orizzonte già poco affidabile) ──
     from api_builder import build_bulletin_json
 

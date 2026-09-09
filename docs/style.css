@@ -50,7 +50,8 @@ h3 { font-size: 1rem; }
 .current-card { background: var(--panel-strong); }
 .current-grid { display: grid; grid-template-columns: minmax(150px, 180px) minmax(0, 1fr); align-items: center; gap: 28px; }
 .temperature-block { min-width: 0; }
-.weather-symbol { color: var(--accent); font-size: 4.8rem; line-height: 1; margin: 10px 0 2px; }
+.weather-symbol { line-height: 1; margin: 10px 0 2px; display: flex; }
+.weather-symbol .wx-icon { width: 4.8rem; height: 4.8rem; }
 .temp-big { margin: 0; font: 600 clamp(3.6rem, 8vw, 6.5rem)/.9 'Space Grotesk', sans-serif; }
 .temp-big.long-temp { font-size: clamp(2.7rem, 6.2vw, 4.9rem); }
 .condition-name { color: var(--muted); text-transform: capitalize; }
@@ -64,8 +65,9 @@ h3 { font-size: 1rem; }
 .section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; }
 .muted { color: var(--muted); font-size: .83rem; line-height: 1.5; }
 .hourly-scroll { display: flex; gap: 9px; overflow-x: auto; padding: 3px 2px 10px; scrollbar-color: var(--accent) transparent; }
-.hour-card { min-width: 112px; padding: 14px 12px; display: grid; gap: 8px; border-left: 1px solid var(--line); color: var(--muted); font-size: .75rem; }
-.hour-card strong, .hour-card b { color: var(--ink); } .hour-icon { color: var(--accent); font-size: 1.8rem; } .hour-card small { white-space: nowrap; }
+.hour-card { min-width: 148px; padding: 14px 12px; display: grid; gap: 8px; border-left: 1px solid var(--line); color: var(--muted); font-size: .75rem; }
+.hour-card strong, .hour-card b { color: var(--ink); } .hour-icon { display: block; } .hour-icon .wx-icon { width: 1.8rem; height: 1.8rem; } .hour-card small { white-space: nowrap; }
+.hour-card .hour-condition { white-space: normal; overflow-wrap: break-word; line-height: 1.3; }
 .day-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 10px; }
 .day-tab, .mode-tab, .risk-tab { border: 1px solid var(--line); border-radius: 14px; padding: 9px 16px; color: var(--muted); background: transparent; cursor: pointer; }
 .day-tab.active, .day-tab:hover, .mode-tab.active, .mode-tab:hover, .risk-tab.active, .risk-tab:hover { border-color: var(--accent); color: #102023; background: var(--accent); }
@@ -105,7 +107,7 @@ footer { padding: 25px 0 45px; } .disclaimer { color: var(--muted); font-size: .
 .radar-legend { margin: 0; }
 .lightning-dot { border-radius: 50%; box-shadow: 0 0 6px 2px rgba(255, 200, 80, .5); }
 @keyframes reveal { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
-@media (max-width: 760px) { #site-update { top: 12px; right: 14px; max-width: calc(100% - 28px); text-align: right; } #zone-gate, #site-content { width: min(100% - 28px, 600px); } #zone-gate { grid-template-columns: 1fr; gap: 38px; padding: 55px 0; } #site-header { align-items: flex-start; flex-direction: column; padding-top: 38px; } .header-meta { width: 100%; text-align: left; } .live-clock { justify-content: flex-start; } .dashboard-grid { grid-template-columns: 1fr; } .wide-card { grid-column: auto; } .current-grid { grid-template-columns: minmax(100px, .8fr) minmax(0, 1.2fr); gap: 12px; } .weather-symbol { font-size: 3.2rem; } .temp-big { font-size: 3.5rem; } .card { padding: 21px; } .day-tab { flex: 1 1 calc(50% - 4px); min-width: 0; padding-inline: 10px; } }
+@media (max-width: 760px) { #site-update { top: 12px; right: 14px; max-width: calc(100% - 28px); text-align: right; } #zone-gate, #site-content { width: min(100% - 28px, 600px); } #zone-gate { grid-template-columns: 1fr; gap: 38px; padding: 55px 0; } #site-header { align-items: flex-start; flex-direction: column; padding-top: 38px; } .header-meta { width: 100%; text-align: left; } .live-clock { justify-content: flex-start; } .dashboard-grid { grid-template-columns: 1fr; } .wide-card { grid-column: auto; } .current-grid { grid-template-columns: minmax(100px, .8fr) minmax(0, 1.2fr); gap: 12px; } .weather-symbol .wx-icon { width: 3.2rem; height: 3.2rem; } .temp-big { font-size: 3.5rem; } .card { padding: 21px; } .day-tab { flex: 1 1 calc(50% - 4px); min-width: 0; padding-inline: 10px; } }
 .modal-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(6,14,16,.75); align-items: center; justify-content: center; padding: 20px; display: flex; }
 .modal-overlay[hidden] { display: none; }
 .modal-box { width: min(480px, 100%); max-height: 82vh; overflow-y: auto; background: var(--panel-strong); border: 1px solid var(--line); border-radius: 20px; padding: 22px; box-shadow: 0 30px 60px rgba(0,0,0,.4); }

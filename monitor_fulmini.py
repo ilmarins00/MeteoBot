@@ -9,18 +9,15 @@ Funzionamento:
 1. Si connette al WebSocket di Blitzortung (rete europea rilevamento fulmini)
 2. Raccoglie scariche per una finestra temporale (default 30 min) o fino a timeout
 3. Filtra solo le scariche entro il raggio dal punto di osservazione
-4. Se il conteggio supera la soglia → scarica immagine radar RainViewer +
-   genera link LightningMaps e invia notifica Telegram con foto + dettagli
+4. Esporta i dati in docs/lightning_data.json per la mappa del sito
 
 Uso:
     python monitor_fulmini.py            # Esecuzione standard (cron ogni 5-10 min)
-    python monitor_fulmini.py --force    # Forza invio anche se già notificato
     python monitor_fulmini.py --listen   # Modalità ascolto continuo (debug)
 """
 import json
 import os
 import sys
-import io
 import math
 import time
 import requests
@@ -29,11 +26,8 @@ from zoneinfo import ZoneInfo
 from typing import Dict, Any, List, Optional, Tuple
 
 from config import (
-    TELEGRAM_TOKEN,
-    TELEGRAM_CHAT_IDS as LISTA_CHAT,
     LATITUDE, LONGITUDE,
     BLITZORTUNG_WS_URLS,
-    LIGHTNINGMAPS_URL,
     load_state_section,
     save_state_section,
     thresholds,
@@ -42,47 +36,6 @@ from config import (
 TZ_ROME = ZoneInfo("Europe/Rome")
 
 EARTH_RADIUS_KM = 6371.0
-
-
-def _escape_html(text):
-    """Escapa caratteri speciali HTML per Telegram HTML parse mode."""
-    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
-def reverse_geocode(lat: float, lon: float) -> str:
-    """Ottiene il nome della località dalle coordinate usando Nominatim (OpenStreetMap)."""
-    try:
-        resp = requests.get(
-            "https://nominatim.openstreetmap.org/reverse",
-            params={
-                "lat": lat, "lon": lon,
-                "format": "json", "zoom": 14,
-                "accept-language": "it",
-            },
-            headers={"User-Agent": "MeteoBot/1.0"},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        addr = data.get("address", {})
-        name = (
-            addr.get("village")
-            or addr.get("town")
-            or addr.get("hamlet")
-            or addr.get("suburb")
-            or addr.get("city")
-            or addr.get("municipality")
-            or addr.get("county")
-        )
-        if name:
-            comune = addr.get("city") or addr.get("town") or addr.get("municipality")
-            if comune and comune != name:
-                return f"{name} ({comune})"
-            return name
-    except Exception as e:
-        print(f"Errore reverse geocoding: {e}")
-
-    return f"{lat:.3f}°N, {lon:.3f}°E"
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -357,169 +310,6 @@ def collect_strikes_from_state() -> List[Dict[str, Any]]:
     return valid
 
 
-def generate_lightning_map(
-    strikes: List[Dict[str, Any]],
-    radius_km: float = 30.0,
-) -> Optional[bytes]:
-    """Genera una mappa statica con i fulmini rilevati e cerchi di distanza."""
-    try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        import numpy as np
-    except ImportError:
-        print("matplotlib/numpy non disponibili, skip mappa")
-        return None
-
-    try:
-        fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=120)
-        fig.patch.set_facecolor('#1a1a2e')
-        ax.set_facecolor('#16213e')
-
-        km_per_deg_lat = 111.0
-        km_per_deg_lon = 111.0 * math.cos(math.radians(LATITUDE))
-
-        circle_radii_km = [5, 10, 20, 30]
-        for r_km in circle_radii_km:
-            if r_km > radius_km:
-                continue
-            theta = np.linspace(0, 2 * np.pi, 100)
-            cx = LONGITUDE + (r_km / km_per_deg_lon) * np.cos(theta)
-            cy = LATITUDE + (r_km / km_per_deg_lat) * np.sin(theta)
-            ax.plot(cx, cy, color='#4a90d9', linewidth=0.8, alpha=0.6)
-            ax.text(
-                LONGITUDE, LATITUDE + r_km / km_per_deg_lat,
-                f"{r_km} km", color='#7eb8da', fontsize=7,
-                ha='center', va='bottom', alpha=0.8,
-            )
-
-        ax.plot(LONGITUDE, LATITUDE, 'o', color='#00ff88', markersize=8, zorder=10)
-        ax.plot(LONGITUDE, LATITUDE, 'o', color='#00ff88', markersize=14,
-                alpha=0.3, zorder=9)
-
-        if strikes:
-            lats = [s["lat"] for s in strikes]
-            lons = [s["lon"] for s in strikes]
-            dists = [s["distance_km"] for s in strikes]
-
-            colors = []
-            for d in dists:
-                ratio = min(d / radius_km, 1.0)
-                if ratio < 0.33:
-                    colors.append('#ff3333')
-                elif ratio < 0.66:
-                    colors.append('#ffaa00')
-                else:
-                    colors.append('#ffff00')
-
-            ax.scatter(lons, lats, c=colors, s=25, marker='$⚡$',
-                       zorder=8, alpha=0.9)
-
-        margin_km = radius_km * 1.15
-        ax.set_xlim(
-            LONGITUDE - margin_km / km_per_deg_lon,
-            LONGITUDE + margin_km / km_per_deg_lon,
-        )
-        ax.set_ylim(
-            LATITUDE - margin_km / km_per_deg_lat,
-            LATITUDE + margin_km / km_per_deg_lat,
-        )
-
-        ax.set_aspect('equal')
-        ax.tick_params(colors='#888888', labelsize=7)
-        ax.set_xlabel('Longitudine', color='#888888', fontsize=8)
-        ax.set_ylabel('Latitudine', color='#888888', fontsize=8)
-
-        n = len(strikes)
-        closest = min((s["distance_km"] for s in strikes), default=0)
-        ax.set_title(
-            f"Fulmini rilevati: {n} scariche (min. {closest:.1f} km)",
-            color='#e0e0e0', fontsize=10, pad=10,
-        )
-
-        ax.grid(True, alpha=0.15, color='#4a90d9', linewidth=0.5)
-        for spine in ax.spines.values():
-            spine.set_color('#333355')
-
-        plt.tight_layout()
-
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', bbox_inches='tight',
-                    facecolor=fig.get_facecolor(), edgecolor='none')
-        plt.close(fig)
-        buf.seek(0)
-        return buf.read()
-
-    except Exception as e:
-        print(f"Errore generazione mappa fulmini: {e}")
-        return None
-
-
-def build_message(
-    strikes: List[Dict], window_minutes: int
-) -> str:
-    """Costruisce il messaggio Telegram HTML per allerta fulmini."""
-    now_str = datetime.now(TZ_ROME).strftime("%d/%m/%Y %H:%M")
-    n = len(strikes)
-
-    distances = [s["distance_km"] for s in strikes]
-    min_dist = min(distances)
-    avg_dist = sum(distances) / len(distances)
-    closest = min(strikes, key=lambda s: s["distance_km"])
-    closest_location = _escape_html(reverse_geocode(closest["lat"], closest["lon"]))
-
-    entro_5 = sum(1 for d in distances if d <= 5)
-    entro_10 = sum(1 for d in distances if 5 < d <= 10)
-    entro_20 = sum(1 for d in distances if 10 < d <= 20)
-    entro_30 = sum(1 for d in distances if 20 < d <= 30)
-
-    if n >= 20:
-        intensita = "🔴 TEMPORALE SEVERO"
-    elif n >= 10:
-        intensita = "🟠 TEMPORALE ATTIVO"
-    elif n >= thresholds.LIGHTNING_STRIKE_THRESHOLD:
-        intensita = "🟡 ATTIVITÀ ELETTRICA"
-    else:
-        intensita = "⚡ SCARICHE RILEVATE"
-
-    fasce = []
-    if entro_5:
-        fasce.append(f"{entro_5} entro 5 km")
-    if entro_10:
-        fasce.append(f"{entro_10} tra 5 e 10 km")
-    if entro_20:
-        fasce.append(f"{entro_20} tra 10 e 20 km")
-    if entro_30:
-        fasce.append(f"{entro_30} tra 20 e 30 km")
-    distrib_text = ", ".join(fasce)
-
-    msg = (
-        f"⚡ <b>ALLERTA FULMINI – La Spezia</b>\n"
-        f"{intensita}\n"
-        f"📅 {now_str}\n\n"
-        f"Rilevate <b>{n}</b> scariche elettriche entro {int(thresholds.LIGHTNING_RADIUS_KM)} km "
-        f"negli ultimi {window_minutes} minuti, "
-        f"la più vicina registrata a <b>{min_dist:.1f} km</b> dal punto di osservazione "
-        f"nei pressi di {closest_location}, "
-        f"distanza media {avg_dist:.1f} km. "
-        f"Distribuzione: {_escape_html(distrib_text)}."
-    )
-
-    source = strikes[0].get("source", "blitzortung")
-    if source == "openmeteo":
-        wmo = strikes[0].get("wmo_code", 95)
-        wmo_labels = {95: "Temporale lieve/moderato", 96: "Temporale con grandine", 99: "Temporale con grandine forte"}
-        msg += (
-            f" Dati stimati da Open-Meteo (WMO {wmo}: {_escape_html(wmo_labels.get(wmo, 'Temporale'))}), "
-            f"le posizioni sono approssimate in assenza di Blitzortung."
-        )
-    else:
-        msg += f" Fonte: Blitzortung.org, rete europea di rilevamento fulmini."
-
-    msg += f"\n\n🗺️ <a href=\"{LIGHTNINGMAPS_URL}\">Mappa fulmini in tempo reale</a>"
-    return msg
-
-
 def load_state() -> Dict[str, Any]:
     return load_state_section('fulmini')
 
@@ -528,64 +318,7 @@ def save_state(state: Dict[str, Any]):
     save_state_section('fulmini', state)
 
 
-def should_send(state: Dict[str, Any], n_strikes: int, force: bool = False) -> bool:
-    """
-    Anti-spam con finestra di 15 minuti (stesso intervallo cron).
-    NON salta mai aggiornamenti per 'count simile': un meteorologo
-    ha bisogno di aggiornamenti costanti sull'evoluzione.
-    """
-    if force:
-        return True
-    last_send = state.get("last_send_ts")
-    if last_send:
-        try:
-            last_dt = datetime.fromisoformat(last_send)
-            if last_dt.tzinfo is None:
-                last_dt = last_dt.replace(tzinfo=TZ_ROME)
-            delta_min = (datetime.now(TZ_ROME) - last_dt).total_seconds() / 60
-            if delta_min < 15:
-                print(
-                    f"Notifica inviata {delta_min:.0f} min fa (< 15 min), skip "
-                    f"– prossimo aggiornamento tra {15 - delta_min:.0f} min"
-                )
-                return False
-        except Exception:
-            pass
-    return True
-
-
-def send_telegram(text: str, image: Optional[bytes] = None):
-    """Invia messaggio Telegram HTML, opzionalmente con foto radar."""
-    if not TELEGRAM_TOKEN or not LISTA_CHAT:
-        print("Telegram non configurato, skip invio")
-        return
-    for chat_id in LISTA_CHAT:
-        try:
-            if image:
-                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-                files = {"photo": ("mappa_fulmini.png", io.BytesIO(image), "image/png")}
-                data = {"chat_id": chat_id, "caption": text, "parse_mode": "HTML"}
-                resp = requests.post(url, data=data, files=files, timeout=15)
-            else:
-                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                data = {
-                    "chat_id": chat_id,
-                    "text": text,
-                    "parse_mode": "HTML",
-                    "disable_web_page_preview": False,
-                }
-                resp = requests.post(url, data=data, timeout=10)
-            resp.raise_for_status()
-            payload = resp.json()
-            if payload.get("ok"):
-                print(f"✓ Fulmini notifica inviata a {chat_id}")
-            else:
-                print(f"✗ Errore Telegram fulmini per {chat_id}: {payload}")
-        except Exception as e:
-            print(f"✗ Errore invio fulmini a {chat_id}: {e}")
-
-
-def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dict[str, Any]]:
+def run_analysis(listen_seconds: int = 120) -> Optional[Dict[str, Any]]:
     """Esegue l'analisi fulmini completa."""
     radius = thresholds.LIGHTNING_RADIUS_KM
     threshold_count = thresholds.LIGHTNING_STRIKE_THRESHOLD
@@ -619,12 +352,10 @@ def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dic
             all_strikes.append(s)
 
     now = datetime.now(TZ_ROME)
-    # Finestra principale: 15 minuti (fresca, per la notifica)
-    # Fallback: window_min (per il conteggio di stato)
     cutoff_15min  = now - timedelta(minutes=15)
     cutoff_window = now - timedelta(minutes=window_min)
 
-    recent_valid = []   # fulmini degli ultimi 15 min (per la notifica)
+    recent_valid = []   # fulmini degli ultimi 15 min
     window_valid = []   # fulmini nell'intera finestra (per stato e conteggio)
 
     for s in all_strikes:
@@ -639,9 +370,6 @@ def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dic
         except Exception:
             continue
 
-    # La notifica usa sempre i fulmini freschi (15 min).
-    # Se non ce ne sono di freschi ma ce ne sono nella finestra più ampia,
-    # usiamo la finestra più ampia (scenario: cron è partito in ritardo).
     strikes_for_alert = recent_valid if recent_valid else window_valid
 
     state["last_check_ts"] = datetime.now(TZ_ROME).isoformat()
@@ -660,51 +388,28 @@ def run_analysis(force: bool = False, listen_seconds: int = 120) -> Optional[Dic
     )
 
     if n < threshold_count:
-        print("Sotto soglia, nessuna notifica")
+        print("Sotto soglia")
         state["status"] = "ok"
         save_state(state)
         return None
 
     print(f"⚡ SOGLIA SUPERATA: {n} scariche entro {radius} km!")
-
-    if not should_send(state, n, force):
-        save_state(state)
-        return None
-
-    radar_img = generate_lightning_map(strikes_for_alert, radius_km=radius)
-    msg = build_message(strikes_for_alert, 15 if recent_valid else window_min)
+    state["status"] = "alert"
     save_state(state)
 
     return {
-        "message": msg,
-        "image": radar_img,
         "strikes": recent_valid,
         "n": n,
     }
 
 
-def mark_sent(result: Dict[str, Any]):
-    """Aggiorna lo stato dopo un invio Telegram riuscito."""
-    state = load_state()
-    state["status"] = "alert"
-    state["last_send_ts"] = datetime.now(TZ_ROME).isoformat()
-    state["last_strike_count"] = result["n"]
-    save_state(state)
-    print("Fulmini: stato aggiornato")
-
-
 def main():
-    force = "--force" in sys.argv
     listen_mode = "--listen" in sys.argv
 
     window_min = thresholds.LIGHTNING_WINDOW_MINUTES
     listen_seconds = window_min * 60 if listen_mode else 120
 
-    result = run_analysis(force=force, listen_seconds=listen_seconds)
-    if result is None:
-        return
-    send_telegram(result["message"], result.get("image"))
-    mark_sent(result)
+    run_analysis(listen_seconds=listen_seconds)
 
 
 if __name__ == "__main__":

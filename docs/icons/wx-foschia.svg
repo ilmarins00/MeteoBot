@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<circle cx="50" cy="42" r="20" fill="#FFB300"/>
+<line x1="75.0" y1="42.0" x2="83.0" y2="42.0" stroke="#FFC107" stroke-width="4" stroke-linecap="round"/>
+<line x1="67.7" y1="59.7" x2="73.3" y2="65.3" stroke="#FFC107" stroke-width="4" stroke-linecap="round"/>
+<line x1="50.0" y1="67.0" x2="50.0" y2="75.0" stroke="#FFC107" stroke-width="4" stroke-linecap="round"/>
+<line x1="32.3" y1="59.7" x2="26.7" y2="65.3" stroke="#FFC107" stroke-width="4" stroke-linecap="round"/>
+<line x1="25.0" y1="42.0" x2="17.0" y2="42.0" stroke="#FFC107" stroke-width="4" stroke-linecap="round"/>
+<line x1="32.3" y1="24.3" x2="26.7" y2="18.7" stroke="#FFC107" stroke-width="4" stroke-linecap="round"/>
+<line x1="50.0" y1="17.0" x2="50.0" y2="9.0" stroke="#FFC107" stroke-width="4" stroke-linecap="round"/>
+<line x1="67.7" y1="24.3" x2="73.3" y2="18.7" stroke="#FFC107" stroke-width="4" stroke-linecap="round"/>
+<rect x="33.0" y="68" width="34" height="3.5" rx="1.75" fill="#CFD8DC" opacity="0.85"/>
+<rect x="30.0" y="75" width="40" height="3.5" rx="1.75" fill="#CFD8DC" opacity="0.85"/>
+<rect x="36.0" y="82" width="28" height="3.5" rx="1.75" fill="#CFD8DC" opacity="0.85"/>
+</svg>

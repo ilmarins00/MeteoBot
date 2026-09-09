@@ -39,7 +39,7 @@ from logic import (
 from templates import (
     render_analisi_semplice, render_section1_simple,
     render_section2_detailed, render_section3_objective_table,
-    build_gemini_prompt_tecnico, render_telegram_message
+    build_gemini_prompt_tecnico
 )
 
 def build_gemini_prompt(section1, section2, score, params, alert_level=""):

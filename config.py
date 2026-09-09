@@ -27,10 +27,6 @@ def get_env_required(key: str) -> str:
 def get_env_optional(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
 
-def get_chat_ids() -> List[str]:
-    raw = os.environ.get("TELEGRAM_CHAT_IDS", "")
-    return [c.strip() for c in raw.split(",") if c.strip()]
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Credenziali (da GitHub Secrets / env vars)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -44,8 +40,6 @@ ECOWITT_APPLICATION_KEY = get_env_optional("ECOWITT_APPLICATION_KEY")
 ECOWITT_API_KEY         = get_env_optional("ECOWITT_API_KEY")
 ECOWITT_MAC             = get_env_optional("ECOWITT_MAC")
 
-TELEGRAM_TOKEN    = get_env_optional("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_IDS = get_chat_ids()
 GEMINI_API_KEY    = get_env_optional("GEMINI_API_KEY")
 
 # ─────────────────────────────────────────────────────────────────────────────
