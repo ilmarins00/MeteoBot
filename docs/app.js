@@ -44,11 +44,11 @@ function tendencyNoteHtml() {
 // (non più foto): blu=sereno, grigio chiaro=nuvoloso/nebbia/foschia,
 // grigio=pioggia, grigio scuro=temporali, bianco=neve.
 const THEME_COLORS = {
-  sereno:    { label: 'Cielo sereno',           bg: 'linear-gradient(160deg, #163a5c, #2f77a8)' },
-  nuvoloso:  { label: 'Nuvoloso / nebbia',       bg: 'linear-gradient(160deg, #5b6670, #7c8890)' },
-  pioggia:   { label: 'Pioggia',                 bg: 'linear-gradient(160deg, #3d444a, #565f66)' },
-  temporale: { label: 'Temporali',               bg: 'linear-gradient(160deg, #1a1d20, #2b2f33)' },
-  neve:      { label: 'Neve',                    bg: 'linear-gradient(160deg, #c9d4db, #f1f5f8)' },
+  sereno:    { label: 'Cielo sereno',           bg: 'linear-gradient(160deg, #2f6fa0, #74bdee)' },
+  nuvoloso:  { label: 'Nuvoloso / nebbia',       bg: 'linear-gradient(160deg, #7d8891, #aeb8c0)' },
+  pioggia:   { label: 'Pioggia',                 bg: 'linear-gradient(160deg, #5b6670, #8b969e)' },
+  temporale: { label: 'Temporali',               bg: 'linear-gradient(160deg, #383e44, #565f68)' },
+  neve:      { label: 'Neve',                    bg: 'linear-gradient(160deg, #d6e0e7, #f5f8fa)' },
 };
 
 async function init() {
@@ -105,15 +105,54 @@ function selectZone(zoneId) {
   document.getElementById('zone-title').textContent = `Meteo ${forecast.label || zoneId}`;
   renderAll(forecast, baseForecast.days);
   initRadarMap(...(ZONE_COORDS[zoneId] ? ZONE_COORDS[zoneId].slice(0, 2) : LA_SPEZIA_CENTER));
+  checkArpalAlertPopup(baseForecast);
+}
+
+// Se ARPAL Liguria ha un'allerta attiva (gialla/arancione/rossa) per questa
+// zona, avvisa subito l'utente con un popup invece di lasciarlo scoprire
+// l'allerta solo scorrendo la pagina.
+function checkArpalAlertPopup(baseForecast) {
+  const official = baseForecast?.official_alert || {};
+  const level = (official.level || '').toLowerCase();
+  const modal = document.getElementById('arpal-alert-modal');
+  const body = document.getElementById('arpal-alert-body');
+  if (!modal || !body || !['gialla', 'arancione', 'rossa'].includes(level)) return;
+  const url = official.url || 'https://allertaliguria.regione.liguria.it/allerta_protezione_civile.php';
+  body.innerHTML = `<p>ARPAL ha emanato un'allerta <strong>${level.toUpperCase()}</strong> per questa zona${official.risk_types ? ` (${escapeHTML(official.risk_types)})` : ''}.</p><p>Fai attenzione: consulta il sito ufficiale per i dettagli e gli orari di validità, così puoi tenerti al sicuro.</p><p><a href="${url}" target="_blank" rel="noopener">Vai al sito ARPAL / AllertaLiguria »</a></p>`;
+  modal.className = `alert-toast ${level}`;
+  modal.hidden = false;
+}
+function closeArpalAlert() {
+  const modal = document.getElementById('arpal-alert-modal');
+  if (modal) modal.hidden = true;
 }
 
 function renderAll(forecast, days = null) {
   const dayMap = days || { oggi: forecast };
   currentDays = dayMap;
-  const generated = SITE_DATA.generated_at || forecast.meta?.generated_at;
   renderCurrent(forecast);
   renderDayExplorer(dayMap);
   applyTheme(forecast.hourly);
+}
+
+// Elenco in linguaggio semplice delle ultime modifiche al sito, leggibile
+// cliccando la scritta "Ultimo aggiornamento".
+const CHANGELOG_ITEMS = [
+  'Corretto un bug: lo sfondo e la scritta sotto il nome della zona ora guardano il meteo delle prossime ore (non più la media di tutta la giornata), quindi non capita più di vedere "sole" quando in realtà sta per piovere o ci sono temporali.',
+  'Lo sfondo cambia colore verso pioggia/temporali solo se dura almeno 2 ore vicine ad adesso: un rovescio isolato di un\'ora non tinge più tutto il sito.',
+  'I colori di sfondo sono stati resi più chiari e più leggibili, soprattutto quello del cielo sereno.',
+  'Se ARPAL Liguria ha emesso un\'allerta meteo, ora appare subito un avviso non appena scegli la tua zona, con link al sito ufficiale.',
+];
+function openChangelog() {
+  const body = document.getElementById('changelog-body');
+  const modal = document.getElementById('changelog-modal');
+  if (!body || !modal) return;
+  body.innerHTML = `<ul class="highlights-list">${CHANGELOG_ITEMS.map(item => `<li>${escapeHTML(item)}</li>`).join('')}</ul>`;
+  modal.hidden = false;
+}
+function closeChangelog() {
+  const modal = document.getElementById('changelog-modal');
+  if (modal) modal.hidden = true;
 }
 
 function updateClock() {
@@ -142,17 +181,31 @@ function categoryFor(wmo) {
   return 'sereno'; // 0 = sereno, 1 = poco nuvoloso
 }
 
-// Condizione prevalente della giornata: la categoria con più ore, ma pioggia
-// e neve contano come prevalenti solo se coprono almeno 2 ore (richiesta
-// esplicita: un rovescio isolato di un'ora non deve tingere di grigio/bianco
-// l'intero sfondo del sito).
-function prevalentCategory(hourly) {
+// Trova l'indice dell'ora corrente (o la più vicina) nella lista oraria di
+// "oggi": serve per giudicare il meteo di ADESSO, non la media dell'intera
+// giornata (altrimenti un temporale in corso nel pomeriggio resterebbe
+// "nascosto" dietro ore di sole al mattino o alla sera).
+function currentHourIndex(list, timezone) {
+  const nowHour = new Intl.DateTimeFormat('it-IT', { timeZone: timezone || 'Europe/Rome', hour: '2-digit', hour12: false }).format(new Date()).padStart(2, '0');
+  const idx = list.findIndex(h => (h.time || '').startsWith(nowHour));
+  return idx >= 0 ? idx : 0;
+}
+
+// Condizione prevalente delle prossime ore (adesso + le 5 successive, non
+// l'intera giornata): pioggia e temporali contano come prevalenti solo se
+// coprono almeno 2 di queste ore (richiesta esplicita: un rovescio o un
+// temporale isolato di un'ora non deve tingere di grigio/scuro l'intero
+// sfondo del sito).
+function prevalentCategory(hourly, timezone) {
   const list = hourly || [];
   if (!list.length) return 'sereno';
+  const nowIdx = currentHourIndex(list, timezone);
+  const window = list.slice(nowIdx, nowIdx + 6);
+  const source = window.length ? window : list;
   const counts = { sereno: 0, nuvoloso: 0, pioggia: 0, temporale: 0, neve: 0 };
-  list.forEach(h => { counts[categoryFor(h.wmo_code)]++; });
+  source.forEach(h => { counts[categoryFor(h.wmo_code)]++; });
   const eligible = Object.entries(counts).filter(([cat, n]) => {
-    if (cat === 'pioggia' || cat === 'neve') return n >= 2;
+    if (cat === 'pioggia' || cat === 'temporale' || cat === 'neve') return n >= 2;
     return n > 0;
   });
   if (!eligible.length) return 'sereno';
@@ -398,7 +451,7 @@ function selectChartMode(mode) {
   });
 }
 function applyTheme(hourly) {
-  const cat = prevalentCategory(hourly);
+  const cat = prevalentCategory(hourly, SITE_DATA?.timezone);
   const theme = THEME_COLORS[cat] || THEME_COLORS.sereno;
   document.body.dataset.theme = cat;
   document.documentElement.style.setProperty('--weather-bg', theme.bg);

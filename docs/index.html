@@ -17,11 +17,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="style.css?v=20260908-5days">
+  <link rel="stylesheet" href="style.css?v=20260909-6">
 </head>
 <body data-theme="sereno">
   <div class="weather-backdrop" aria-hidden="true"></div>
-  <p id="site-update">Ultimo aggiornamento: 8 Settembre 2026</p>
+  <button id="site-update" onclick="openChangelog()" aria-label="Ultimo aggiornamento — clicca per vedere le novità del sito">Ultimo aggiornamento: 9 Settembre 2026 alle 15:19</button>
   <div id="zone-gate">
     <div class="gate-copy"><span class="eyebrow">METEOBOT</span><h1>Che tempo fa<br><em>da te?</em></h1><p>Scegli la zona per cui vuoi vedere le previsioni.</p></div>
     <div class="gate-tools"><label for="zone-select">Zona</label><select id="zone-select" aria-label="Seleziona la zona per le previsioni"><option value="">Seleziona una zona...</option></select></div>
@@ -58,8 +58,24 @@
     </div>
   </div>
 </div>
+    <div id="arpal-alert-modal" class="alert-toast" hidden>
+  <div class="modal-header">
+    <h3 id="arpal-alert-title">Allerta meteo ARPAL</h3>
+    <button class="modal-close" onclick="closeArpalAlert()" aria-label="Chiudi">✕</button>
+  </div>
+  <div class="modal-body" id="arpal-alert-body"></div>
+</div>
+    <div id="changelog-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeChangelog()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Cosa è cambiato nel sito</h3>
+      <button class="modal-close" onclick="closeChangelog()" aria-label="Chiudi">✕</button>
+    </div>
+    <div class="modal-body" id="changelog-body"></div>
+  </div>
+</div>
   </main>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js?v=20260908-5days"></script>
+  <script src="app.js?v=20260909-6"></script>
 </body>
 </html>
