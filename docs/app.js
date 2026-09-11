@@ -141,9 +141,7 @@ function renderAll(forecast, days = null) {
 // Elenco in linguaggio semplice delle ultime modifiche al sito, leggibile
 // cliccando la scritta "Ultimo aggiornamento".
 const CHANGELOG_ITEMS = [
-  'Nuove icone personalizzate',
-  'Migliorata l\'interfaccia utente per la visualizzazione delle previsioni orarie',
-  'Velocità di aggiornamento migliorata',
+  'Punti ricezione dati aggiornati per le seguenti località: La Spezia Ovest, La Spezia Centro, La Spezia Est, La Spezia Nord',
 ];
 function openChangelog() {
   const body = document.getElementById('changelog-body');

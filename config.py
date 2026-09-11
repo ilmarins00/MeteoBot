@@ -528,13 +528,13 @@ TEMP_ALOFT_ANOMALY_EXCEPTIONAL: float = 14.0
 # mappa reale); non hanno lo status "certificato" delle soglie ARPAL/SPC.
 # ─────────────────────────────────────────────────────────────────────────────
 CITY_ZONES: Dict[str, Dict] = {
-    "foce":       {"lat": 44.124363, "lon": 9.798269, "label": "La Spezia Ovest",
+    "foce":       {"lat": 44.120020, "lon": 9.790950, "label": "La Spezia Ovest",
                     "elevation_m": 0, "note": "costiera, esposta a libeccio/scirocco", "region": "liguria"},
-    "centro":     {"lat": 44.105130, "lon": 9.823554, "label": "La Spezia Centro",
+    "centro":     {"lat": 44.107942, "lon": 9.828886, "label": "La Spezia Centro",
                     "elevation_m": 0,  "note": "settore urbano centrale", "region": "liguria"},
-    "migliarina": {"lat": 44.118279, "lon": 9.840946, "label": "La Spezia Est",
+    "migliarina": {"lat": 44.115823, "lon": 9.869472, "label": "La Spezia Est",
                     "elevation_m": 0, "note": "settore orientale della città", "region": "liguria"},
-    "felettino":  {"lat": 44.131810, "lon": 9.845865, "label": "La Spezia Nord",
+    "felettino":  {"lat": 44.134904, "lon": 9.846012, "label": "La Spezia Nord",
                     "elevation_m": 0, "note": "zona collinare interna, più forzante orografico", "region": "liguria"},
 
     "santo_stefano_magra": {"lat": 44.160668, "lon": 9.915821, "label": "Santo Stefano di Magra",
