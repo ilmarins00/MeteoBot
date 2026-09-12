@@ -99,6 +99,8 @@ footer { padding: 25px 0 45px; } .disclaimer { color: var(--muted); font-size: .
 .highlights-list { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 2px; }
 .highlights-list li { display: flex; gap: 14px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .highlights-list time { flex: 0 0 52px; color: var(--accent); font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
+.model-comparison-list li { justify-content: space-between; }
+.model-comparison-list strong { color: var(--accent); }
 .ai-text { line-height: 1.6; color: var(--ink); margin-bottom: 18px; }
 .insights-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 10px; }
 .insights-list li { padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; color: var(--muted); line-height: 1.5; } .insights-list strong { color: var(--ink); }

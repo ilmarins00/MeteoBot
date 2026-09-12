@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="style.css?v=20260909-7">
+  <link rel="stylesheet" href="style.css?v=20260912-1">
 </head>
 <body data-theme="sereno">
   <div class="weather-backdrop" aria-hidden="true"></div>
@@ -45,6 +45,12 @@
         <p class="muted radar-legend">Radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a></p>
       </section>
     </div>
+
+    <section id="model-comparison-panel" class="card wide-card" hidden>
+      <div class="section-kicker">Confronto multi-modello</div>
+      <div class="section-heading"><h2>Quanto sono d'accordo i modelli?</h2><span class="muted" id="model-comparison-confidence"></span></div>
+      <div id="model-comparison-body"></div>
+    </section>
 
     <footer><p class="disclaimer">Previsione automatica generata da modello. Non è un'allerta ufficiale.</p><p class="disclaimer">Tutti i dati presenti nel sito richiedono interpretazione da parte di competenti.</p></footer>
     <div id="hour-detail-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeHourDetail()">
@@ -76,6 +82,6 @@
 </div>
   </main>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js?v=20260911-1"></script>
+  <script src="app.js?v=20260912-1"></script>
 </body>
 </html>

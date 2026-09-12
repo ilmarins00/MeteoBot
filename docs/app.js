@@ -136,6 +136,38 @@ function renderAll(forecast, days = null) {
   renderCurrent(forecast);
   renderDayExplorer(dayMap);
   applyTheme(forecast.hourly);
+  renderModelComparison();
+}
+
+// Mostra quanto i modelli disponibili (ICON, GFS, ECMWF...) concordano con
+// AROME, che resta comunque il riferimento del bollettino. Non è la stessa
+// cosa di una probabilità da ensemble calibrato: solo un'indicazione di
+// quanto la previsione è condivisa tra modelli diversi.
+function renderModelComparison() {
+  const panel = document.getElementById('model-comparison-panel');
+  const body = document.getElementById('model-comparison-body');
+  const confidenceEl = document.getElementById('model-comparison-confidence');
+  if (!panel || !body || !confidenceEl) return;
+
+  const comparison = SITE_DATA?.forecast?.model_comparison;
+  if (!comparison || !comparison.available) {
+    panel.hidden = true;
+    return;
+  }
+
+  const labels = { temporali: 'Temporali', pioggia: 'Pioggia', vento_forte: 'Vento forte', sole: 'Sole' };
+  const rows = Object.entries(comparison.probability || {})
+    .filter(([, pct]) => pct !== null && pct !== undefined)
+    .map(([key, pct]) => `<li><span>${escapeHTML(labels[key] || key)}</span><strong>${pct}%</strong></li>`)
+    .join('');
+
+  confidenceEl.textContent = `Confidenza: ${comparison.confidenza?.label || 'n.d.'}`;
+  body.innerHTML = `
+    <p class="muted">Riferimento: <strong>${escapeHTML(comparison.reference_model || 'AROME')}</strong>, confrontato con ${comparison.n_models_available - 1} altri modelli (${escapeHTML((comparison.models_compared || []).join(', '))}).</p>
+    <ul class="highlights-list model-comparison-list">${rows}</ul>
+    <p class="muted">${escapeHTML(comparison.note || '')}</p>
+  `;
+  panel.hidden = false;
 }
 
 // Elenco in linguaggio semplice delle ultime modifiche al sito, leggibile
