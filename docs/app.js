@@ -60,6 +60,7 @@ async function init() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     SITE_DATA = await res.json();
     renderZoneMap();
+    renderArticles();
     updateClock();
     clockTimer = setInterval(updateClock, 1000);
     scheduleMidnightRollover();
@@ -142,38 +143,167 @@ function renderAll(forecast, days = null) {
 // Mostra quanto i modelli disponibili (ICON, GFS, ECMWF...) concordano con
 // AROME, che resta comunque il riferimento del bollettino. Non è la stessa
 // cosa di una probabilità da ensemble calibrato: solo un'indicazione di
-// quanto la previsione è condivisa tra modelli diversi.
+// quanto la previsione è condivisa tra modelli diversi. AROME copre solo
+// oggi/domani/dopodomani: oltre non ha senso offrire il confronto.
+const MODEL_COMPARISON_DAY_LABELS = { oggi: 'Oggi', domani: 'Domani', dopodomani: 'Dopodomani' };
+let currentModelComparisonDay = 'oggi';
+
 function renderModelComparison() {
   const panel = document.getElementById('model-comparison-panel');
-  const body = document.getElementById('model-comparison-body');
-  const confidenceEl = document.getElementById('model-comparison-confidence');
-  if (!panel || !body || !confidenceEl) return;
+  const tabsEl = document.getElementById('model-comparison-tabs');
+  if (!panel || !tabsEl) return;
 
-  const comparison = SITE_DATA?.forecast?.model_comparison;
-  if (!comparison || !comparison.available) {
+  const comparisonByDay = SITE_DATA?.forecast?.model_comparison;
+  const availableDays = Object.keys(MODEL_COMPARISON_DAY_LABELS).filter(d => comparisonByDay?.[d]);
+  if (!comparisonByDay || !availableDays.length) {
     panel.hidden = true;
     return;
   }
+  if (!availableDays.includes(currentModelComparisonDay)) currentModelComparisonDay = availableDays[0];
 
-  const labels = { temporali: 'Temporali', pioggia: 'Pioggia', vento_forte: 'Vento forte', sole: 'Sole' };
-  const rows = Object.entries(comparison.probability || {})
-    .filter(([, pct]) => pct !== null && pct !== undefined)
-    .map(([key, pct]) => `<li><span>${escapeHTML(labels[key] || key)}</span><strong>${pct}%</strong></li>`)
+  tabsEl.innerHTML = availableDays.map(day => `<button data-day="${day}" class="day-tab ${day === currentModelComparisonDay ? 'active' : ''}" onclick="selectModelComparisonDay('${day}')">${MODEL_COMPARISON_DAY_LABELS[day]}</button>`).join('');
+  renderModelComparisonDay(currentModelComparisonDay);
+  panel.hidden = false;
+}
+
+function selectModelComparisonDay(day) {
+  currentModelComparisonDay = day;
+  document.querySelectorAll('#model-comparison-tabs .day-tab').forEach(button => button.classList.toggle('active', button.dataset.day === day));
+  renderModelComparisonDay(day);
+}
+
+function renderModelComparisonDay(day) {
+  const body = document.getElementById('model-comparison-body');
+  const confidenceEl = document.getElementById('model-comparison-confidence');
+  if (!body || !confidenceEl) return;
+  const comparison = SITE_DATA?.forecast?.model_comparison?.[day];
+
+  if (!comparison || !comparison.available) {
+    confidenceEl.textContent = '';
+    body.innerHTML = `<p class="muted">${escapeHTML(comparison?.note || 'Confronto non disponibile per questo giorno.')}</p>`;
+    return;
+  }
+
+  const labels = {
+    temporali: 'Temporali',
+    pioggia: 'Pioggia',
+    vento_forte: 'Vento forte',
+    sole: 'Sole (nuvole <30% e pioggia <0,5 mm)'
+  };
+  const total = comparison.n_models_available;
+  const rows = Object.entries(comparison.model_counts || {})
+    .filter(([, count]) => count !== null && count !== undefined)
+    .map(([key, count]) => `<li><span>${escapeHTML(labels[key] || key)}</span><strong>Previsto da ${count} modelli su ${total}</strong></li>`)
     .join('');
 
-  confidenceEl.textContent = `Confidenza: ${comparison.confidenza?.label || 'n.d.'}`;
+  confidenceEl.textContent = "Il conteggio indica quanti modelli, AROME incluso, prevedono ciascun fenomeno";
   body.innerHTML = `
     <p class="muted">Riferimento: <strong>${escapeHTML(comparison.reference_model || 'AROME')}</strong>, confrontato con ${comparison.n_models_available - 1} altri modelli (${escapeHTML((comparison.models_compared || []).join(', '))}).</p>
     <ul class="highlights-list model-comparison-list">${rows}</ul>
-    <p class="muted">${escapeHTML(comparison.note || '')}</p>
   `;
-  panel.hidden = false;
+}
+
+
+// Articoli divulgativi statici (non dipendono da SITE_DATA): spiegano in
+// linguaggio semplice come funzionano gli indici e i dati del sito.
+const ARTICLES = [
+  {
+    id: 'cape',
+    title: "Come nasce il CAPE (energia potenziale per temporali) che vedi sul sito",
+    image: 'icons/articles/article-cape.svg',
+    teaser: "Il sito non copia un numero da altrove: calcola il CAPE da zero, come una bolla d'aria calda che sale e alimenta il temporale.",
+    body: `
+      <p>Quando il bollettino MeteoBot mostra un valore di CAPE, non sta semplicemente "copiando" un numero da qualche altro sito: lo calcola da zero, seguendo un procedimento fisico preciso, partendo solo da temperatura, umidità e pressione dell'atmosfera.</p>
+      <p><strong>Il concetto di base</strong>: immagina una bolla d'aria vicino al suolo, come un piccolo palloncino invisibile. Se questa bolla è più calda dell'aria che la circonda, tende a salire — un po' come l'aria calda che sale da un termosifone. Salendo, si espande e si raffredda. Se contiene abbastanza umidità, a un certo punto quel vapore condensa (è il momento in cui si forma la nuvola), rilasciando calore latente che "ricarica" la bolla e la spinge a salire ancora più in alto.</p>
+      <p>Il <strong>CAPE</strong> (Convective Available Potential Energy) misura proprio quanta energia è disponibile per questo processo: più è alto, più la bolla può salire con forza, e più il temporale che ne nasce può essere intenso (correnti ascensionali violente, grandine grossa, downburst).</p>
+      <p>Il sito calcola tre versioni di questo indice, perché la "bolla" di partenza può essere scelta in modi diversi:</p>
+      <ul>
+        <li><strong>SBCAPE</strong> (Surface-Based): la bolla parte proprio dal suolo — utile per capire il potenziale nelle ore più calde del giorno.</li>
+        <li><strong>MUCAPE</strong> (Most-Unstable): si cerca il punto dell'atmosfera più instabile in quota (non per forza al suolo) — utile quando l'instabilità non è legata al riscaldamento diurno.</li>
+        <li><strong>MLCAPE</strong> (Mixed-Layer): si fa una media dei primi 100 hPa di atmosfera (circa il primo chilometro) — dà un quadro più "medio" e meno sensibile a un singolo dato anomalo.</li>
+      </ul>
+      <p>Le formule usate arrivano da lavori scientifici storici e consolidati (Bolton, 1980, per il calcolo del punto di condensazione; Doswell &amp; Rasmussen, 1994, per l'integrazione dell'energia), non da approssimazioni improvvisate.</p>
+      <p><strong>Perché ti interessa</strong>: il CAPE da solo non basta a dire "ci sarà un temporale forte", serve anche il "grilletto" (qualcosa che sollevi l'aria fino al punto di condensazione) e il vento in quota che organizza la cella. Ma è il primo ingrediente da guardare quando si parla di instabilità.</p>
+    `,
+  },
+  {
+    id: 'shear',
+    title: "Perché il sito calcola shear e SRH per il tuo territorio",
+    image: 'icons/articles/article-shear.svg',
+    teaser: "Il CAPE dice quanta energia c'è, ma è il vento in quota a decidere se il temporale sarà un acquazzone breve o una cella organizzata.",
+    body: `
+      <p>Il CAPE dice "quanta energia c'è", ma non dice se quell'energia produrrà un temporale disorganizzato che scarica tutto in pochi minuti, oppure una cella più organizzata e persistente, magari con rotazione. Per questo il sito calcola anche una famiglia di indici legati al vento in quota.</p>
+      <p><strong>Shear</strong>: è semplicemente la differenza di velocità e direzione del vento tra il suolo e vari livelli in altezza (1, 3, 6 km). Se il vento cambia molto salendo di quota, il temporale viene "inclinato" e l'aria calda che sale non viene ostacolata dalla pioggia che scende: il risultato sono temporali più duraturi e organizzati, invece di un semplice acquazzone che si esaurisce in fretta.</p>
+      <p><strong>SRH</strong> (Storm Relative Helicity): misura quanto il vento "ruota" con la quota, un ingrediente chiave per capire se un temporale può sviluppare rotazione interna (il primo passo verso una supercella).</p>
+      <p><strong>EHI, SCP, STP</strong>: sono indici "combinati" che mescolano CAPE e shear/SRH in un unico numero, pensati dai meteorologi operativi per stimare rispettivamente il potenziale di temporali severi (EHI), di supercelle (SCP) e, soglia più alta, di tornado significativi (STP).</p>
+      <p><strong>La parte più originale</strong>: il sito aggiunge indici pensati apposta per il territorio de La Spezia e il Levante Ligure, come un "indice di orographic enhancement" (quanto l'Appennino Ligure amplifica le precipitazioni quando l'aria umida è costretta a salire lungo i rilievi) e un indice di brezza marina/convergenza costiera, che tiene conto di come mare e terra si scaldano in modo diverso creando venti locali che possono innescare temporali pomeridiani vicino alla costa.</p>
+      <p><strong>Perché ti interessa</strong>: sono gli stessi ingredienti (shear + CAPE) che i meteorologi professionisti guardano per distinguere un temporale "normale" da uno potenzialmente pericoloso, adattati però alla geografia specifica del golfo della Spezia.</p>
+    `,
+  },
+  {
+    id: 'multimodel',
+    title: "AROME resta il capo, gli altri modelli votano",
+    image: 'icons/articles/article-multimodel.svg',
+    teaser: "Il sito confronta AROME con altri modelli per stimare quanto è condivisa una previsione, senza spacciarla per una probabilità statistica vera.",
+    body: `
+      <p>Ogni modello di previsione (AROME, ICON, GFS, ECMWF...) è un programma che simula l'atmosfera partendo dagli stessi dati osservati, ma con formule, risoluzione e approssimazioni leggermente diverse. Per questo può capitare che due modelli diano previsioni non identiche per lo stesso giorno.</p>
+      <p>Il sito usa <strong>AROME</strong> (modello ad alta risoluzione di Météo-France) come riferimento principale per il bollettino: è quello scelto per scrivere "domani pioverà" o "vento forte da libeccio". Ma in parallelo, interroga anche altri modelli (ICON-EU, ICON-Global, GFS, ECMWF) e calcola una specie di "sondaggio": quanti di questi modelli sono d'accordo con AROME su un certo fenomeno (temporali, pioggia, vento forte)?</p>
+      <p>Se, ad esempio, 5 modelli su 6 concordano su un temporale nel pomeriggio, il sito può segnalare un'alta "concordanza" — un segnale di maggiore affidabilità della previsione.</p>
+      <p><strong>Il punto onesto e importante</strong>: questa percentuale di accordo non è una probabilità statistica calibrata come quella di un vero sistema di ensemble meteorologico (che fa girare decine di simulazioni della stessa atmosfera con piccole perturbazioni iniziali). È solo un'euristica — "quanti modelli indipendenti dicono la stessa cosa" — utile per farsi un'idea della fiducia da riporre in una previsione, non un vero e proprio "70% di probabilità di pioggia" in senso rigoroso.</p>
+      <p><strong>Perché ti interessa</strong>: la prossima volta che senti dire "i modelli sono concordi" o "i modelli divergono", ora sai cosa significa concretamente — e quanto (e quanto poco) ci si può fidare di quel tipo di affermazione.</p>
+    `,
+  },
+  {
+    id: 'datasource',
+    title: "Da dove arrivano davvero i dati del sito",
+    image: 'icons/articles/article-datasource.svg',
+    teaser: "Nessun dato inventato: tutto parte da Open-Meteo, che aggrega i grandi centri meteorologici mondiali in un'unica fonte gratuita.",
+    body: `
+      <p>Tutte le previsioni, temperature, venti e indici che vedi sul sito partono da un'unica fonte gratuita e senza necessità di registrazione: <strong>Open-Meteo</strong>, un servizio che aggrega i dati di diversi centri meteorologici mondiali (Météo-France, DWD tedesco, NOAA americana, ECMWF europeo) e li rende disponibili tramite un'interfaccia semplice.</p>
+      <p>Da lì il sito scarica moltissime variabili orarie: temperatura, umidità, punto di rugiada, pressione, copertura nuvolosa (divisa per bassa, media e alta quota), vento e raffiche, ma anche dati "in quota" a diversi livelli di pressione (1000, 925, 850, 700, 500 hPa) — che corrispondono grossomodo a diverse altezze nell'atmosfera, dal suolo fino a circa 5-6 km.</p>
+      <p>Questi livelli in quota sono fondamentali: è da lì che il sito ricostruisce un <strong>profilo verticale approssimato dell'atmosfera</strong> (come farebbe un pallone sonda, ma stimato dal modello anziché misurato fisicamente), che serve poi a calcolare CAPE, shear e tutti gli altri indici descritti negli articoli precedenti.</p>
+      <p>Il codice del sito prevede anche, per il futuro, la possibilità di collegarsi a fonti più "grezze" e professionali come i file GRIB/NetCDF (il formato standard con cui i centri meteo distribuiscono l'output diretto dei modelli) o ai radiosondaggi reali dell'Università del Wyoming — funzioni al momento non ancora attive, ma già predisposte.</p>
+      <p><strong>Perché ti interessa</strong>: capire che il sito non "inventa" nulla, ma fa un lavoro di raccolta, ricostruzione e calcolo scientifico a partire da dati meteorologici pubblici e verificabili da chiunque.</p>
+    `,
+  },
+];
+
+function renderArticles() {
+  const grid = document.getElementById('articles-grid');
+  if (!grid) return;
+  grid.innerHTML = ARTICLES.map(a => `
+    <article class="article-card" onclick="openArticle('${a.id}')">
+      <img src="${a.image}" alt="" class="article-card-image">
+      <div class="article-card-body">
+        <h3>${escapeHTML(a.title)}</h3>
+        <p class="muted">${escapeHTML(a.teaser)}</p>
+      </div>
+    </article>
+  `).join('');
+}
+
+function openArticle(id) {
+  const article = ARTICLES.find(a => a.id === id);
+  const modal = document.getElementById('article-modal');
+  if (!article || !modal) return;
+  document.getElementById('article-title').textContent = article.title;
+  document.getElementById('article-image').src = article.image;
+  document.getElementById('article-body').innerHTML = article.body;
+  modal.hidden = false;
+}
+
+function closeArticle() {
+  const modal = document.getElementById('article-modal');
+  if (modal) modal.hidden = true;
 }
 
 // Elenco in linguaggio semplice delle ultime modifiche al sito, leggibile
 // cliccando la scritta "Ultimo aggiornamento".
 const CHANGELOG_ITEMS = [
-  'Punti ricezione dati aggiornati per le seguenti località: La Spezia Ovest, La Spezia Centro, La Spezia Est, La Spezia Nord',
+  'Nuova sezione "Confronto multi-modello" in fondo alla pagina: mostra quanto i modelli sono d\'accordo tra loro.',
+  'Nuova sezione "Curiosità" sotto il "Confronto multi-modello", con 4 approfondimenti su come funziona il sito.',
+  'Migliorato il layout della schermata di scelta zona: il selettore ora è racchiuso in un pannello dedicato, più leggibile.',
+  'Aggiornate le coordinate per La Spezia Ovest.',
 ];
 function openChangelog() {
   const body = document.getElementById('changelog-body');

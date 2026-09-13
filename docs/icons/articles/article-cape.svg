@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" role="img" aria-label="Bolla d'aria calda che sale e forma un cumulonembo">
+  <defs>
+    <linearGradient id="sky-cape" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#12313d"/>
+      <stop offset="1" stop-color="#0d1d21"/>
+    </linearGradient>
+    <linearGradient id="cloud-cape" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5b6670"/>
+      <stop offset="1" stop-color="#2f3a41"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#sky-cape)"/>
+  <path d="M120 90c-24 0-40 16-42 34-16 2-28 16-28 32 0 18 15 33 34 33h190c19 0 34-15 34-33 0-16-12-30-28-32-2-24-22-42-46-42-9 0-17 3-24 7-9-15-25-25-44-25-25 0-45 15-52 36z" fill="url(#cloud-cape)"/>
+  <g stroke="#f5bd4f" stroke-width="6" stroke-linecap="round" fill="none">
+    <path d="M150 220 L150 150"/>
+    <path d="M200 220 L200 130"/>
+    <path d="M250 220 L250 150"/>
+  </g>
+  <g fill="#f5bd4f">
+    <path d="M144 150 l6 -14 l6 14 z"/>
+    <path d="M194 130 l6 -14 l6 14 z"/>
+    <path d="M244 150 l6 -14 l6 14 z"/>
+  </g>
+  <path d="M205 95 l-14 26 h12 l-10 22 24-30 h-12 z" fill="#ffe28a"/>
+</svg>

@@ -528,7 +528,7 @@ TEMP_ALOFT_ANOMALY_EXCEPTIONAL: float = 14.0
 # mappa reale); non hanno lo status "certificato" delle soglie ARPAL/SPC.
 # ─────────────────────────────────────────────────────────────────────────────
 CITY_ZONES: Dict[str, Dict] = {
-    "foce":       {"lat": 44.120020, "lon": 9.790950, "label": "La Spezia Ovest",
+    "foce":       {"lat": 44.124287, "lon": 9.798280, "label": "La Spezia Ovest",
                     "elevation_m": 0, "note": "costiera, esposta a libeccio/scirocco", "region": "liguria"},
     "centro":     {"lat": 44.107942, "lon": 9.828886, "label": "La Spezia Centro",
                     "elevation_m": 0,  "note": "settore urbano centrale", "region": "liguria"},

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" role="img" aria-label="Vento che cambia direzione e velocità con la quota">
+  <defs>
+    <linearGradient id="sky-shear" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#173c4a"/>
+      <stop offset="1" stop-color="#0d1d21"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#sky-shear)"/>
+  <g stroke="rgba(247,248,243,.16)" stroke-dasharray="4 6">
+    <line x1="20" y1="70" x2="380" y2="70"/>
+    <line x1="20" y1="130" x2="380" y2="130"/>
+    <line x1="20" y1="190" x2="380" y2="190"/>
+  </g>
+  <text x="26" y="64" fill="rgba(247,248,243,.5)" font-size="14" font-family="DM Sans, sans-serif">6 km</text>
+  <text x="26" y="124" fill="rgba(247,248,243,.5)" font-size="14" font-family="DM Sans, sans-serif">3 km</text>
+  <text x="26" y="184" fill="rgba(247,248,243,.5)" font-size="14" font-family="DM Sans, sans-serif">0 km</text>
+  <g stroke="#74bdee" stroke-width="7" stroke-linecap="round" fill="#74bdee">
+    <line x1="90" y1="190" x2="320" y2="170"/>
+    <path d="M320 170 l-16 -8 l4 12 l-4 10 z"/>
+  </g>
+  <g stroke="#f5bd4f" stroke-width="7" stroke-linecap="round" fill="#f5bd4f">
+    <line x1="90" y1="130" x2="260" y2="90"/>
+    <path d="M260 90 l-18 -3 l8 10 l0 11 z"/>
+  </g>
+  <g stroke="#ff9d5c" stroke-width="7" stroke-linecap="round" fill="#ff9d5c">
+    <line x1="90" y1="70" x2="180" y2="30"/>
+    <path d="M180 30 l-19 2 l11 8 l3 10 z"/>
+  </g>
+</svg>

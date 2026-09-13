@@ -592,9 +592,9 @@ def main():
             print(f"  ⚠ Zone non disponibili: {e}")
 
         try:
-            from multi_model import fetch_and_compare
+            from multi_model import fetch_and_compare_days
             print("  [multi_model] Confronto tra modelli disponibili...")
-            site_data["model_comparison"] = fetch_and_compare()
+            site_data["model_comparison"] = fetch_and_compare_days()
         except Exception as e:
             print(f"  ⚠ Confronto multi-modello non disponibile: {e}")
             site_data["model_comparison"] = None

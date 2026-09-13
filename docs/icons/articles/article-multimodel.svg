@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" role="img" aria-label="Confronto tra più modelli meteorologici, AROME come riferimento">
+  <defs>
+    <linearGradient id="sky-mm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#152a33"/>
+      <stop offset="1" stop-color="#0d1d21"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#sky-mm)"/>
+  <line x1="40" y1="200" x2="370" y2="200" stroke="rgba(247,248,243,.25)" stroke-width="2"/>
+  <g font-family="Space Grotesk, sans-serif" font-size="13" fill="rgba(247,248,243,.6)" text-anchor="middle">
+    <rect x="55" y="70" width="40" height="130" rx="6" fill="#f5bd4f"/>
+    <text x="75" y="220">AROME</text>
+    <rect x="115" y="100" width="40" height="100" rx="6" fill="#74bdee"/>
+    <text x="135" y="220">ICON</text>
+    <rect x="175" y="120" width="40" height="80" rx="6" fill="#74bdee"/>
+    <text x="195" y="220">GFS</text>
+    <rect x="235" y="95" width="40" height="105" rx="6" fill="#74bdee"/>
+    <text x="255" y="220">ECMWF</text>
+    <rect x="295" y="130" width="40" height="70" rx="6" fill="rgba(116,189,238,.5)"/>
+    <text x="315" y="220">D2</text>
+  </g>
+  <path d="M55 66 h40 M115 96 h40 M175 116 h40 M235 91 h40" stroke="#ffe28a" stroke-width="3" stroke-dasharray="2 5"/>
+</svg>

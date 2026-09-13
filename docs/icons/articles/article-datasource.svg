@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" role="img" aria-label="Dati meteo che arrivano da satellite verso il sito">
+  <defs>
+    <linearGradient id="sky-ds" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#11242c"/>
+      <stop offset="1" stop-color="#0d1d21"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#sky-ds)"/>
+  <circle cx="90" cy="60" r="10" fill="#f7f8f3"/>
+  <rect x="70" y="55" width="12" height="30" fill="#74bdee" transform="rotate(-30 76 70)"/>
+  <rect x="98" y="55" width="12" height="30" fill="#74bdee" transform="rotate(30 104 70)"/>
+  <g stroke="#f5bd4f" stroke-width="3" fill="none" stroke-dasharray="6 6">
+    <path d="M90 70 C 140 110, 220 130, 300 160"/>
+  </g>
+  <rect x="290" y="150" width="80" height="60" rx="10" fill="#173c4a" stroke="rgba(247,248,243,.25)"/>
+  <g fill="#74bdee">
+    <rect x="304" y="185" width="8" height="15"/>
+    <rect x="318" y="175" width="8" height="25"/>
+    <rect x="332" y="165" width="8" height="35"/>
+    <rect x="346" y="178" width="8" height="22"/>
+  </g>
+  <text x="330" y="222" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-size="12" fill="rgba(247,248,243,.6)">Open-Meteo</text>
+</svg>

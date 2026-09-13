@@ -17,15 +17,17 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="style.css?v=20260912-1">
+  <link rel="stylesheet" href="style.css?v=20260913-1">
 </head>
 <body data-theme="sereno">
   <div class="weather-backdrop" aria-hidden="true"></div>
-  <button id="site-update" onclick="openChangelog()" aria-label="Ultimo aggiornamento — clicca per vedere le novità del sito">Ultimo aggiornamento: 11 Settembre 2026 alle 12:00</button>
+  <button id="site-update" onclick="openChangelog()" aria-label="Ultimo aggiornamento — clicca per vedere le novità del sito">Ultimo aggiornamento: 13 settembre 2026 alle 18:46</button>
   <div id="zone-gate">
     <div class="gate-copy"><span class="eyebrow">METEOBOT</span><h1>Che tempo fa<br><em>da te?</em></h1><p>Scegli la zona per cui vuoi vedere le previsioni.</p></div>
-    <div class="gate-tools"><label for="zone-select">Zona</label><select id="zone-select" aria-label="Seleziona la zona per le previsioni"><option value="">Seleziona una zona...</option></select></div>
-    <p id="gate-error" class="warn" hidden>Dati non ancora disponibili, riprova tra poco.</p>
+    <div class="gate-panel">
+      <div class="gate-tools"><label for="zone-select">📍 Zona</label><select id="zone-select" aria-label="Seleziona la zona per le previsioni"><option value="">Seleziona una zona...</option></select></div>
+      <p id="gate-error" class="warn" hidden>Dati non ancora disponibili, riprova tra poco.</p>
+    </div>
   </div>
 
   <main id="site-content" hidden>
@@ -48,9 +50,28 @@
 
     <section id="model-comparison-panel" class="card wide-card" hidden>
       <div class="section-kicker">Confronto multi-modello</div>
-      <div class="section-heading"><h2>Quanto sono d'accordo i modelli?</h2><span class="muted" id="model-comparison-confidence"></span></div>
+      <div class="section-heading"><h2>Quanto sono d'accordo i modelli? (incluso AROME)</h2><span class="model-comparison-confidence" id="model-comparison-confidence"></span></div>
+      <div id="model-comparison-tabs" class="day-tabs"></div>
       <div id="model-comparison-body"></div>
     </section>
+
+    <section id="articles-panel" class="card wide-card">
+      <div class="section-kicker articles-kicker">Curiosità</div>
+      <div id="articles-grid" class="articles-grid"></div>
+    </section>
+
+    <div id="article-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeArticle()">
+      <div class="modal-box article-modal-box">
+        <div class="modal-header">
+          <h3 id="article-title">Titolo articolo</h3>
+          <button class="modal-close" onclick="closeArticle()" aria-label="Chiudi">✕</button>
+        </div>
+        <div class="modal-body">
+          <img id="article-image" class="article-modal-image" alt="">
+          <div id="article-body"></div>
+        </div>
+      </div>
+    </div>
 
     <footer><p class="disclaimer">Previsione automatica generata da modello. Non è un'allerta ufficiale.</p><p class="disclaimer">Tutti i dati presenti nel sito richiedono interpretazione da parte di competenti.</p></footer>
     <div id="hour-detail-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeHourDetail()">
@@ -74,7 +95,7 @@
     <div id="changelog-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeChangelog()">
   <div class="modal-box">
     <div class="modal-header">
-      <h3>Versione 1.3.2</h3>
+      <h3>Aggiornamento n.6</h3>
       <button class="modal-close" onclick="closeChangelog()" aria-label="Chiudi">✕</button>
     </div>
     <div class="modal-body" id="changelog-body"></div>
@@ -82,6 +103,6 @@
 </div>
   </main>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js?v=20260912-1"></script>
+  <script src="app.js?v=20260913-1"></script>
 </body>
 </html>
