@@ -880,6 +880,8 @@ def build_day_hourly_list(
     cins    = day_hourly.get("convective_inhibition", [])
     wmos    = day_hourly.get("weather_code", [])
     lifted = day_hourly.get("lifted_index", [])
+    pressure_temperature_levels = ("1000hPa", "925hPa", "850hPa", "700hPa",
+                                   "600hPa", "500hPa", "400hPa", "300hPa")
 
     # CAPE dal modello secondario (per spread)
     times2 = (day_hourly_secondary or {}).get("time", [])
@@ -953,6 +955,14 @@ def build_day_hourly_list(
             "cloud_low":  clouds_low[i]  if i < len(clouds_low)  and clouds_low[i]  is not None else None,
             "cloud_mid":  clouds_mid[i]  if i < len(clouds_mid)  and clouds_mid[i]  is not None else None,
             "cloud_high": clouds_high[i] if i < len(clouds_high) and clouds_high[i] is not None else None,
+            **{
+                f"temperature_{level}": (
+                    day_hourly.get(f"temperature_{level}", [])[i]
+                    if i < len(day_hourly.get(f"temperature_{level}", []))
+                    else None
+                )
+                for level in pressure_temperature_levels
+            },
             "precip":     p,
             "precip_cum": round(cum, 1),
             "CAPE":       float(capes[i]) if i < len(capes) and capes[i] is not None else 0.0,

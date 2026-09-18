@@ -154,14 +154,14 @@ function renderModelComparison() {
   if (!panel || !tabsEl) return;
 
   const comparisonByDay = SITE_DATA?.forecast?.model_comparison;
-  const availableDays = Object.keys(MODEL_COMPARISON_DAY_LABELS).filter(d => comparisonByDay?.[d]);
-  if (!comparisonByDay || !availableDays.length) {
+  const comparisonDays = Object.keys(MODEL_COMPARISON_DAY_LABELS).filter(d => comparisonByDay?.[d] !== undefined);
+  if (!comparisonByDay || !comparisonDays.length) {
     panel.hidden = true;
     return;
   }
-  if (!availableDays.includes(currentModelComparisonDay)) currentModelComparisonDay = availableDays[0];
+  if (!comparisonDays.includes(currentModelComparisonDay)) currentModelComparisonDay = comparisonDays[0];
 
-  tabsEl.innerHTML = availableDays.map(day => `<button data-day="${day}" class="day-tab ${day === currentModelComparisonDay ? 'active' : ''}" onclick="selectModelComparisonDay('${day}')">${MODEL_COMPARISON_DAY_LABELS[day]}</button>`).join('');
+  tabsEl.innerHTML = comparisonDays.map(day => `<button data-day="${day}" class="day-tab ${day === currentModelComparisonDay ? 'active' : ''}" onclick="selectModelComparisonDay('${day}')">${MODEL_COMPARISON_DAY_LABELS[day]}</button>`).join('');
   renderModelComparisonDay(currentModelComparisonDay);
   panel.hidden = false;
 }
@@ -196,9 +196,8 @@ function renderModelComparisonDay(day) {
     .map(([key, count]) => `<li><span>${escapeHTML(labels[key] || key)}</span><strong>Previsto da ${count} modelli su ${total}</strong></li>`)
     .join('');
 
-  confidenceEl.textContent = "Il conteggio indica quanti modelli, AROME incluso, prevedono ciascun fenomeno";
+  confidenceEl.textContent = "Il conteggio indica quanti modelli prevedono ciascun fenomeno";
   body.innerHTML = `
-    <p class="muted">Riferimento: <strong>${escapeHTML(comparison.reference_model || 'AROME')}</strong>, confrontato con ${comparison.n_models_available - 1} altri modelli (${escapeHTML((comparison.models_compared || []).join(', '))}).</p>
     <ul class="highlights-list model-comparison-list">${rows}</ul>
   `;
 }
@@ -300,10 +299,10 @@ function closeArticle() {
 // Elenco in linguaggio semplice delle ultime modifiche al sito, leggibile
 // cliccando la scritta "Ultimo aggiornamento".
 const CHANGELOG_ITEMS = [
-  'Nuova sezione "Confronto multi-modello" in fondo alla pagina: mostra quanto i modelli sono d\'accordo tra loro.',
-  'Nuova sezione "Curiosità" sotto il "Confronto multi-modello", con 4 approfondimenti su come funziona il sito.',
-  'Migliorato il layout della schermata di scelta zona: il selettore ora è racchiuso in un pannello dedicato, più leggibile.',
-  'Aggiornate le coordinate per La Spezia Ovest.',
+  'Risolti dei bug che non consentivano la visualizzazione del confronto multi-modello',
+  'Aggiunto CELSIUS a tutte le temperature',
+  'Tra i dati tecnici aggiunte anche le temperature ai diversi strati',
+  'Al passaggio del puntatore sui punti dei grafici è possibile visualizzare qualsiasi variabile senza difficoltà',
 ];
 function openChangelog() {
   const body = document.getElementById('changelog-body');
@@ -327,9 +326,9 @@ function renderCurrent(forecast) {
   const official = forecast.official_alert || {};
   const officialLabel = c.alert_source ? `${c.alert_source}: ${(c.alert_level || '').toUpperCase()}` : official.status || 'Allerta ARPAL da verificare';
   const officialUrl = official.url || 'https://allertaliguria.regione.liguria.it/allerta_protezione_civile.php';
-  const tempStr = fmt(c.temp_c, 1);
-  const tempClass = tempStr.replace('-', '').length >= 4 ? 'temp-big long-temp' : 'temp-big';
-  document.getElementById('current-conditions').innerHTML = `<div class="section-kicker">Situazione attuale</div><div class="current-grid"><div class="temperature-block"><p class="weather-symbol">${wmoIcon(c.wmo_code, c, isNightNow())}</p><p class="${tempClass}">${tempStr}°</p><p class="condition-name">${wmoLabel(c.wmo_code, c)}</p></div><div class="current-details"><p>Min <strong>${fmt(c.temp_min_c, 0)}°</strong> / Max <strong>${fmt(c.temp_max_c, 0)}°</strong></p><p>Vento <strong>${fmt(c.wind_kmh, 0)} km/h</strong> · raffiche <strong>${fmt(c.wind_gust_kmh, 0)} km/h</strong></p><div class="status-key"><span class="status-dot ${c.alert_level || 'unknown'}"></span><span>${officialLabel}<small>Fonte ufficiale: <a href="${officialUrl}" target="_blank" rel="noopener">AllertaLiguria / ARPAL</a></small></span></div></div></div>`;
+  const tempStr = fmt(c.temp_c, 1) + '°C';
+  const tempClass = tempStr.replace('-', '').length >= 6 ? 'temp-big long-temp' : 'temp-big';
+  document.getElementById('current-conditions').innerHTML = `<div class="section-kicker">Situazione attuale</div><div class="current-grid"><div class="temperature-block"><p class="weather-symbol">${wmoIcon(c.wmo_code, c, isNightNow())}</p><p class="${tempClass}">${tempStr}</p><p class="condition-name">${wmoLabel(c.wmo_code, c)}</p></div><div class="current-details"><p>Min <strong>${fmt(c.temp_min_c, 0)}°C</strong> / Max <strong>${fmt(c.temp_max_c, 0)}°C</strong></p><p>Vento <strong>${fmt(c.wind_kmh, 0)} km/h</strong> · raffiche <strong>${fmt(c.wind_gust_kmh, 0)} km/h</strong></p><div class="status-key"><span class="status-dot ${c.alert_level || 'unknown'}"></span><span>${officialLabel}<small>Fonte ufficiale: <a href="${officialUrl}" target="_blank" rel="noopener">AllertaLiguria / ARPAL</a></small></span></div></div></div>`;
 }
 
 // Categoria meteo per un codice WMO, usata per decidere il colore di sfondo.
@@ -596,7 +595,7 @@ function renderDayExplorer(days) {
       ? `<h3>Rischi stimati</h3><div class="risk-list">${Object.entries(day.risk_panel).map(([name, level]) => `<div class="risk-row"><span>${escapeHTML(name)}</span><strong class="risk-level ${levels[level] || 'basso'}">${escapeHTML(level)}</strong></div>`).join('')}</div><p class="muted">Questi livelli sono una stima modellistica e non sostituiscono le allerte ufficiali.</p>`
       : '';
     const hourly = day.hourly?.length
-      ? `<h3>Previsione oraria</h3><div class="hourly-scroll">${day.hourly.map((h, hIdx) => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h, isNightHourWindow(h.time, dayUtc, zoneLat, zoneLon))}</span><b>${fmt(h.T ?? h.temp_c, 0)}°</b><small class="hour-condition">${wmoLabel(h.wmo_code, h)}</small><small>${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>raff. ${fmt(h.wind_gust, 0)} km/h</small><button class="hour-detail-btn" onclick="showHourDetail('${key}', ${hIdx})">Dettagli ▸</button></div>`).join('')}</div>`
+      ? `<h3>Previsione oraria</h3><div class="hourly-scroll">${day.hourly.map((h, hIdx) => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h, isNightHourWindow(h.time, dayUtc, zoneLat, zoneLon))}</span><b>${fmt(h.T ?? h.temp_c, 0)}°C</b><small class="hour-condition">${wmoLabel(h.wmo_code, h)}</small><small>${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>raff. ${fmt(h.wind_gust, 0)} km/h</small><button class="hour-detail-btn" onclick="showHourDetail('${key}', ${hIdx})">Dettagli ▸</button></div>`).join('')}</div>`
       : '<h3>Previsione oraria</h3><p class="muted">Dati orari non disponibili per questa giornata.</p>';
     const charts = `<div class="section-heading"><h3>Grafici</h3><span class="muted">${day.hourly?.length || 0} ore</span></div><div class="mode-tabs">${chartModeTabsHtml()}</div><div class="chart-mode-content" data-day="${key}">${buildChartsGrid(day.hourly, chartMode)}</div>`;
     const highlights = day.highlights?.length
@@ -685,7 +684,7 @@ function renderLightningMarkers(strikes) {
 // Asse X = orario, asse Y = valori con linee guida min/medio/max.
 function buildAxisChart(values, times, opts = {}) {
   const type = opts.type || 'line';
-  const w = 920, h = 260, padL = 52, padR = 18, padT = 18, padB = 34;
+  const w = 920, h = 300, padL = 52, padR = 18, padT = 42, padB = 58;
   const n = (values || []).length;
   const nums = (values || []).map(v => (v == null ? null : Number(v)));
   const valid = nums.filter(v => v != null && !isNaN(v));
@@ -713,6 +712,11 @@ function buildAxisChart(values, times, opts = {}) {
     return `<text x="${x.toFixed(1)}" y="${h - 10}" class="chart-axis-label" text-anchor="middle">${escapeHTML(t || '')}</text>`;
   }).join('');
 
+  const pointTitle = (value, index) => {
+    const time = escapeHTML(times[index] || '');
+    const dataValue = `${fmt(value, opts.decimals ?? 1)}${opts.unit || ''}`;
+    return `<title>${time}: ${dataValue}</title>`;
+  };
   let body = '';
   if (type === 'bar') {
     const barW = innerW / n;
@@ -721,7 +725,8 @@ function buildAxisChart(values, times, opts = {}) {
       const x = padL + i * barW + barW * 0.15;
       const y = scaleY(v);
       const bh = (padT + innerH) - y;
-      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(barW * 0.7).toFixed(1)}" height="${Math.max(bh, 0).toFixed(1)}" rx="2" class="chart-bar"></rect>`;
+      const tooltip = escapeHTML(`${times[i] || ''}: ${fmt(v, opts.decimals ?? 1)}${opts.unit || ''}`);
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(barW * 0.7).toFixed(1)}" height="${Math.max(bh, 0).toFixed(1)}" rx="2" class="chart-bar">${pointTitle(v, i)}</rect><rect x="${(x - barW * 0.1).toFixed(1)}" y="${padT}" width="${(barW * 0.9).toFixed(1)}" height="${innerH}" class="chart-hit-area" data-chart-tooltip="${tooltip}" onmouseenter="showChartTooltip(event, this.dataset.chartTooltip)" onmousemove="showChartTooltip(event, this.dataset.chartTooltip)" onmouseleave="hideChartTooltip()"></rect>`;
     }).join('');
   } else {
     let line = '', started = false;
@@ -730,13 +735,16 @@ function buildAxisChart(values, times, opts = {}) {
       const x = padL + i * stepX;
       if (v == null) { started = false; return; }
       const y = scaleY(v);
-      pts.push([x, y]);
+      pts.push([x, y, i]);
       line += (started ? 'L' : 'M') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
       started = true;
     });
     if (pts.length) {
       const area = line + `L${pts[pts.length - 1][0].toFixed(1)},${padT + innerH} L${pts[0][0].toFixed(1)},${padT + innerH} Z`;
-      const dots = pts.map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" class="chart-dot"></circle>`).join('');
+      const dots = pts.map(([x, y, index]) => {
+        const tooltip = escapeHTML(`${times[index] || ''}: ${fmt(nums[index], opts.decimals ?? 1)}${opts.unit || ''}`);
+        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" class="chart-dot">${pointTitle(nums[index], index)}</circle><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="10" class="chart-hit-area" data-chart-tooltip="${tooltip}" onmouseenter="showChartTooltip(event, this.dataset.chartTooltip)" onmousemove="showChartTooltip(event, this.dataset.chartTooltip)" onmouseleave="hideChartTooltip()"></circle>`;
+      }).join('');
       body = `<path d="${area}" class="chart-area"></path><path d="${line}" class="chart-line"></path>${dots}`;
     }
   }
@@ -755,6 +763,10 @@ function buildChartsGrid(hourly, mode) {
   const times = hourly.map(h => h.time);
   if (mode === 'avanzata') {
     return `<div class="chart-grid">
+    <div class="chart-block"><h4>Nuvole basse</h4><small class="chart-meta muted">% copertura</small>${svgLineChart(hourly.map(h => h.cloud_low), times, { unit: '%', decimals: 0 })}</div>
+    <div class="chart-block"><h4>Nuvole medie</h4><small class="chart-meta muted">% copertura</small>${svgLineChart(hourly.map(h => h.cloud_mid), times, { unit: '%', decimals: 0 })}</div>
+    <div class="chart-block"><h4>Nuvole alte</h4><small class="chart-meta muted">% copertura</small>${svgLineChart(hourly.map(h => h.cloud_high), times, { unit: '%', decimals: 0 })}</div>
+    ${['1000hPa', '925hPa', '850hPa', '700hPa', '600hPa', '500hPa', '400hPa', '300hPa'].map(level => `<div class="chart-block"><h4>Temperatura ${level}</h4><small class="chart-meta muted">°C</small>${svgLineChart(hourly.map(h => h['temperature_' + level]), times, { unit: '°C', decimals: 1 })}</div>`).join('')}
     <div class="chart-block"><h4>CAPE</h4><small class="chart-meta muted">J/kg — energia disponibile per i temporali</small>${svgLineChart(hourly.map(h => h.SBCAPE ?? h.MUCAPE), times, { unit: ' J/kg', decimals: 0 })}</div>
     <div class="chart-block"><h4>CIN</h4><small class="chart-meta muted">J/kg — inibizione della convezione</small>${svgLineChart(hourly.map(h => h.CIN), times, { unit: ' J/kg', decimals: 0 })}</div>
     <div class="chart-block"><h4>Shear 0-6 km</h4><small class="chart-meta muted">kt — organizzazione dei temporali</small>${svgLineChart(hourly.map(h => h.shear), times, { unit: ' kt', decimals: 0 })}</div>
@@ -791,6 +803,22 @@ function applyTheme(hourly) {
 }
 function fmt(value, decimals) { return value != null && !isNaN(value) ? Number(value).toFixed(decimals) : '--'; }
 function escapeHTML(value) { return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char])); }
+function showChartTooltip(event, text) {
+  let tooltip = document.getElementById('chart-tooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.id = 'chart-tooltip';
+    document.body.appendChild(tooltip);
+  }
+  tooltip.textContent = text;
+  tooltip.hidden = false;
+  tooltip.style.left = `${event.clientX + 12}px`;
+  tooltip.style.top = `${event.clientY - 34}px`;
+}
+function hideChartTooltip() {
+  const tooltip = document.getElementById('chart-tooltip');
+  if (tooltip) tooltip.hidden = true;
+}
 
 init();
 
@@ -817,6 +845,14 @@ const HOUR_DETAIL_FIELDS = [
   ['cloud_low',  'Nuvole basse',                v => fmt(v, 0) + '%'],
   ['cloud_mid',  'Nuvole medie',                v => fmt(v, 0) + '%'],
   ['cloud_high', 'Nuvole alte',                 v => fmt(v, 0) + '%'],
+  ['temperature_1000hPa', 'Temperatura 1000 hPa', v => fmt(v, 1) + '°C'],
+  ['temperature_925hPa',  'Temperatura 925 hPa',  v => fmt(v, 1) + '°C'],
+  ['temperature_850hPa',  'Temperatura 850 hPa',  v => fmt(v, 1) + '°C'],
+  ['temperature_700hPa',  'Temperatura 700 hPa',  v => fmt(v, 1) + '°C'],
+  ['temperature_600hPa',  'Temperatura 600 hPa',  v => fmt(v, 1) + '°C'],
+  ['temperature_500hPa',  'Temperatura 500 hPa',  v => fmt(v, 1) + '°C'],
+  ['temperature_400hPa',  'Temperatura 400 hPa',  v => fmt(v, 1) + '°C'],
+  ['temperature_300hPa',  'Temperatura 300 hPa',  v => fmt(v, 1) + '°C'],
   ['SBCAPE',     'SBCAPE (energia convettiva)', v => fmt(v, 0) + ' J/kg'],
   ['MUCAPE',     'MUCAPE (energia convettiva)', v => fmt(v, 0) + ' J/kg'],
   ['CIN',        'CIN (inibizione)',            v => fmt(v, 0) + ' J/kg'],

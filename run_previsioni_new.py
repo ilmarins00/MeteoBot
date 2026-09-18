@@ -597,7 +597,10 @@ def main():
             site_data["model_comparison"] = fetch_and_compare_days()
         except Exception as e:
             print(f"  ⚠ Confronto multi-modello non disponibile: {e}")
-            site_data["model_comparison"] = None
+            site_data["model_comparison"] = {
+                day: {"available": False, "note": "Confronto multi-modello temporaneamente non disponibile."}
+                for day in ("oggi", "domani", "dopodomani")
+            }
 
         snapshot = site_data.get("_snapshot", {})
         diff_precedente = confronta_con_precedente("oggi", snapshot)

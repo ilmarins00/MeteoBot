@@ -53,8 +53,8 @@ h3 { font-size: 1rem; }
 .temperature-block { min-width: 0; }
 .weather-symbol { line-height: 1; margin: 10px 0 2px; display: flex; }
 .weather-symbol .wx-icon { width: 4.8rem; height: 4.8rem; }
-.temp-big { margin: 0; font: 600 clamp(3.6rem, 8vw, 6.5rem)/.9 'Space Grotesk', sans-serif; }
-.temp-big.long-temp { font-size: clamp(2.7rem, 6.2vw, 4.9rem); }
+.temp-big { margin: 0; white-space: nowrap; font: 600 clamp(2.5rem, 5.4vw, 4.3rem)/.95 'Space Grotesk', sans-serif; }
+.temp-big.long-temp { font-size: clamp(2.2rem, 4.8vw, 3.8rem); }
 .condition-name { color: var(--muted); text-transform: capitalize; }
 .current-details { color: var(--muted); line-height: 1.7; }
 .current-details strong { color: var(--ink); }
@@ -96,6 +96,10 @@ footer { padding: 25px 0 45px; } .disclaimer { color: var(--muted); font-size: .
 .chart-dot { fill: var(--accent); }
 .chart-grid-line { stroke: var(--line); stroke-width: 1; }
 .chart-axis-label { fill: var(--muted); font-size: 12px; font-family: 'DM Sans', sans-serif; }
+.chart-point-label { fill: var(--ink); font-size: 8px; font-family: 'DM Sans', sans-serif; }
+.chart-hit-area { fill: transparent; stroke: none; cursor: crosshair; }
+#chart-tooltip { position: fixed; z-index: 100; transform: translateY(-2px); padding: 5px 8px; border: 1px solid var(--accent); border-radius: 6px; color: var(--ink); background: var(--panel-strong); box-shadow: 0 5px 16px rgba(0,0,0,.35); font-size: .75rem; white-space: nowrap; pointer-events: none; }
+#chart-tooltip[hidden] { display: none; }
 .chart-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .highlights-list { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 2px; }
 .highlights-list li { display: flex; gap: 14px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--line); }
@@ -111,7 +115,7 @@ footer { padding: 25px 0 45px; } .disclaimer { color: var(--muted); font-size: .
 .radar-legend { margin: 0; }
 .lightning-dot { border-radius: 50%; box-shadow: 0 0 6px 2px rgba(255, 200, 80, .5); }
 @keyframes reveal { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
-@media (max-width: 760px) { #site-update { top: 12px; right: 14px; max-width: calc(100% - 28px); text-align: right; } #zone-gate, #site-content { width: min(100% - 28px, 600px); } #zone-gate { grid-template-columns: 1fr; gap: 30px; padding: 55px 0; } .gate-panel { padding: 24px; } #site-header { align-items: flex-start; flex-direction: column; padding-top: 38px; } .header-meta { width: 100%; text-align: left; } .live-clock { justify-content: flex-start; } .dashboard-grid { grid-template-columns: 1fr; } .wide-card { grid-column: auto; } .current-grid { grid-template-columns: minmax(100px, .8fr) minmax(0, 1.2fr); gap: 12px; } .weather-symbol .wx-icon { width: 3.2rem; height: 3.2rem; } .temp-big { font-size: 3.5rem; } .card { padding: 21px; } .day-tab { flex: 1 1 calc(50% - 4px); min-width: 0; padding-inline: 10px; } }
+@media (max-width: 760px) { #site-update { top: 12px; right: 14px; max-width: calc(100% - 28px); text-align: right; } #zone-gate, #site-content { width: min(100% - 28px, 600px); } #zone-gate { grid-template-columns: 1fr; gap: 30px; padding: 55px 0; } .gate-panel { padding: 24px; } #site-header { align-items: flex-start; flex-direction: column; padding-top: 38px; } .header-meta { width: 100%; text-align: left; } .live-clock { justify-content: flex-start; } .dashboard-grid { grid-template-columns: 1fr; } .wide-card { grid-column: auto; } .current-grid { grid-template-columns: minmax(92px, .7fr) minmax(0, 1.3fr); gap: 12px; } .weather-symbol .wx-icon { width: 3.2rem; height: 3.2rem; } .temp-big { font-size: 2.75rem; } .card { padding: 21px; } .day-tab { flex: 1 1 calc(50% - 4px); min-width: 0; padding-inline: 10px; } }
 .modal-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(6,14,16,.75); align-items: center; justify-content: center; padding: 20px; display: flex; }
 .modal-overlay[hidden] { display: none; }
 .modal-box { width: min(480px, 100%); max-height: 82vh; overflow-y: auto; background: var(--panel-strong); border: 1px solid var(--line); border-radius: 20px; padding: 22px; box-shadow: 0 30px 60px rgba(0,0,0,.4); }
@@ -148,3 +152,4 @@ footer { padding: 25px 0 45px; } .disclaimer { color: var(--muted); font-size: .
 #article-body p { line-height: 1.6; margin-bottom: 12px; }
 #article-body ul { margin-bottom: 12px; }
 .hour-detail-btn:hover { background: var(--accent); color: #102023; }
+@media (max-width: 760px) { .temp-big { font-size: 2.6rem; } }

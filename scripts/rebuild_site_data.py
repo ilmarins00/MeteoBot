@@ -158,6 +158,15 @@ def main():
         "score_spread": round(max(scores) - min(scores), 1) if scores else 0,
         "nota": "Previsioni calcolate sulle coordinate delle singole zone.",
     }
+    try:
+        from multi_model import fetch_and_compare_days
+        general["model_comparison"] = fetch_and_compare_days()
+    except Exception as e:
+        print(f"[multi_model] Confronto non disponibile: {e}")
+        general["model_comparison"] = {
+            day: {"available": False, "note": "Confronto multi-modello temporaneamente non disponibile."}
+            for day in ("oggi", "domani", "dopodomani")
+        }
     build_full_site_json(general, zone_payload, None, "docs/site_data.json")
     print("docs/site_data.json rigenerato")
 

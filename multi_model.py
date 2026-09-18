@@ -32,7 +32,7 @@ def fetch_multi_model_raw(
     lat: float = LATITUDE,
     lon: float = LONGITUDE,
     forecast_days: int = 3,
-    timeout: int = 30,
+    timeout: int = 90,
 ) -> Optional[Dict[str, Any]]:
     """
     Una sola chiamata Open-Meteo con tutti i modelli del set. Open-Meteo,
