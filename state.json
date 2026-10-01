@@ -192,7 +192,7 @@
         "oggi": {
             "score": 0.5,
             "wind_gust_kmh": 20.9,
-            "rain_peak": 1.2
+            "rain_peak": 0
         }
     }
 }
