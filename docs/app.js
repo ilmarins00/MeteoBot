@@ -299,10 +299,8 @@ function closeArticle() {
 // Elenco in linguaggio semplice delle ultime modifiche al sito, leggibile
 // cliccando la scritta "Ultimo aggiornamento".
 const CHANGELOG_ITEMS = [
-  'Risolti dei bug che non consentivano la visualizzazione del confronto multi-modello',
-  'Aggiunto CELSIUS a tutte le temperature',
-  'Tra i dati tecnici aggiunte anche le temperature ai diversi strati',
-  'Al passaggio del puntatore sui punti dei grafici è possibile visualizzare qualsiasi variabile senza difficoltà',
+  'La previsione oraria di oggi mostra solo l’ora corrente e quelle successive.',
+  'Aggiunto il menu cliccabile “Crediti e fonti dei dati”.',
 ];
 function openChangelog() {
   const body = document.getElementById('changelog-body');
@@ -313,6 +311,30 @@ function openChangelog() {
 }
 function closeChangelog() {
   const modal = document.getElementById('changelog-modal');
+  if (modal) modal.hidden = true;
+}
+
+const DATA_CREDITS = [
+  ['Previsioni, osservazioni modellistiche e indici calcolati', 'Open-Meteo', 'https://open-meteo.com/'],
+  ['Modello ad alta risoluzione principale', 'Meteo-France AROME', 'https://open-meteo.com/en/docs'],
+  ['Modello di supporto e confronto multi-modello', 'DWD ICON-EU', 'https://open-meteo.com/en/docs'],
+  ['Allerte ufficiali della Liguria', 'AllertaLiguria / ARPAL', 'https://allertaliguria.regione.liguria.it/allerta_protezione_civile.php'],
+  ['Radar delle precipitazioni', 'RainViewer', 'https://www.rainviewer.com/'],
+  ['Cartografia di base del radar', 'OpenStreetMap', 'https://www.openstreetmap.org/'],
+  ['Rilevamento fulmini predisposto nel progetto, attualmente non visualizzato', 'Blitzortung', 'https://www.blitzortung.org/'],
+  ['Radiosondaggio predisposto nel progetto, non usato nella previsione pubblicata', 'University of Wyoming', 'https://weather.uwyo.edu/'],
+];
+
+function openCredits() {
+  const body = document.getElementById('credits-body');
+  const modal = document.getElementById('credits-modal');
+  if (!body || !modal) return;
+  body.innerHTML = `<p>I valori e gli indici meteorologici sono elaborati da MeteoBot a partire dalle fonti indicate qui sotto.</p><ul class="credits-list">${DATA_CREDITS.map(([label, name, url]) => `<li><span>${escapeHTML(label)}</span><a href="${url}" target="_blank" rel="noopener">${escapeHTML(name)} ↗</a></li>`).join('')}</ul><p class="muted">Le integrazioni indicate come predisposte non contribuiscono ai dati mostrati nella pagina finché non vengono riattivate.</p>`;
+  modal.hidden = false;
+}
+
+function closeCredits() {
+  const modal = document.getElementById('credits-modal');
   if (modal) modal.hidden = true;
 }
 
@@ -579,6 +601,21 @@ function isNightHourWindow(timeStr, dateUtcDay, lat, lon) {
   return dayFraction <= 0.5;
 }
 
+function currentLocalHour() {
+  return Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Rome',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date()));
+}
+
+function hourlyEntriesForDay(dayKey, hourly) {
+  const entries = (hourly || []).map((hour, index) => ({ hour, index }));
+  if (dayKey !== 'oggi') return entries;
+  const nowHour = currentLocalHour();
+  return entries.filter(({ hour }) => Number(String(hour.time || '').split(':')[0]) >= nowHour);
+}
+
 // Una sola scheda giorno mostra insieme rischi, previsione oraria, grafici
 // e momenti salienti di quella giornata, per evitare tab scollegati tra loro.
 function renderDayExplorer(days) {
@@ -594,8 +631,9 @@ function renderDayExplorer(days) {
     const risks = day.risk_panel && Object.keys(day.risk_panel).length
       ? `<h3>Rischi stimati</h3><div class="risk-list">${Object.entries(day.risk_panel).map(([name, level]) => `<div class="risk-row"><span>${escapeHTML(name)}</span><strong class="risk-level ${levels[level] || 'basso'}">${escapeHTML(level)}</strong></div>`).join('')}</div><p class="muted">Questi livelli sono una stima modellistica e non sostituiscono le allerte ufficiali.</p>`
       : '';
-    const hourly = day.hourly?.length
-      ? `<h3>Previsione oraria</h3><div class="hourly-scroll">${day.hourly.map((h, hIdx) => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h, isNightHourWindow(h.time, dayUtc, zoneLat, zoneLon))}</span><b>${fmt(h.T ?? h.temp_c, 0)}°C</b><small class="hour-condition">${wmoLabel(h.wmo_code, h)}</small><small>${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>raff. ${fmt(h.wind_gust, 0)} km/h</small><button class="hour-detail-btn" onclick="showHourDetail('${key}', ${hIdx})">Dettagli ▸</button></div>`).join('')}</div>`
+    const hourlyEntries = hourlyEntriesForDay(key, day.hourly);
+    const hourly = hourlyEntries.length
+      ? `<h3>Previsione oraria</h3><div class="hourly-scroll">${hourlyEntries.map(({ hour: h, index: hIdx }) => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h, isNightHourWindow(h.time, dayUtc, zoneLat, zoneLon))}</span><b>${fmt(h.T ?? h.temp_c, 0)}°C</b><small class="hour-condition">${wmoLabel(h.wmo_code, h)}</small><small>${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>raff. ${fmt(h.wind_gust, 0)} km/h</small><button class="hour-detail-btn" onclick="showHourDetail('${key}', ${hIdx})">Dettagli ▸</button></div>`).join('')}</div>`
       : '<h3>Previsione oraria</h3><p class="muted">Dati orari non disponibili per questa giornata.</p>';
     const charts = `<div class="section-heading"><h3>Grafici</h3><span class="muted">${day.hourly?.length || 0} ore</span></div><div class="mode-tabs">${chartModeTabsHtml()}</div><div class="chart-mode-content" data-day="${key}">${buildChartsGrid(day.hourly, chartMode)}</div>`;
     const highlights = day.highlights?.length
@@ -623,7 +661,7 @@ function renderZoneMap() {
   });
 }
 
-// ── Radar (RainViewer) — fulmini (Blitzortung) attualmente disabilitati ──
+// ── Radar (RainViewer) ──
 // Si aggiorna da solo ogni 60 secondi finché la pagina resta aperta.
 function initRadarMap(centerLat, centerLon) {
   const el = document.getElementById('radar-map');
@@ -659,15 +697,12 @@ async function refreshRadarAndLightning() {
     console.error('Radar RainViewer non disponibile', error);
   }
 
-  // Fulminazioni attualmente disabilitate: niente fetch di lightning_data.json.
-
   const updatedEl = document.getElementById('radar-updated');
   if (updatedEl) updatedEl.textContent = 'Aggiornato alle ' + new Date().toLocaleTimeString('it-IT');
 }
 
 function renderLightningMarkers(strikes) {
-  // Fulminazioni attualmente disabilitate: funzione non più invocata,
-  // lasciata solo per una riattivazione futura senza riscrivere il rendering.
+  // Mantiene il rendering pronto per una futura riattivazione del layer.
   if (!lightningLayerGroup) return;
   lightningLayerGroup.clearLayers();
   const now = Date.now();

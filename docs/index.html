@@ -21,7 +21,7 @@
 </head>
 <body data-theme="sereno">
   <div class="weather-backdrop" aria-hidden="true"></div>
-  <button id="site-update" onclick="openChangelog()" aria-label="Ultimo aggiornamento — clicca per vedere le novità del sito">Ultimo aggiornamento: 18 Settembre</button>
+  <button id="site-update" onclick="openChangelog()" aria-label="Ultimo aggiornamento — clicca per vedere le novità del sito">Ultimo aggiornamento: 2 Ottobre 2026</button>
   <div id="zone-gate">
     <div class="gate-copy"><span class="eyebrow">METEOBOT</span><h1>Che tempo fa<br><em>da te?</em></h1><p>Scegli la zona per cui vuoi vedere le previsioni.</p></div>
     <div class="gate-panel">
@@ -43,7 +43,6 @@
         <div class="section-kicker">Radar in tempo reale</div>
         <div class="section-heading"><h2>Cosa sta succedendo adesso</h2><span class="muted" id="radar-updated">Aggiornamento in corso...</span></div>
         <div id="radar-map" aria-label="Radar precipitazioni (RainViewer)"></div>
-        <p class="muted radar-lightning-disabled">Fulminazioni attualmente disabilitate.</p>
         <p class="muted radar-legend">Radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a></p>
       </section>
     </div>
@@ -59,6 +58,8 @@
       <div class="section-kicker articles-kicker">Curiosità</div>
       <div id="articles-grid" class="articles-grid"></div>
     </section>
+
+    <div class="credits-trigger-wrap"><button class="credits-trigger" onclick="openCredits()">Crediti e fonti dei dati ↗</button></div>
 
     <div id="article-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeArticle()">
       <div class="modal-box article-modal-box">
@@ -95,10 +96,19 @@
     <div id="changelog-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeChangelog()">
   <div class="modal-box">
     <div class="modal-header">
-      <h3>Aggiornamento n. 7</h3>
+      <h3>Aggiornamento n. 8</h3>
       <button class="modal-close" onclick="closeChangelog()" aria-label="Chiudi">✕</button>
     </div>
     <div class="modal-body" id="changelog-body"></div>
+  </div>
+</div>
+    <div id="credits-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeCredits()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Crediti e fonti dei dati</h3>
+      <button class="modal-close" onclick="closeCredits()" aria-label="Chiudi">✕</button>
+    </div>
+    <div class="modal-body" id="credits-body"></div>
   </div>
 </div>
   </main>

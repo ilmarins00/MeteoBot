@@ -65,6 +65,12 @@ h3 { font-size: 1rem; }
 .status-dot.unknown { background: #aab7b6; box-shadow: 0 0 0 5px rgba(170, 183, 182, .12); }
 .section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; }
 .muted { color: var(--muted); font-size: .83rem; line-height: 1.5; }
+.credits-trigger-wrap { padding: 18px 0 4px; text-align: center; }
+.credits-trigger { border: 0; border-bottom: 1px solid var(--accent); padding: 0 0 3px; color: var(--accent); background: transparent; cursor: pointer; }
+.credits-trigger:hover { color: var(--ink); }
+.credits-list { display: grid; gap: 12px; margin: 18px 0; padding: 0; list-style: none; }
+.credits-list li { display: flex; justify-content: space-between; gap: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.credits-list a { color: var(--accent); text-align: right; }
 .hourly-scroll { display: flex; gap: 9px; overflow-x: auto; padding: 3px 2px 10px; scrollbar-color: var(--accent) transparent; }
 .hour-card { min-width: 148px; padding: 14px 12px; display: grid; gap: 8px; border-left: 1px solid var(--line); color: var(--muted); font-size: .75rem; }
 .hour-card strong, .hour-card b { color: var(--ink); } .hour-icon { display: block; } .hour-icon .wx-icon { width: 1.8rem; height: 1.8rem; } .hour-card small { white-space: nowrap; }
