@@ -181,20 +181,10 @@
         "status": "ok"
     },
     "fulmini": {
-        "last_check_ts": "2026-11-11T18:04:25.021981+01:00",
-        "recent_strikes": [
-            {
-                "lat": 44.1144,
-                "lon": 9.7108,
-                "time": "2026-11-11T17:44:00+01:00",
-                "distance_km": 7.0,
-                "signal": 0,
-                "source": "openmeteo",
-                "wmo_code": 95
-            }
-        ],
-        "total_in_window": 1,
-        "status": "alert",
+        "last_check_ts": "2026-11-11T18:18:47.578152+01:00",
+        "recent_strikes": [],
+        "total_in_window": 0,
+        "status": "ok",
         "last_send_ts": "2026-09-09T18:33:33.022814+02:00",
         "last_strike_count": 4
     },
