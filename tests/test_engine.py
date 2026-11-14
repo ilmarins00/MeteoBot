@@ -20,7 +20,7 @@ from thermo import (
 from logic import (
     convective_score, classify_storm_mode, severe_hazards,
     map_score_to_alert, arpal_alert_rain, arpal_alert_wind,
-    composite_arpal_alert, full_alert,
+    composite_arpal_alert, full_alert, assess_phenomena_risks,
 )
 from io_ingest import build_nowcast_quarter_hourly
 
@@ -242,6 +242,41 @@ def test_arpal_wind_alert_coastal():
     assert arpal_alert_wind(45, coastal=True)  == "gialla"
     assert arpal_alert_wind(65, coastal=True)  == "arancione"
     assert arpal_alert_wind(85, coastal=True)  == "rossa"
+
+
+def test_risk_panel_uses_strict_arpal_rain_thresholds():
+    hourly = [{"precip": 0.0, "wind_gust": 0.0}]
+    obs = {"rain_24h_mm": 0.0, "wind_gust_kmh": 0.0, "temp_max_c": 20.0}
+    params = {"SBCAPE": 0, "MUCAPE": 0, "CIN": 0, "wmo_code": 0}
+    assert assess_phenomena_risks(params, obs, hourly)["Pioggia"] == "Trascurabile"
+    assert assess_phenomena_risks(params, {**obs, "rain_24h_mm": 100}, hourly)["Pioggia"] == "Marginale"
+    assert assess_phenomena_risks(params, {**obs, "rain_24h_mm": 200}, hourly)["Pioggia"] == "Moderato"
+    assert assess_phenomena_risks(params, {**obs, "rain_24h_mm": 300}, hourly)["Pioggia"] == "Elevato"
+
+
+def test_risk_panel_uses_strict_arpal_wind_thresholds():
+    params = {"SBCAPE": 0, "MUCAPE": 0, "CIN": 0, "wmo_code": 0}
+    assert assess_phenomena_risks(params, {"wind_gust_kmh": 39, "temp_max_c": 20}, [])["Vento"] == "Trascurabile"
+    assert assess_phenomena_risks(params, {"wind_gust_kmh": 40, "temp_max_c": 20}, [])["Vento"] == "Marginale"
+    assert assess_phenomena_risks(params, {"wind_gust_kmh": 60, "temp_max_c": 20}, [])["Vento"] == "Moderato"
+    assert assess_phenomena_risks(params, {"wind_gust_kmh": 80, "temp_max_c": 20}, [])["Vento"] == "Elevato"
+
+
+def test_risk_panel_uses_3_6_12_hour_rain_windows():
+    params = {"SBCAPE": 0, "MUCAPE": 0, "CIN": 0, "wmo_code": 0}
+    obs = {"rain_24h_mm": 0, "wind_gust_kmh": 0, "temp_max_c": 20}
+    hourly = [{"time": f"{hour:02d}:00", "precip": 10.0 if hour < 18 else 0.0, "wind_gust": 0} for hour in range(24)]
+    # 3h = 30 mm: soglia ARPAL gialla sulle 3 ore.
+    assert assess_phenomena_risks(params, obs, hourly)["Pioggia"] == "Marginale"
+    # Sei ore consecutive a 20 mm superano la soglia arancione sulle 3/6 ore.
+    intense_window = [{"time": f"{hour:02d}:00", "precip": 20.0 if hour < 6 else 0.0, "wind_gust": 0} for hour in range(24)]
+    assert assess_phenomena_risks(params, obs, intense_window)["Pioggia"] == "Moderato"
+
+
+def test_risk_panel_includes_low_temperature_discomfort():
+    params = {"SBCAPE": 0, "MUCAPE": 0, "CIN": 0, "wmo_code": 0}
+    obs = {"temp_min_c": -6, "temp_max_c": 10, "wind_gust_kmh": 0, "rain_24h_mm": 0}
+    assert assess_phenomena_risks(params, obs, [])["Disagio fisiologico"] == "Moderato"
 
 
 def test_composite_alert_max():

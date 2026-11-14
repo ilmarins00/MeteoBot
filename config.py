@@ -557,6 +557,74 @@ CITY_ZONES: Dict[str, Dict] = {
                           "elevation_m": 0, "note": "Val di Vara/Val di Magra, entroterra", "region": "liguria"},
 }
 
+# Punti sul mare usati per stimare l'alimentazione marittima della convezione.
+# La direzione è quella del vento meteorologico (da cui proviene il vento).
+# Un punto assente non viene sostituito: con meno di tre punti l'avvezione
+# termica spaziale non è stimabile in modo affidabile.
+MARINE_POINTS: Dict[str, Dict[str, Dict[str, float]]] = {
+    "foce": {
+        "libeccio": {"lat": 43.98593, "lon": 9.59476},
+        "sud": {"lat": 43.87233, "lon": 9.79075},
+        "scirocco": {"lat": 43.95861, "lon": 10.06085},
+    },
+    "centro": {
+        "libeccio": {"lat": 43.96333, "lon": 9.62490},
+        "sud": {"lat": 43.87103, "lon": 9.82184},
+        "scirocco": {"lat": 43.95861, "lon": 10.06085},
+    },
+    "migliarina": {
+        "libeccio": {"lat": 43.96333, "lon": 9.62490},
+        "sud": {"lat": 43.87103, "lon": 9.82184},
+        "scirocco": {"lat": 43.95861, "lon": 10.06085},
+    },
+    "marinella_sarzana": {
+        "libeccio": {"lat": 43.90436, "lon": 9.82620},
+        "sud": {"lat": 43.84601, "lon": 10.00675},
+    },
+    "lerici": {
+        "libeccio": {"lat": 43.92737, "lon": 9.67341},
+        "sud": {"lat": 43.85967, "lon": 9.87972},
+        "scirocco": {"lat": 43.95861, "lon": 10.06085},
+    },
+    "portovenere": {
+        "libeccio": {"lat": 43.92737, "lon": 9.67341},
+        "sud": {"lat": 43.85967, "lon": 9.87972},
+        "scirocco": {"lat": 43.95861, "lon": 10.06085},
+    },
+    "le_grazie": {
+        "libeccio": {"lat": 43.92737, "lon": 9.67341},
+        "sud": {"lat": 43.85967, "lon": 9.87972},
+        "scirocco": {"lat": 43.95861, "lon": 10.06085},
+    },
+    "marola": {
+        "libeccio": {"lat": 43.96333, "lon": 9.62490},
+        "sud": {"lat": 43.87103, "lon": 9.82184},
+        "scirocco": {"lat": 43.95861, "lon": 10.06085},
+    },
+    "felettino": {
+        "libeccio": {"lat": 43.96333, "lon": 9.62490},
+        "sud": {"lat": 43.87103, "lon": 9.82184},
+        "scirocco": {"lat": 43.95861, "lon": 10.06085},
+    },
+    "ricco_del_golfo": {
+        "libeccio": {"lat": 44.01082, "lon": 9.54144},
+        "sud": {"lat": 43.92645, "lon": 9.75466},
+        "scirocco": {"lat": 44.00757, "lon": 9.99786},
+    },
+    "ceparana": {
+        "libeccio": {"lat": 43.96333, "lon": 9.62490},
+        "sud": {"lat": 43.92054, "lon": 9.90255},
+    },
+    "santo_stefano_magra": {
+        "libeccio": {"lat": 43.96333, "lon": 9.62490},
+        "sud": {"lat": 43.92054, "lon": 9.90255},
+    },
+    "sarzana": {
+        "libeccio": {"lat": 43.92737, "lon": 9.67341},
+        "sud": {"lat": 43.87566, "lon": 9.96147},
+    },
+}
+
 # Soglia minima di differenza tra zone (in punti di score maltempo, 0-5)
 # sotto la quale le differenze rientrano nell'incertezza del modello e NON
 # vanno presentate come reali differenze meteorologiche tra zone.

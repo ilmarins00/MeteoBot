@@ -21,17 +21,25 @@
 </head>
 <body data-theme="sereno">
   <div class="weather-backdrop" aria-hidden="true"></div>
-  <button id="site-update" onclick="openChangelog()" aria-label="Ultimo aggiornamento — clicca per vedere le novità del sito">Ultimo aggiornamento: 2 Ottobre 2026</button>
+  <button id="site-update" onclick="openChangelog()" aria-label="Ultimo aggiornamento — clicca per vedere le novità del sito">Ultimo aggiornamento: 15 Novembre 2026</button>
   <div id="zone-gate">
     <div class="gate-copy"><span class="eyebrow">METEOBOT</span><h1>Che tempo fa<br><em>da te?</em></h1><p>Scegli la zona per cui vuoi vedere le previsioni.</p></div>
     <div class="gate-panel">
       <div class="gate-tools"><label for="zone-select">📍 Zona</label><select id="zone-select" aria-label="Seleziona la zona per le previsioni"><option value="">Seleziona una zona...</option></select></div>
-      <p id="gate-error" class="warn" hidden>Dati non ancora disponibili, riprova tra poco.</p>
+      <p id="gate-error" class="warn" hidden aria-live="polite">Dati non ancora disponibili, riprova tra poco.</p>
     </div>
   </div>
 
   <main id="site-content" hidden>
     <header id="site-header">
+      <div class="view-mode-control" aria-label="Modalità di visualizzazione">
+        <span class="view-mode-label">Vista</span>
+        <button id="view-mode-toggle" class="view-mode-switch" type="button" role="switch" aria-checked="false" onclick="setDisplayMode('avanzata')">
+          <span class="view-mode-option active">Base</span>
+          <span class="view-mode-track" aria-hidden="true"><span class="view-mode-thumb"></span></span>
+          <span class="view-mode-option">Avanzata</span>
+        </button>
+      </div>
       <div><span class="eyebrow">METEOBOT</span><h1 id="zone-title">METEOBOT</h1><p id="scene-label" class="scene-label">Cielo sereno</p></div>
       <div class="header-meta"><div class="live-clock"><span class="live-dot"></span><span id="local-clock">--:--:--</span><small>ora locale</small></div></div>
     </header>
@@ -47,7 +55,7 @@
       </section>
     </div>
 
-    <section id="model-comparison-panel" class="card wide-card" hidden>
+    <section id="model-comparison-panel" class="card wide-card advanced-only" hidden>
       <div class="section-kicker">Confronto multi-modello</div>
       <div class="section-heading"><h2>Quanto sono d'accordo i modelli?</h2><span class="model-comparison-confidence" id="model-comparison-confidence"></span></div>
       <div id="model-comparison-tabs" class="day-tabs"></div>
@@ -86,6 +94,15 @@
     </div>
   </div>
 </div>
+    <div id="storm-risk-info-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeStormRiskInfo()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="storm-risk-info-title">Come viene calcolato il rischio temporali</h3>
+      <button class="modal-close" onclick="closeStormRiskInfo()" aria-label="Chiudi">✕</button>
+    </div>
+    <div class="modal-body" id="storm-risk-info-body"></div>
+  </div>
+</div>
     <div id="arpal-alert-modal" class="alert-toast" hidden>
   <div class="modal-header">
     <h3 id="arpal-alert-title">Allerta meteo ARPAL</h3>
@@ -96,7 +113,7 @@
     <div id="changelog-modal" class="modal-overlay" hidden onclick="if(event.target===this) closeChangelog()">
   <div class="modal-box">
     <div class="modal-header">
-      <h3>Aggiornamento n. 8</h3>
+      <h3>Aggiornamento n. 9</h3>
       <button class="modal-close" onclick="closeChangelog()" aria-label="Chiudi">✕</button>
     </div>
     <div class="modal-body" id="changelog-body"></div>

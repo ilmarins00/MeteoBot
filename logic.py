@@ -43,6 +43,70 @@ def _duration_hours_from_times(vals: List[Tuple[str, float]]) -> float:
     except Exception:
         return float(len(vals))
 
+
+def _precipitation_windows(hourly: list, rain_24h: float = 0.0) -> Dict[int, float]:
+    """Restituisce il massimo accumulo previsto nelle finestre 1/3/6/12/24h.
+
+    Le voci ``precip`` sono accumuli dell'intervallo rappresentato dalla riga,
+    non tassi istantanei. Il calcolo usa gli orari per funzionare anche con
+    serie a 15 minuti, senza sommare semplicemente un numero fisso di righe.
+    """
+    if not hourly:
+        return {1: 0.0, 3: 0.0, 6: 0.0, 12: 0.0, 24: float(rain_24h or 0)}
+
+    def minutes(time_value: Any) -> Optional[int]:
+        try:
+            hour, minute = str(time_value).split(":")[:2]
+            return int(hour) * 60 + int(minute)
+        except (TypeError, ValueError):
+            return None
+
+    times = [minutes(hour.get("time")) for hour in hourly]
+    windows = {1: 0.0, 3: 0.0, 6: 0.0, 12: 0.0}
+    for end_index in range(len(hourly)):
+        total = 0.0
+        elapsed = 0.0
+        for index in range(end_index, -1, -1):
+            total += float(hourly[index].get("precip", 0) or 0)
+            if index == 0:
+                step_hours = 1.0
+            else:
+                current = times[index]
+                previous = times[index - 1]
+                if current is None or previous is None:
+                    step_hours = 1.0
+                else:
+                    delta_minutes = current - previous
+                    if delta_minutes <= 0:
+                        delta_minutes += 24 * 60
+                    step_hours = delta_minutes / 60.0
+            elapsed += max(step_hours, 0.25)
+            for window in windows:
+                if elapsed <= window:
+                    windows[window] = max(windows[window], total)
+            if elapsed >= 12:
+                break
+    windows[24] = max(float(rain_24h or 0), sum(float(hour.get("precip", 0) or 0) for hour in hourly))
+    return windows
+
+
+def _risk_from_thresholds(value_by_window: Dict[int, float], thresholds_by_window: Dict[int, Tuple[float, float, float]]) -> str:
+    """Mappa finestre di pioggia alle cinque classi interne."""
+    for window, value in value_by_window.items():
+        yellow, orange, red = thresholds_by_window[window]
+        if value >= red * 1.5:
+            return "Estremo"
+    for window, value in value_by_window.items():
+        if value >= thresholds_by_window[window][2]:
+            return "Elevato"
+    for window, value in value_by_window.items():
+        if value >= thresholds_by_window[window][1]:
+            return "Moderato"
+    for window, value in value_by_window.items():
+        if value >= thresholds_by_window[window][0]:
+            return "Marginale"
+    return "Trascurabile"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Score convettivo multi-parametro
 # ─────────────────────────────────────────────────────────────────────────────
@@ -194,6 +258,11 @@ def assess_phenomena_risks(params: Dict, obs: Dict, hourly: list, hazard_prob_pc
     """
     Valuta il rischio per ciascun fenomeno atmosferico.
     Scala: Trascurabile | Marginale | Moderato | Elevato | Estremo
+
+    La scala interna è volutamente più prudente della precedente e usa le
+    soglie fisiche ARPAL/WMO come riferimenti: gialla → marginale,
+    arancione → moderato, rossa → elevato. "Estremo" richiede il superamento
+    della soglia rossa o una combinazione convettiva eccezionale.
     """
     r = {}
 
@@ -204,40 +273,73 @@ def assess_phenomena_risks(params: Dict, obs: Dict, hourly: list, hazard_prob_pc
     wmo = int(params.get("wmo_code", 0) or 0)
     has_trigger = wmo in (80, 81, 82, 95, 96, 99) or (params.get("precip_rate_mm_h", 0) or 0) > 1.0
 
-    if cape < 300 or cin > 200:
+    srh = params.get("srh_0_3") or params.get("SRH") or 0
+    scp = params.get("SCP") or 0
+    stp = params.get("STP") or 0
+    if cape < thresholds.SBCAPE_MODERATE or cin > abs(thresholds.CIN_STRONG):
         r["Temporali"] = "Trascurabile"
-    elif cape < 1000 and not has_trigger:
-        r["Temporali"] = "Marginale"
-    elif (cape < 1500) or (cape >= 1500 and shear < 20 and not has_trigger):
-        r["Temporali"] = "Moderato"
-    elif cape >= 1500 and shear >= 20 and has_trigger:
-        r["Temporali"] = "Elevato"
-    elif cape >= 2500 and shear >= 35 and has_trigger:
+    elif (
+        cape >= thresholds.SBCAPE_EXTREME
+        and shear >= thresholds.SHEAR_06_EXTREME
+        and srh >= thresholds.SRH_03_HIGH
+        and has_trigger
+        and (scp >= thresholds.SCP_HIGH or stp >= thresholds.STP_VIOLENT)
+    ):
         r["Temporali"] = "Estremo"
+    elif (
+        cape >= thresholds.SBCAPE_EXTREME
+        and shear >= thresholds.SHEAR_06_SUPERCELL
+        and srh >= thresholds.SRH_03_MODERATE
+        and has_trigger
+        and (scp >= thresholds.SCP_HIGH or stp >= thresholds.STP_HIGH)
+    ):
+        r["Temporali"] = "Elevato"
+    elif cape < thresholds.SBCAPE_STRONG or shear < thresholds.SHEAR_06_ORGANIZED or not has_trigger:
+        r["Temporali"] = "Marginale"
     else:
-        r["Temporali"] = "Moderato" if has_trigger else "Marginale"
+        r["Temporali"] = "Moderato"
+
+    # Temporali marittimi: il punteggio integra CAPE, shear, θe a 850 hPa,
+    # allineamento del vento con il settore offshore e innesco previsto.
+    # Non promuove mai un rischio senza un segnale di innesco sui punti marini.
+    marine_score = float(params.get("marine_storm_score", 0) or 0)
+    risk_scale = ["Trascurabile", "Marginale", "Moderato", "Elevato", "Estremo"]
+    marine_trigger = bool(params.get("marine_storm_trigger", False))
+    if marine_score >= 4.5 and marine_trigger:
+        marine_level = "Estremo"
+    elif marine_score >= 3.5 and marine_trigger:
+        marine_level = "Elevato"
+    elif marine_score >= 2.5 and marine_trigger:
+        marine_level = "Moderato"
+    elif marine_score >= 1.5:
+        marine_level = "Marginale"
+    else:
+        marine_level = "Trascurabile"
+    r["Temporali marittimi"] = marine_level
+    if risk_scale.index(marine_level) > risk_scale.index(r["Temporali"]):
+        r["Temporali"] = marine_level
 
     # --- PIOGGIA ---
-    max_precip = max((h.get("precip", 0) or 0 for h in hourly), default=0)
     rain_24h = obs.get("rain_24h_mm", 0) or 0
+    rain_windows = _precipitation_windows(hourly, rain_24h)
 
-    if max_precip < 2 and rain_24h < 10:
-        r["Pioggia"] = "Trascurabile"
-    elif max_precip < 10 and rain_24h < 30:
-        r["Pioggia"] = "Marginale"
-    elif max_precip < 30 and rain_24h < 60:
-        r["Pioggia"] = "Moderato"
-    elif max_precip < 50 and rain_24h < 100:
-        r["Pioggia"] = "Elevato"
-    else:
-        r["Pioggia"] = "Estremo"
+    rain_thresholds = {
+        1: (thresholds.ARPAL_RAIN_1H_GIALLO, thresholds.ARPAL_RAIN_1H_ARANCIONE, thresholds.ARPAL_RAIN_1H_ROSSO),
+        3: (thresholds.ARPAL_RAIN_3H_GIALLO, thresholds.ARPAL_RAIN_3H_ARANCIONE, thresholds.ARPAL_RAIN_3H_ROSSO),
+        6: (thresholds.ARPAL_RAIN_6H_GIALLO, thresholds.ARPAL_RAIN_6H_ARANCIONE, thresholds.ARPAL_RAIN_6H_ROSSO),
+        12: (thresholds.ARPAL_RAIN_12H_GIALLO, thresholds.ARPAL_RAIN_12H_ARANCIONE, thresholds.ARPAL_RAIN_12H_ROSSO),
+        24: (thresholds.ARPAL_RAIN_24H_GIALLO, thresholds.ARPAL_RAIN_24H_ARANCIONE, thresholds.ARPAL_RAIN_24H_ROSSO),
+    }
+    r["Pioggia"] = _risk_from_thresholds(rain_windows, rain_thresholds)
 
     # Coerenza con la probabilità complessiva calcolata su AROME (logic.hazard_probability):
-    # se il segnale combinato è forte, "Temporali" non può restare "Moderato" o sotto.
+    # il segnale deve essere molto forte prima di alzare il rischio oltre le
+    # soglie fisiche, per non trasformare una probabilità euristica in un
+    # falso allarme ufficiale.
     _scala = ["Trascurabile", "Marginale", "Moderato", "Elevato", "Estremo"]
-    if hazard_prob_pct >= 60 and _scala.index(r["Temporali"]) < _scala.index("Elevato"):
+    if hazard_prob_pct >= 75 and _scala.index(r["Temporali"]) < _scala.index("Elevato"):
         r["Temporali"] = "Elevato"
-    elif hazard_prob_pct >= 30 and _scala.index(r["Temporali"]) < _scala.index("Moderato"):
+    elif hazard_prob_pct >= 50 and _scala.index(r["Temporali"]) < _scala.index("Moderato"):
         r["Temporali"] = "Moderato"
 
     # --- VENTO ---
@@ -245,16 +347,16 @@ def assess_phenomena_risks(params: Dict, obs: Dict, hourly: list, hazard_prob_pc
     max_gust_hourly = max((h.get("wind_gust", h.get("wind", 0)) or 0 for h in hourly), default=0)
     gust_eff = max(gust, max_gust_hourly)
 
-    if gust_eff < 30:
-        r["Vento"] = "Trascurabile"
-    elif gust_eff < 50:
-        r["Vento"] = "Marginale"
-    elif gust_eff < 70:
-        r["Vento"] = "Moderato"
-    elif gust_eff < 90:
-        r["Vento"] = "Elevato"
-    else:
+    if gust_eff >= thresholds.ARPAL_WIND_COAST_ROSSO + 20:
         r["Vento"] = "Estremo"
+    elif gust_eff >= thresholds.ARPAL_WIND_COAST_ROSSO:
+        r["Vento"] = "Elevato"
+    elif gust_eff >= thresholds.ARPAL_WIND_COAST_ARANCIONE:
+        r["Vento"] = "Moderato"
+    elif gust_eff >= thresholds.ARPAL_WIND_COAST_GIALLO:
+        r["Vento"] = "Marginale"
+    else:
+        r["Vento"] = "Trascurabile"
 
     # --- DISAGIO FISIOLOGICO (ex Temperatura + Afa, fuse in un'unica voce
     # con lo stesso meccanismo basato sulla temperatura percepita) ---
@@ -263,16 +365,31 @@ def assess_phenomena_risks(params: Dict, obs: Dict, hourly: list, hazard_prob_pc
     if hi is None:
         hi = t_max
 
-    if hi >= 41:
-        r["Disagio fisiologico"] = "Estremo"
-    elif hi >= 38:
-        r["Disagio fisiologico"] = "Elevato"
-    elif hi >= 35:
-        r["Disagio fisiologico"] = "Moderato"
-    elif hi >= 32:
-        r["Disagio fisiologico"] = "Marginale"
+    if hi >= thresholds.HEAT_INDEX_EXTREME:
+        heat_level = "Estremo"
+    elif hi >= thresholds.ARPAL_HEAT_ROSSO:
+        heat_level = "Elevato"
+    elif hi >= thresholds.ARPAL_HEAT_ARANCIONE:
+        heat_level = "Moderato"
+    elif hi >= thresholds.ARPAL_HEAT_GIALLO:
+        heat_level = "Marginale"
     else:
-        r["Disagio fisiologico"] = "Trascurabile"
+        heat_level = "Trascurabile"
+
+    t_min = obs.get("temp_min_c", obs.get("temp_c", 0)) or 0
+    if t_min <= thresholds.ARPAL_FROST_ROSSO - 5:
+        cold_level = "Estremo"
+    elif t_min <= thresholds.ARPAL_FROST_ROSSO:
+        cold_level = "Elevato"
+    elif t_min <= thresholds.ARPAL_FROST_ARANCIONE:
+        cold_level = "Moderato"
+    elif t_min <= thresholds.ARPAL_FROST_GIALLO:
+        cold_level = "Marginale"
+    else:
+        cold_level = "Trascurabile"
+
+    scale = ["Trascurabile", "Marginale", "Moderato", "Elevato", "Estremo"]
+    r["Disagio fisiologico"] = max((heat_level, cold_level), key=scale.index)
 
     return r
 

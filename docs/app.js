@@ -6,6 +6,8 @@ const ICONS_VERSION = 'v2';
 let clockTimer = null;
 let zoneMap = null;
 let currentDays = null;
+let currentForecast = null;
+let displayMode = 'base';
 let chartMode = 'base';
 let radarMap = null;
 let radarLayer = null;
@@ -29,6 +31,13 @@ const ZONE_COORDS = {
   ceparana: [44.169025, 9.885630, 'Ceparana']
 };
 const LA_SPEZIA_CENTER = [44.12, 9.87];
+const VALID_WMO_CODES = new Set([0, 1, 2, 3, 45, 48, 51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86, 95, 96, 99]);
+const REQUIRED_HOURLY_FIELDS = ['T', 'RH', 'wind', 'precip', 'cloud', 'wmo_code'];
+const REQUIRED_DAY_KEYS = ['oggi', 'domani', 'dopodomani', 'giorno4', 'giorno5'];
+const MIN_HOURLY_ENTRIES = 24;
+// Il quinto giorno è una tendenza: verso il limite dell'orizzonte ICON-EU
+// possono essere disponibili solo alcune ore reali, mai righe inventate.
+const MIN_TENDENCY_HOURLY_ENTRIES = 12;
 
 // Ordine e nomi delle schede giorno: le prime tre hanno un nome fisso,
 // giorno 4/5 mostrano invece la data ("12 Settembre") perché sono solo
@@ -58,16 +67,88 @@ async function init() {
   try {
     const res = await fetch('site_data.json?t=' + Date.now());
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    SITE_DATA = await res.json();
+    const data = await res.json();
+    const validation = validateSiteData(data);
+    if (!validation.ok) throw new Error(`Payload non utilizzabile: ${validation.reason}`);
+    SITE_DATA = data;
     renderZoneMap();
     renderArticles();
     updateClock();
     clockTimer = setInterval(updateClock, 1000);
     scheduleMidnightRollover();
   } catch (error) {
-    document.getElementById('gate-error').hidden = false;
+    showDataError(error.message);
     console.error(error);
   }
+}
+
+function showDataError(detail) {
+  const errorEl = document.getElementById('gate-error');
+  if (!errorEl) return;
+  errorEl.textContent = 'Previsioni temporaneamente non disponibili: i dati pubblicati sono incompleti o non coerenti. Il sito riproverà al prossimo aggiornamento.';
+  errorEl.title = detail || '';
+  errorEl.hidden = false;
+  showGate();
+}
+
+function isFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function validateHourly(hourly, context, minHourlyEntries = MIN_HOURLY_ENTRIES) {
+  if (!Array.isArray(hourly) || hourly.length < minHourlyEntries) {
+    return `serie oraria incompleta in ${context}`;
+  }
+  const seenTimes = new Set();
+  for (const [index, hour] of hourly.entries()) {
+    if (!hour || typeof hour !== 'object') return `ora ${index + 1} non valida in ${context}`;
+    for (const field of REQUIRED_HOURLY_FIELDS) {
+      if (!isFiniteNumber(hour[field])) return `${field} mancante o non numerico in ${context}, ora ${index + 1}`;
+    }
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(hour.time))) return `orario non valido in ${context}, ora ${index + 1}`;
+    if (seenTimes.has(hour.time)) return `orari duplicati in ${context}`;
+    seenTimes.add(hour.time);
+    if (!VALID_WMO_CODES.has(hour.wmo_code)) return `codice meteo non riconosciuto in ${context}, ora ${index + 1}`;
+    if (hour.RH < 0 || hour.RH > 100 || hour.cloud < 0 || hour.cloud > 100 || hour.precip < 0 || hour.wind < 0) {
+      return `valore fuori scala in ${context}, ora ${index + 1}`;
+    }
+    const hasRain = hour.precip >= 1;
+    // WMO 3 = cielo coperto: la pioggia è compatibile. Solo 0 (sereno)
+    // costituisce una contraddizione certa con precipitazione significativa.
+    const clearSkyCode = hour.wmo_code === 0;
+    if (hasRain && clearSkyCode) return `pioggia incompatibile con cielo sereno in ${context}, ora ${index + 1}`;
+  }
+  return null;
+}
+
+function validateDay(day, context, minHourlyEntries = MIN_HOURLY_ENTRIES) {
+  if (!day || typeof day !== 'object') return `giornata mancante: ${context}`;
+  if (!day.current || !isFiniteNumber(day.current.temp_c) || !VALID_WMO_CODES.has(day.current.wmo_code)) {
+    return `situazione attuale incompleta in ${context}`;
+  }
+  if (!day.risk_panel || typeof day.risk_panel !== 'object') return `rischi mancanti in ${context}`;
+  return validateHourly(day.hourly, context, minHourlyEntries);
+}
+
+function validateSiteData(data) {
+  if (!data || typeof data !== 'object') return { ok: false, reason: 'il JSON non è un oggetto' };
+  if (!data.forecast || typeof data.forecast !== 'object') return { ok: false, reason: 'previsione generale mancante' };
+  if (!data.areas?.zones || typeof data.areas.zones !== 'object') return { ok: false, reason: 'zone mancanti' };
+  const zoneIds = Object.keys(ZONE_COORDS);
+  const missingZones = zoneIds.filter(zoneId => !data.areas.zones[zoneId]);
+  if (missingZones.length) return { ok: false, reason: `zone mancanti: ${missingZones.join(', ')}` };
+  const generalError = validateDay(data.forecast, 'previsione generale');
+  if (generalError) return { ok: false, reason: generalError };
+  for (const zoneId of zoneIds) {
+    const zone = data.areas.zones[zoneId];
+    if (!zone.days || typeof zone.days !== 'object') return { ok: false, reason: `giornate mancanti per ${zoneId}` };
+    for (const dayKey of REQUIRED_DAY_KEYS) {
+      const minimum = dayKey === 'giorno5' ? MIN_TENDENCY_HOURLY_ENTRIES : MIN_HOURLY_ENTRIES;
+      const dayError = validateDay(zone.days[dayKey], `${zoneId}/${dayKey}`, minimum);
+      if (dayError) return { ok: false, reason: dayError };
+    }
+  }
+  return { ok: true };
 }
 
 // Allo scoccare della mezzanotte locale, promuove i dati già pronti di
@@ -131,13 +212,69 @@ function closeArpalAlert() {
   if (modal) modal.hidden = true;
 }
 
+function openStormRiskInfo() {
+  const modal = document.getElementById('storm-risk-info-modal');
+  const title = document.getElementById('storm-risk-info-title');
+  const body = document.getElementById('storm-risk-info-body');
+  if (!modal || !title || !body) return;
+  const advanced = displayMode === 'avanzata';
+  title.textContent = advanced ? 'Come viene calcolato il rischio temporali' : 'Rischio temporali: in parole semplici';
+  body.innerHTML = advanced
+    ? `<p>Il rischio usa i punti sul mare associati alla località e considera il segnale più favorevole tra le ore previste.</p>
+       <ol>
+         <li><strong>Energia:</strong> +1 punto con CAPE ≥ 700 J/kg, +1 con CAPE ≥ 1400 e +1 con CAPE ≥ 2200.</li>
+         <li><strong>Organizzazione:</strong> +1 con differenza di vento tra 500 hPa e 10 m ≥ 20 kt, +1 da 32 kt.</li>
+         <li><strong>Umidità:</strong> +0,5 con theta-e a 850 hPa ≥ 330 K e +0,5 da 345 K.</li>
+         <li><strong>Direzione:</strong> viene premiato l'allineamento del vento a 700 hPa con il settore Libeccio (225°), Sud (180°) o Scirocco (135°).</li>
+         <li><strong>Innesco:</strong> pioggia ≥ 1 mm/h o codice WMO temporalesco. Se CAPE, shear e direzione sono favorevoli, si aggiunge un bonus per temporali organizzati.</li>
+       </ol>
+       <p>Il punteggio è limitato a 5: 1,5 = marginale, 2,5 = moderato, 3,5 = elevato, 4,5 = estremo, ma i livelli superiori al marginale richiedono un innesco. È una stima modellistica, non una probabilità statistica né un'allerta ufficiale.</p>
+       <p>Theta-w e avvezione termica a 500 hPa sono diagnostiche aggiuntive; omega a 700 hPa e superficie 1.5 PVU restano esclusi quando il modello non li fornisce.</p>`
+    : `<p>Il sito controlla le condizioni sopra il mare nei punti associati alla località.</p>
+       <ul>
+         <li>quanta energia ha l'atmosfera per formare temporali;</li>
+         <li>quanto il vento in quota può organizzarli e mantenerli;</li>
+         <li>quanta umidità è presente;</li>
+         <li>se il vento arriva dal settore Libeccio, Sud o Scirocco;</li>
+         <li>se sono già previsti pioggia o temporali come innesco.</li>
+       </ul>
+       <p>Più segnali concordano, più il livello sale. Senza un innesco previsto il sistema non considera automaticamente alto il rischio, anche se l'atmosfera è instabile. Il risultato è una stima modellistica e non sostituisce le allerte ufficiali.</p>`;
+  modal.hidden = false;
+}
+
+function closeStormRiskInfo() {
+  const modal = document.getElementById('storm-risk-info-modal');
+  if (modal) modal.hidden = true;
+}
+
 function renderAll(forecast, days = null) {
   const dayMap = days || { oggi: forecast };
+  currentForecast = forecast;
   currentDays = dayMap;
   renderCurrent(forecast);
   renderDayExplorer(dayMap);
   applyTheme(forecast.hourly);
   renderModelComparison();
+  updateDisplayModeControl();
+}
+
+function setDisplayMode(mode) {
+  displayMode = mode === 'avanzata' ? 'avanzata' : 'base';
+  if (currentForecast) renderAll(currentForecast, currentDays);
+  else updateDisplayModeControl();
+}
+
+function updateDisplayModeControl() {
+  const toggle = document.getElementById('view-mode-toggle');
+  if (!toggle) return;
+  const advanced = displayMode === 'avanzata';
+  toggle.setAttribute('aria-checked', String(advanced));
+  toggle.onclick = () => setDisplayMode(advanced ? 'base' : 'avanzata');
+  toggle.querySelector('.view-mode-option:first-child')?.classList.toggle('active', !advanced);
+  toggle.querySelector('.view-mode-option:last-child')?.classList.toggle('active', advanced);
+  document.querySelectorAll('.advanced-only').forEach(element => {
+    element.hidden = !advanced;
+  });
 }
 
 // Mostra quanto i modelli disponibili (ICON, GFS, ECMWF...) concordano con
@@ -152,6 +289,10 @@ function renderModelComparison() {
   const panel = document.getElementById('model-comparison-panel');
   const tabsEl = document.getElementById('model-comparison-tabs');
   if (!panel || !tabsEl) return;
+  if (displayMode !== 'avanzata') {
+    panel.hidden = true;
+    return;
+  }
 
   const comparisonByDay = SITE_DATA?.forecast?.model_comparison;
   const comparisonDays = Object.keys(MODEL_COMPARISON_DAY_LABELS).filter(d => comparisonByDay?.[d] !== undefined);
@@ -299,8 +440,14 @@ function closeArticle() {
 // Elenco in linguaggio semplice delle ultime modifiche al sito, leggibile
 // cliccando la scritta "Ultimo aggiornamento".
 const CHANGELOG_ITEMS = [
-  'La previsione oraria di oggi mostra solo l’ora corrente e quelle successive.',
-  'Aggiunto il menu cliccabile “Crediti e fonti dei dati”.',
+  'Aggiunte le modalità Base e Avanzata: la modalità Base è predefinita, mentre Avanzata conserva tutti i dettagli tecnici e il confronto tra modelli',
+  'Aggiunto un controllo rigoroso dei dati pubblicati',
+  'Aggiornate le etichette dei rischi in Base e Avanzata e applicati i nuovi colori per i livelli di rischio',
+  'I livelli di rischio sono modificati',
+  'Il rischio pioggia ora considera le finestre mobili a 1, 3, 6, 12 e 24 ore',
+  'Aggiunto il rischio per temperature basse nel disagio fisiologico, oltre a quello per caldo e afa',
+  'Aggiunto il sistema per i temporali marittimi per determinare i temporali',
+  'Risoluzione di vari bug'
 ];
 function openChangelog() {
   const body = document.getElementById('changelog-body');
@@ -616,11 +763,46 @@ function hourlyEntriesForDay(dayKey, hourly) {
   return entries.filter(({ hour }) => Number(String(hour.time || '').split(':')[0]) >= nowHour);
 }
 
+const BASE_RISK_LABELS = {
+  Trascurabile: 'Assente',
+  Marginale: 'Basso',
+  Moderato: 'Medio',
+  Elevato: 'Alto',
+  Estremo: 'Molto alto',
+};
+const ADVANCED_RISK_LABELS = {
+  Moderato: 'Accentuato',
+  Elevato: 'Moderato',
+  Estremo: 'Elevato',
+};
+
+function riskPresentation(level) {
+  const original = String(level || '').trim();
+  const label = displayMode === 'base'
+    ? (BASE_RISK_LABELS[original] || original)
+    : (ADVANCED_RISK_LABELS[original] || original);
+  const colorClass = displayMode === 'base'
+    ? ({
+      Trascurabile: 'assente',
+      Marginale: 'basso',
+      Moderato: 'accentuato',
+      Elevato: 'moderato',
+      Estremo: 'elevato',
+    }[original] || 'assente')
+    : ({
+      Trascurabile: 'assente',
+      Marginale: 'basso',
+      Moderato: 'accentuato',
+      Elevato: 'moderato',
+      Estremo: 'elevato',
+    }[original] || 'assente');
+  return { label, colorClass };
+}
+
 // Una sola scheda giorno mostra insieme rischi, previsione oraria, grafici
 // e momenti salienti di quella giornata, per evitare tab scollegati tra loro.
 function renderDayExplorer(days) {
   const el = document.getElementById('day-explorer');
-  const levels = { Trascurabile: 'basso', Marginale: 'medio', Moderato: 'medio', Elevato: 'alto', Estremo: 'estremo' };
   const entries = DAY_KEYS.filter(key => days?.[key]).map(key => [key, days[key]]);
   if (!entries.length) { el.innerHTML = ''; return; }
 
@@ -628,21 +810,27 @@ function renderDayExplorer(days) {
     const dayOffset = DAY_KEYS.indexOf(key);
     const dayUtc = utcDayPlusDays(todayAsUtcDay(), dayOffset >= 0 ? dayOffset : 0);
     const [zoneLat, zoneLon] = zoneLatLon();
-    const risks = day.risk_panel && Object.keys(day.risk_panel).length
-      ? `<h3>Rischi stimati</h3><div class="risk-list">${Object.entries(day.risk_panel).map(([name, level]) => `<div class="risk-row"><span>${escapeHTML(name)}</span><strong class="risk-level ${levels[level] || 'basso'}">${escapeHTML(level)}</strong></div>`).join('')}</div><p class="muted">Questi livelli sono una stima modellistica e non sostituiscono le allerte ufficiali.</p>`
+    const hasMarineRisk = Object.prototype.hasOwnProperty.call(day.risk_panel || {}, 'Temporali marittimi');
+    const displayedRisks = Object.entries(day.risk_panel || {})
+      .filter(([name]) => name !== 'Temporali' || !hasMarineRisk)
+      .map(([name, level]) => [name === 'Temporali marittimi' ? 'Temporali' : name, level]);
+    const risks = displayedRisks.length
+      ? `<h3>Rischi stimati</h3><div class="risk-list">${displayedRisks.map(([name, level]) => { const presentation = riskPresentation(level); const info = name === 'Temporali' ? '<button class="info-button" type="button" onclick="openStormRiskInfo()" aria-label="Come viene calcolato il rischio temporali">i</button>' : ''; return `<div class="risk-row"><span>${escapeHTML(name)}${info}</span><strong class="risk-level ${presentation.colorClass}">${escapeHTML(presentation.label)}</strong></div>`; }).join('')}</div><p class="muted">Questi livelli sono una stima modellistica e non sostituiscono le allerte ufficiali.</p>`
       : '';
     const hourlyEntries = hourlyEntriesForDay(key, day.hourly);
     const hourly = hourlyEntries.length
-      ? `<h3>Previsione oraria</h3><div class="hourly-scroll">${hourlyEntries.map(({ hour: h, index: hIdx }) => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h, isNightHourWindow(h.time, dayUtc, zoneLat, zoneLon))}</span><b>${fmt(h.T ?? h.temp_c, 0)}°C</b><small class="hour-condition">${wmoLabel(h.wmo_code, h)}</small><small>${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>raff. ${fmt(h.wind_gust, 0)} km/h</small><button class="hour-detail-btn" onclick="showHourDetail('${key}', ${hIdx})">Dettagli ▸</button></div>`).join('')}</div>`
+      ? `<h3>Previsione oraria</h3><div class="hourly-scroll">${hourlyEntries.map(({ hour: h, index: hIdx }) => `<div class="hour-card"><strong>${h.time || '--'}</strong><span class="hour-icon">${wmoIcon(h.wmo_code, h, isNightHourWindow(h.time, dayUtc, zoneLat, zoneLon))}</span><small class="hour-condition">${wmoLabel(h.wmo_code, h)}</small><b>${fmt(h.T ?? h.temp_c, 0)}°C</b><small>pioggia: ${h.precip > 0 ? fmt(h.precip, 1) + ' mm' : 'asciutto'}</small><small>vento: ${fmt(h.wind, 0)} km/h</small><small>umidità: ${fmt(h.RH, 0)}%</small><small>nuvolosità: ${fmt(h.cloud, 0)}%</small>${displayMode === 'avanzata' ? `<small>raff. ${fmt(h.wind_gust, 0)} km/h</small><button class="hour-detail-btn" onclick="showHourDetail('${key}', ${hIdx})">Dettagli ▸</button>` : ''}</div>`).join('')}</div>`
       : '<h3>Previsione oraria</h3><p class="muted">Dati orari non disponibili per questa giornata.</p>';
-    const charts = `<div class="section-heading"><h3>Grafici</h3><span class="muted">${day.hourly?.length || 0} ore</span></div><div class="mode-tabs">${chartModeTabsHtml()}</div><div class="chart-mode-content" data-day="${key}">${buildChartsGrid(day.hourly, chartMode)}</div>`;
+    const charts = displayMode === 'avanzata'
+      ? `<div class="section-heading"><h3>Grafici</h3><span class="muted">${day.hourly?.length || 0} ore</span></div><div class="mode-tabs">${chartModeTabsHtml()}</div><div class="chart-mode-content" data-day="${key}">${buildChartsGrid(day.hourly, chartMode)}</div>`
+      : '';
     const highlights = day.highlights?.length
       ? `<h3>Momenti salienti</h3><ul class="highlights-list">${day.highlights.map(ev => `<li><time>${escapeHTML(ev.time || '--')}</time><span>${escapeHTML(ev.label)}</span></li>`).join('')}</ul>`
       : '<h3>Momenti salienti</h3><p class="muted">Nessun momento particolarmente significativo individuato per questa giornata.</p>';
     return `<div class="day-panel ${index === 0 ? 'active' : ''}" data-day="${key}"><div class="day-date">${escapeHTML(day.meta?.date || '')}</div>${TENDENCY_DAYS.has(key) ? tendencyNoteHtml() : ''}${risks}${hourly}${charts}${highlights}</div>`;
   };
 
-  el.innerHTML = `<div class="section-kicker">Previsione giornaliera</div><div class="section-heading"><h2>Rischi, orario e grafici della giornata</h2><span class="muted">Scorri le schede per cambiare giornata</span></div><div class="day-tabs">${entries.map(([key], index) => `<button data-day="${key}" class="day-tab ${index === 0 ? 'active' : ''}" onclick="selectDay('${key}')">${dayTabLabel(key, days)}</button>`).join('')}</div><div id="day-panels">${entries.map(panelHtml).join('')}</div>`;
+  el.innerHTML = `<div class="section-kicker">Previsione giornaliera</div><div class="section-heading"><h2>${displayMode === 'avanzata' ? 'Rischi, orario e grafici della giornata' : 'Rischi e previsione oraria'}</h2><span class="muted">Scorri le schede per cambiare giornata</span></div><div class="day-tabs">${entries.map(([key], index) => `<button data-day="${key}" class="day-tab ${index === 0 ? 'active' : ''}" onclick="selectDay('${key}')">${dayTabLabel(key, days)}</button>`).join('')}</div><div id="day-panels">${entries.map(panelHtml).join('')}</div>`;
 }
 
 function selectDay(day) {

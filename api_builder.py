@@ -20,6 +20,11 @@ from config import REGION_ALERT_SOURCES
 _TECHNICAL_FIELDS = [
     "SBCAPE", "MUCAPE", "CIN", "LI", "shear_0_6", "srh_0_3",
     "PWAT", "SCP", "STP", "KI", "TT", "DCAPE",
+    "marine_storm_score", "marine_storm_sector", "marine_storm_trigger",
+    "marine_point_count",
+    "thetae_850hPa", "thetaw_850hPa",
+    "thermal_advection_500hPa_K_h",
+    "vertical_velocity_700hPa_hpa_h", "geopotential_1_5PVU_m",
 ]
 _ROME = ZoneInfo("Europe/Rome")
 

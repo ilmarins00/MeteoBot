@@ -16,8 +16,10 @@ Uso principale:
 """
 
 import datetime
+import math
 import requests
 import time
+from functools import lru_cache
 from typing import Dict, Any, Optional, List, Tuple
 
 from config import (
@@ -412,6 +414,96 @@ def _fetch_one_model(
     return None
 
 
+def _wet_bulb_potential_temperature(T_k: float, Td_k: float, p_pa: float) -> float:
+    """Stima θw risolvendo θe(Tw, Tw) = θe(T, Td) a pressione costante."""
+    from thermo import theta_e
+
+    target = theta_e(T_k, Td_k, p_pa)
+    lo, hi = 180.0, T_k + 20.0
+    for _ in range(40):
+        mid = (lo + hi) / 2.0
+        if theta_e(mid, mid, p_pa) < target:
+            lo = mid
+        else:
+            hi = mid
+    return ((lo + hi) / 2.0) * (100000.0 / p_pa) ** (287.05 / 1004.0)
+
+
+def _derive_point_diagnostics(hourly: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggiunge diagnostiche derivabili senza spacciare proxy per misure."""
+    from thermo import theta_e
+
+    n = len(hourly.get("time", []))
+    result = {
+        "thetae_850hPa": [None] * n,
+        "thetaw_850hPa": [None] * n,
+        "vertical_velocity_700hPa_hpa_h": [None] * n,
+        "thermal_advection_500hPa_K_h": [None] * n,
+        "geopotential_1_5PVU_m": [None] * n,
+        "diagnostic_status": {
+            "thetae_850hPa": "derived",
+            "thetaw_850hPa": "derived",
+            "vertical_velocity_700hPa_hpa_h": "not_available_from_open_meteo",
+            "geopotential_1_5PVU_m": "not_available_from_open_meteo",
+            "thermal_advection_500hPa_K_h": "derived_from_marine_point_gradient",
+        },
+    }
+    temps = hourly.get("temperature_850hPa", [])
+    dews = hourly.get("dew_point_850hPa", [])
+    for i, (temp, dew) in enumerate(zip(temps, dews)):
+        if temp is None or dew is None:
+            continue
+        try:
+            tk, tdk = float(temp) + 273.15, float(dew) + 273.15
+            result["thetae_850hPa"][i] = round(theta_e(tk, tdk, 85000.0), 1)
+            result["thetaw_850hPa"][i] = round(
+                _wet_bulb_potential_temperature(tk, tdk, 85000.0), 1
+            )
+        except (TypeError, ValueError, OverflowError):
+            continue
+    return result
+
+
+def _thermal_advection_from_points(
+    samples: List[Tuple[float, float, Optional[float], Optional[float], Optional[float]]],
+) -> Optional[float]:
+    """Avvezione termica 500 hPa in K/h da un piano locale T(x,y)."""
+    valid = [s for s in samples if all(v is not None for v in s[2:])]
+    if len(valid) < 3:
+        return None
+    lat0 = sum(s[0] for s in valid) / len(valid)
+    lon0 = sum(s[1] for s in valid) / len(valid)
+    scale_y, scale_x = 111320.0, 111320.0 * math.cos(math.radians(lat0))
+    rows = []
+    vals = []
+    for lat, lon, temp, speed, direction in valid:
+        x = (lon - lon0) * scale_x
+        y = (lat - lat0) * scale_y
+        rad = math.radians(float(direction))
+        u = -float(speed) / 3.6 * math.sin(rad)
+        v = -float(speed) / 3.6 * math.cos(rad)
+        rows.append((1.0, x, y, u, v))
+        vals.append(float(temp))
+    # Least squares for the temperature plane; no numpy dependency.
+    s00 = len(rows)
+    sx = sum(r[1] for r in rows); sy = sum(r[2] for r in rows)
+    sxx = sum(r[1] ** 2 for r in rows); syy = sum(r[2] ** 2 for r in rows)
+    sxy = sum(r[1] * r[2] for r in rows)
+    rhs0 = sum(vals)
+    bx = sum(r[1] * z for r, z in zip(rows, vals))
+    by = sum(r[2] * z for r, z in zip(rows, vals))
+    det = s00 * (sxx * syy - sxy * sxy) - sx * (sx * syy - sxy * sy) + sy * (sx * sxy - sxx * sy)
+    if abs(det) < 1e-12:
+        return None
+    # Cramer's rule only for the x/y coefficients of [a,b,c].
+    da = s00 * (sxx * syy - sxy * sxy) - sx * (bx * syy - sxy * by) + sy * (bx * sxy - sxx * by)
+    db = s00 * (bx * syy - sxy * by) - bx * (sx * syy - sxy * sy) + sy * (sx * by - bx * sy)
+    dc = s00 * (sxx * by - bx * sxy) - sx * (sx * by - bx * sy) + rhs0 * (sx * sxy - sxx * sy)
+    grad_x, grad_y = db / det, dc / det
+    u, v = sum(r[3] for r in rows) / len(rows), sum(r[4] for r in rows) / len(rows)
+    return round(-(u * grad_x + v * grad_y) * 3600.0, 3)
+
+
 _AROME_PRIORITY_FIELDS = {
     "cape", "convective_inhibition", "lifted_index",
     "precipitation", "rain", "showers",
@@ -489,6 +581,186 @@ def extract_day_hourly(
 
     return {key: [vals[i] for i in idxs if i < len(vals)]
             for key, vals in h.items() if isinstance(vals, list)}
+
+
+@lru_cache(maxsize=128)
+def _fetch_marine_point_cached(lat: float, lon: float, timeout: int) -> Optional[Dict[str, Any]]:
+    """Scarica un punto marino usando AROME-HD → AROME → ICON-EU → best_match."""
+    import datetime as _dt
+    from zoneinfo import ZoneInfo as _ZI
+
+    today = _dt.datetime.now(_ZI(TIMEZONE)).date()
+    start = today.strftime("%Y-%m-%d")
+    end = (today + _dt.timedelta(days=5)).strftime("%Y-%m-%d")
+    first_response = None
+    for model in (
+        "meteofrance_arome_france_hd",
+        "meteofrance_arome_france",
+        "icon_eu",
+        "best_match",
+    ):
+        data = _fetch_one_model(model, start, end, lat, lon, timeout)
+        if data is not None:
+            data["_selected_model"] = model
+            if first_response is None:
+                first_response = data
+            temps = data.get("hourly", {}).get("temperature_850hPa", [])
+            dews = data.get("hourly", {}).get("dew_point_850hPa", [])
+            if any(t is not None and d is not None for t, d in zip(temps, dews)):
+                return data
+    # Un modello può rispondere correttamente ma non avere il profilo nella
+    # cella richiesta: non lo dichiariamo "disponibile" per le diagnostiche.
+    return first_response
+
+
+def fetch_marine_forecasts(
+    points: Dict[str, Dict[str, float]],
+    timeout: int = 35,
+) -> Dict[str, Any]:
+    """Raccoglie i punti offshore e calcola le diagnostiche disponibili."""
+    fetched: Dict[str, Any] = {}
+    for sector, point in points.items():
+        lat, lon = float(point["lat"]), float(point["lon"])
+        raw = _fetch_marine_point_cached(lat, lon, timeout)
+        if raw is None:
+            print(f"  [marine] {sector}: dati non disponibili")
+            continue
+        hourly = dict(raw.get("hourly", {}))
+        hourly.update(_derive_point_diagnostics(hourly))
+        fetched[sector] = {
+            "lat": lat,
+            "lon": lon,
+            "model": raw.get("_selected_model"),
+            "days": {
+                f"day{offset}": extract_day_hourly({"hourly": hourly}, offset)
+                for offset in range(5)
+            },
+        }
+
+    # L'avvezione viene stimata solo quando la geometria contiene almeno tre
+    # punti non allineati e tutti i campi necessari sono presenti.
+    for offset in range(5):
+        names = list(fetched)
+        day_key = f"day{offset}"
+        if not names:
+            continue
+        times = fetched[names[0]]["days"].get(day_key, {}).get("time", [])
+        for i, _ in enumerate(times):
+            samples = []
+            for name in names:
+                item = fetched[name]
+                day = item["days"].get(day_key, {})
+                def at(key):
+                    values = day.get(key, [])
+                    return values[i] if i < len(values) else None
+                samples.append((
+                    item["lat"], item["lon"], at("temperature_500hPa"),
+                    at("wind_speed_500hPa"), at("wind_direction_500hPa"),
+                ))
+            adv = _thermal_advection_from_points(samples)
+            for name in names:
+                day = fetched[name]["days"].get(day_key, {})
+                values = day.setdefault("thermal_advection_500hPa_K_h", [None] * len(times))
+                if i < len(values):
+                    values[i] = adv
+    return {
+        "points": fetched,
+        "point_count": len(fetched),
+        "available": bool(fetched),
+        "diagnostics": {
+            "vertical_velocity_700hPa_hpa_h": "not_available_from_open_meteo",
+            "geopotential_1_5PVU_m": "not_available_from_open_meteo",
+            "thermal_advection_500hPa_K_h": (
+                "derived" if len(fetched) >= 3 else "insufficient_points"
+            ),
+        },
+    }
+
+
+def build_marine_day_summary(
+    marine: Optional[Dict[str, Any]], day_key: str
+) -> Dict[str, Any]:
+    """Indice conservativo di temporale marittimo per una giornata."""
+    if not marine or not marine.get("available"):
+        return {
+            "available": False, "score": 0.0, "point_count": 0,
+            "reason": "punti marini non disponibili",
+        }
+    sector_axis = {"libeccio": 225.0, "sud": 180.0, "scirocco": 135.0}
+    best: Dict[str, Any] = {
+        "available": True, "score": 0.0, "point_count": int(marine.get("point_count", 0)),
+        "sector": None,
+        "thetae_850hPa": None, "thermal_advection_500hPa_K_h": None,
+        "thetaw_850hPa": None,
+        "vertical_velocity_700hPa_hpa_h": None, "geopotential_1_5PVU_m": None,
+    }
+    for sector, point in marine.get("points", {}).items():
+        day = point.get("days", {}).get(day_key, {})
+        times = day.get("time", [])
+        for i, _ in enumerate(times):
+            def at(key):
+                values = day.get(key, [])
+                return values[i] if i < len(values) else None
+            cape = float(at("cape") or 0)
+            speed500 = float(at("wind_speed_500hPa") or 0)
+            speed10 = float(at("wind_speed_10m") or 0)
+            shear = abs(speed500 - speed10) / 1.852  # km/h → kt
+            thetae = at("thetae_850hPa")
+            precip = float(at("precipitation") or 0)
+            wmo = int(at("weather_code") or 0)
+            direction = at("wind_direction_700hPa")
+            axis = sector_axis.get(sector)
+            alignment = 0.0
+            if direction is not None and axis is not None:
+                delta = abs((float(direction) - axis + 180) % 360 - 180)
+                alignment = max(0.0, 1.0 - delta / 60.0)
+            score = 0.0
+            if cape >= 700: score += 1.0
+            if cape >= 1400: score += 1.0
+            if cape >= 2200: score += 1.0
+            if shear >= 20: score += 1.0
+            if shear >= 32: score += 1.0
+            if thetae is not None and float(thetae) >= 330: score += 0.5
+            if thetae is not None and float(thetae) >= 345: score += 0.5
+            score += alignment
+            trigger = precip >= 1.0 or wmo in (80, 81, 82, 95, 96, 99)
+            organized = cape >= 1000 and shear >= 20 and alignment >= 0.35
+            if organized and trigger:
+                score += 1.0
+            if organized and cape >= 1800 and shear >= 32:
+                score += 0.75
+            capped_score = min(score, 5.0)
+            if thetae is not None and (
+                best["thetae_850hPa"] is None or float(thetae) > float(best["thetae_850hPa"])
+            ):
+                best["thetae_850hPa"] = thetae
+            thetaw = at("thetaw_850hPa")
+            if thetaw is not None and (
+                best["thetaw_850hPa"] is None or float(thetaw) > float(best["thetaw_850hPa"])
+            ):
+                best["thetaw_850hPa"] = thetaw
+            thermal_adv = at("thermal_advection_500hPa_K_h")
+            if thermal_adv is not None and (
+                best["thermal_advection_500hPa_K_h"] is None
+                or abs(float(thermal_adv)) > abs(float(best["thermal_advection_500hPa_K_h"]))
+            ):
+                best["thermal_advection_500hPa_K_h"] = thermal_adv
+            if capped_score > best["score"]:
+                best.update({
+                    "score": round(capped_score, 2),
+                    "sector": sector,
+                    "trigger": trigger,
+                    "organized": organized,
+                    "cape": round(cape, 1),
+                    "shear_kt": round(shear, 1),
+                    "thetae_850hPa": thetae,
+                    "thermal_advection_500hPa_K_h": at("thermal_advection_500hPa_K_h"),
+                    "vertical_velocity_700hPa_hpa_h": at("vertical_velocity_700hPa_hpa_h"),
+                    "geopotential_1_5PVU_m": at("geopotential_1_5PVU_m"),
+                })
+    if best["score"] == 0:
+        best["reason"] = "nessun segnale convettivo significativo sui punti disponibili"
+    return best
 
 
 def build_day_obs(
@@ -1047,6 +1319,7 @@ def fetch_forecast_3days(
     lat: float = LATITUDE,
     lon: float = LONGITUDE,
     timeout: int = 35,
+    marine_points: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> Dict[str, Any]:
     """
     Scarica previsioni 5 giorni da AROME + ICON-EU (+ best_match per il Lifted Index).
@@ -1070,7 +1343,7 @@ def fetch_forecast_3days(
 
     arome_data = None
     arome_model_name = None
-    for model in ["meteofrance_arome_france", "meteofrance_arome_france_hd"]:
+    for model in ["meteofrance_arome_france_hd", "meteofrance_arome_france"]:
         print(f"  [io] Provo {model}...")
         d = _fetch_one_model(model, start_s, end_d1, lat, lon, timeout)
         if d is not None:
@@ -1159,6 +1432,12 @@ def fetch_forecast_3days(
 
     print("  [io] Provo AROME-PI (nowcast 15 minuti)...")
     arome_pi_data = fetch_arome_pi_nowcast(lat, lon, timeout)
+    marine = fetch_marine_forecasts(marine_points, timeout) if marine_points else {
+        "available": False,
+        "point_count": 0,
+        "points": {},
+        "diagnostics": {},
+    }
 
     return {
         "day0":         extract_day_hourly(merged,     0),
@@ -1172,6 +1451,7 @@ def fetch_forecast_3days(
         "model_fallback": model_fallback_label,
         "arome_pi":       arome_pi_data,
         "freshness":      freshness,
+        "marine":         marine,
     }
 
 # ─────────────────────────────────────────────────────────────────────────────

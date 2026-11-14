@@ -9,9 +9,12 @@ import datetime
 from zoneinfo import ZoneInfo
 
 from api_builder import build_bulletin_json, build_full_site_json
-from config import CITY_ZONES, LATITUDE, LONGITUDE
+from config import CITY_ZONES, LATITUDE, LONGITUDE, MARINE_POINTS
 from engine import run_pipeline
-from io_ingest import build_day_hourly_list, build_day_obs, fetch_arpal_alert, fetch_forecast_3days
+from io_ingest import (
+    build_day_hourly_list, build_day_obs, build_marine_day_summary,
+    fetch_arpal_alert, fetch_forecast_3days,
+)
 from logic import assess_phenomena_risks, hazard_probability, livello_attenzione, maltempo_score
 
 _TZ_ROME = ZoneInfo("Europe/Rome")
@@ -34,6 +37,18 @@ def _format_date_short_it(d: datetime.date) -> str:
 def build_day(forecast, day_key, label, arpal_alert=None, region="liguria"):
     day_data = forecast[day_key]
     obs = build_day_obs(day_data, forecast["model_primary"])
+    marine_summary = build_marine_day_summary(forecast.get("marine"), day_key)
+    obs.update({
+        "marine_storm_score": marine_summary.get("score", 0),
+        "marine_point_count": marine_summary.get("point_count", 0),
+        "marine_storm_sector": marine_summary.get("sector"),
+        "marine_storm_trigger": marine_summary.get("trigger", False),
+        "thetae_850hPa": marine_summary.get("thetae_850hPa"),
+        "thetaw_850hPa": marine_summary.get("thetaw_850hPa"),
+        "thermal_advection_500hPa_K_h": marine_summary.get("thermal_advection_500hPa_K_h"),
+        "vertical_velocity_700hPa_hpa_h": marine_summary.get("vertical_velocity_700hPa_hpa_h"),
+        "geopotential_1_5PVU_m": marine_summary.get("geopotential_1_5PVU_m"),
+    })
     hourly = build_day_hourly_list(
         day_data,
         day_hourly_secondary=forecast.get(f"{day_key}_icon"),
@@ -58,8 +73,9 @@ def build_day(forecast, day_key, label, arpal_alert=None, region="liguria"):
     )
 
 
-def build_location(lat, lon, label=None, note=None, arpal_alert=None, region="liguria"):
-    forecast = fetch_forecast_3days(lat=lat, lon=lon)
+def build_location(lat, lon, label=None, note=None, arpal_alert=None, region="liguria",
+                   marine_points=None):
+    forecast = fetch_forecast_3days(lat=lat, lon=lon, marine_points=marine_points)
     days = {
         "oggi": build_day(forecast, "day0", "OGGI", arpal_alert, region=region),
         "domani": build_day(forecast, "day1", "DOMANI", arpal_alert, region=region),
@@ -131,6 +147,7 @@ def main():
         return build_location(
             zone["lat"], zone["lon"], zone["label"], zone["note"],
             arpal_alert=arpal_alert, region=zone.get("region", "liguria"),
+            marine_points=MARINE_POINTS.get(zone_id),
         )
 
     with ThreadPoolExecutor(max_workers=5) as executor:

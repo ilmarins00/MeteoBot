@@ -259,6 +259,15 @@ def build_params_from_obs(obs: Dict[str, Any]) -> Dict[str, Any]:
         "wmo_code":          obs.get("wmo_code",         0),
         "soil_moisture":      obs.get("soil_moisture",    None),
         "DCAPE":              obs.get("DCAPE",             params.get("DCAPE", 0)),
+        "marine_storm_score": obs.get("marine_storm_score", 0),
+        "marine_point_count": obs.get("marine_point_count", 0),
+        "marine_storm_sector": obs.get("marine_storm_sector"),
+        "marine_storm_trigger": obs.get("marine_storm_trigger", False),
+        "thetae_850hPa": obs.get("thetae_850hPa"),
+        "thetaw_850hPa": obs.get("thetaw_850hPa"),
+        "thermal_advection_500hPa_K_h": obs.get("thermal_advection_500hPa_K_h"),
+        "vertical_velocity_700hPa_hpa_h": obs.get("vertical_velocity_700hPa_hpa_h"),
+        "geopotential_1_5PVU_m": obs.get("geopotential_1_5PVU_m"),
     })
 
     # — Fattore orografico e brezza marina
