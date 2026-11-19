@@ -190,9 +190,9 @@
     },
     "storico_previsioni": {
         "oggi": {
-            "score": 2.5,
-            "wind_gust_kmh": 56.5,
-            "rain_peak": 16.1
+            "score": 3.5,
+            "wind_gust_kmh": 60.5,
+            "rain_peak": 10.8
         }
     }
 }
